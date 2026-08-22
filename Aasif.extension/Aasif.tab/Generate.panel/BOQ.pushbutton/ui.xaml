@@ -1,0 +1,568 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="RCC BOQ Parameter Manager"
+    Width="1200"
+    Height="750"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="CanResize">
+
+    <Grid Margin="12">
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+
+        <!-- ================================================= -->
+        <!-- HEADER -->
+        <!-- ================================================= -->
+
+        <StackPanel
+            Grid.Row="0"
+            Margin="10,5,10,10">
+
+            <TextBlock
+                Text="RCC BOQ Parameter Manager"
+                FontSize="24"
+                FontWeight="Bold"/>
+
+            <TextBlock
+                x:Name="ProjectName"
+                Text="Project:"
+                FontSize="13"
+                Margin="0,5,0,0"/>
+
+        </StackPanel>
+
+
+        <!-- ================================================= -->
+        <!-- MAIN TAB CONTROL -->
+        <!-- ================================================= -->
+
+        <TabControl
+            Grid.Row="1">
+
+
+            <!-- ================================================= -->
+            <!-- BEAM -->
+            <!-- ================================================= -->
+
+            <TabItem
+                Header="Beam">
+
+                <Grid
+                    Margin="10">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+
+                    <!-- AVAILABLE -->
+
+                    <GroupBox
+                        Grid.Column="0"
+                        Header="Available Parameters"
+                        Margin="0,0,8,0">
+
+                        <Grid>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox
+                                x:Name="BeamSearch"
+                                Grid.Row="0"
+                                Margin="5"/>
+
+                            <ListBox
+                                x:Name="BeamAvailable"
+                                Grid.Row="1"
+                                Margin="5"
+                                SelectionMode="Extended"
+                                DisplayMemberPath="Name"/>
+
+                        </Grid>
+
+                    </GroupBox>
+
+
+                    <!-- BUTTONS -->
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Margin="8">
+
+                        <Button
+                            x:Name="BeamAdd"
+                            Content="Add →"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Button
+                            x:Name="BeamRemove"
+                            Content="← Remove"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Separator
+                            Margin="0,8"/>
+
+                        <Button
+                            x:Name="BeamUp"
+                            Content="↑ Up"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="BeamDown"
+                            Content="↓ Down"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="BeamTop"
+                            Content="⇧ Top"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="BeamBottom"
+                            Content="⇩ Bottom"
+                            Height="38"
+                            Margin="0,4"/>
+
+                    </StackPanel>
+
+
+                    <!-- SELECTED -->
+
+                    <GroupBox
+                        Grid.Column="2"
+                        Header="Selected / Export Parameters"
+                        Margin="8,0,0,0">
+
+                        <ListBox
+                            x:Name="BeamSelected"
+                            Margin="5"
+                            SelectionMode="Extended"
+                            DisplayMemberPath="Name"/>
+
+                    </GroupBox>
+
+                </Grid>
+
+            </TabItem>
+
+
+            <!-- ================================================= -->
+            <!-- COLUMN -->
+            <!-- ================================================= -->
+
+            <TabItem
+                Header="Column">
+
+                <Grid
+                    Margin="10">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+
+                    <GroupBox
+                        Grid.Column="0"
+                        Header="Available Parameters"
+                        Margin="0,0,8,0">
+
+                        <Grid>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox
+                                x:Name="ColumnSearch"
+                                Grid.Row="0"
+                                Margin="5"/>
+
+                            <ListBox
+                                x:Name="ColumnAvailable"
+                                Grid.Row="1"
+                                Margin="5"
+                                SelectionMode="Extended"
+                                DisplayMemberPath="Name"/>
+
+                        </Grid>
+
+                    </GroupBox>
+
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Margin="8">
+
+                        <Button
+                            x:Name="ColumnAdd"
+                            Content="Add →"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Button
+                            x:Name="ColumnRemove"
+                            Content="← Remove"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Separator
+                            Margin="0,8"/>
+
+                        <Button
+                            x:Name="ColumnUp"
+                            Content="↑ Up"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="ColumnDown"
+                            Content="↓ Down"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="ColumnTop"
+                            Content="⇧ Top"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="ColumnBottom"
+                            Content="⇩ Bottom"
+                            Height="38"
+                            Margin="0,4"/>
+
+                    </StackPanel>
+
+
+                    <GroupBox
+                        Grid.Column="2"
+                        Header="Selected / Export Parameters"
+                        Margin="8,0,0,0">
+
+                        <ListBox
+                            x:Name="ColumnSelected"
+                            Margin="5"
+                            SelectionMode="Extended"
+                            DisplayMemberPath="Name"/>
+
+                    </GroupBox>
+
+                </Grid>
+
+            </TabItem>
+
+
+            <!-- ================================================= -->
+            <!-- SLAB -->
+            <!-- ================================================= -->
+
+            <TabItem
+                Header="Slab">
+
+                <Grid
+                    Margin="10">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+
+                    <GroupBox
+                        Grid.Column="0"
+                        Header="Available Parameters"
+                        Margin="0,0,8,0">
+
+                        <Grid>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox
+                                x:Name="SlabSearch"
+                                Grid.Row="0"
+                                Margin="5"/>
+
+                            <ComboBox
+                                x:Name="SlabFilter"
+                                Grid.Row="1"
+                                Margin="5"
+                                ToolTip="Filter Slab / Fold Slab / Grade Slab"/>
+
+                            <ListBox
+                                x:Name="SlabAvailable"
+                                Grid.Row="2"
+                                Margin="5"
+                                SelectionMode="Extended"
+                                DisplayMemberPath="Name"/>
+
+                        </Grid>
+
+                    </GroupBox>
+
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Margin="8">
+
+                        <Button
+                            x:Name="SlabAdd"
+                            Content="Add →"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Button
+                            x:Name="SlabRemove"
+                            Content="← Remove"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Separator
+                            Margin="0,8"/>
+
+                        <Button
+                            x:Name="SlabUp"
+                            Content="↑ Up"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="SlabDown"
+                            Content="↓ Down"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="SlabTop"
+                            Content="⇧ Top"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="SlabBottom"
+                            Content="⇩ Bottom"
+                            Height="38"
+                            Margin="0,4"/>
+
+                    </StackPanel>
+
+
+                    <GroupBox
+                        Grid.Column="2"
+                        Header="Selected / Export Parameters"
+                        Margin="8,0,0,0">
+
+                        <ListBox
+                            x:Name="SlabSelected"
+                            Margin="5"
+                            SelectionMode="Extended"
+                            DisplayMemberPath="Name"/>
+
+                    </GroupBox>
+
+                </Grid>
+
+            </TabItem>
+
+
+            <!-- ================================================= -->
+            <!-- FOUNDATION -->
+            <!-- ================================================= -->
+
+            <TabItem
+                Header="Foundation">
+
+                <Grid
+                    Margin="10">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+
+                    <GroupBox
+                        Grid.Column="0"
+                        Header="Available Parameters"
+                        Margin="0,0,8,0">
+
+                        <Grid>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox
+                                x:Name="FoundationSearch"
+                                Grid.Row="0"
+                                Margin="5"/>
+
+                            <ComboBox
+                                x:Name="FoundationFilter"
+                                Grid.Row="1"
+                                Margin="5"
+                                ToolTip="Filter Footing / Combined Footing / PCC / Raft / Combined Raft"/>
+
+                            <ListBox
+                                x:Name="FoundationAvailable"
+                                Grid.Row="2"
+                                Margin="5"
+                                SelectionMode="Extended"
+                                DisplayMemberPath="Name"/>
+
+                        </Grid>
+
+                    </GroupBox>
+
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Margin="8">
+
+                        <Button
+                            x:Name="FoundationAdd"
+                            Content="Add →"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Button
+                            x:Name="FoundationRemove"
+                            Content="← Remove"
+                            Height="38"
+                            Margin="0,5"/>
+
+                        <Separator
+                            Margin="0,8"/>
+
+                        <Button
+                            x:Name="FoundationUp"
+                            Content="↑ Up"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="FoundationDown"
+                            Content="↓ Down"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="FoundationTop"
+                            Content="⇧ Top"
+                            Height="38"
+                            Margin="0,4"/>
+
+                        <Button
+                            x:Name="FoundationBottom"
+                            Content="⇩ Bottom"
+                            Height="38"
+                            Margin="0,4"/>
+
+                    </StackPanel>
+
+
+                    <GroupBox
+                        Grid.Column="2"
+                        Header="Selected / Export Parameters"
+                        Margin="8,0,0,0">
+
+                        <ListBox
+                            x:Name="FoundationSelected"
+                            Margin="5"
+                            SelectionMode="Extended"
+                            DisplayMemberPath="Name"/>
+
+                    </GroupBox>
+
+                </Grid>
+
+            </TabItem>
+
+
+        </TabControl>
+
+
+        <!-- ================================================= -->
+        <!-- FOOTER -->
+        <!-- ================================================= -->
+
+        <Border
+            Grid.Row="2"
+            Margin="0,10,0,0"
+            Padding="8"
+            BorderThickness="1"
+            BorderBrush="Gray">
+
+            <DockPanel>
+
+                <TextBlock
+                    x:Name="StatusText"
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    Text="Ready"/>
+
+
+                <StackPanel
+                    Orientation="Horizontal"
+                    DockPanel.Dock="Right">
+
+                    <Button
+                        x:Name="ApplyButton"
+                        Content="OK / Apply"
+                        Width="120"
+                        Height="34"
+                        Margin="0,0,8,0"/>
+
+                    <Button
+                        x:Name="ExportButton"
+                        Content="Export Excel"
+                        Width="130"
+                        Height="34"
+                        Margin="0,0,8,0"/>
+
+                    <Button
+                        x:Name="CloseButton"
+                        Content="Close"
+                        Width="100"
+                        Height="34"/>
+
+                </StackPanel>
+
+            </DockPanel>
+
+        </Border>
+
+    </Grid>
+
+</Window>
