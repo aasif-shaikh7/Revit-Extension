@@ -559,6 +559,32 @@
 
                 </StackPanel>
 
+                <StackPanel
+                    Orientation="Horizontal"
+                    DockPanel.Dock="Right"
+                    VerticalAlignment="Center"
+                    Margin="0,0,20,0">
+
+                    <TextBlock
+                        Text="Options:"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0"/>
+
+                    <CheckBox
+                        x:Name="ExportOnlyCheck"
+                        Content="Export selected only"
+                        VerticalContentAlignment="Center"
+                        Margin="0,0,16,0"
+                        ToolTip="Only include elements currently selected in the Revit view."/>
+
+                    <CheckBox
+                        x:Name="AutoOpenCheck"
+                        Content="Open file after export"
+                        VerticalContentAlignment="Center"
+                        ToolTip="Automatically launch the generated Excel workbook."/>
+
+                </StackPanel>
+
             </DockPanel>
 
         </Border>

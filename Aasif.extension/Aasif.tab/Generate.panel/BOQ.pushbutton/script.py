@@ -6,6 +6,7 @@ from Autodesk.Revit import DB
 import os
 import traceback
 import re
+import json
 import zipfile
 from xml.sax.saxutils import escape as xml_escape
 from System import Environment
@@ -35,6 +36,122 @@ selected_parameters = {
     "Slab": [],
     "Foundation": []
 }
+
+# Export-scope flags. When export_only_flag is True, only elements that are
+# currently selected in the Revit view are included in the element sheets.
+export_only_flag = False
+active_selection_ids = set()
+
+
+def get_selection_ids():
+    """
+    Safely collect the integer ElementIds of the elements currently
+    selected in Revit. Handles multiple pyRevit selection API shapes.
+    """
+    result = set()
+
+    selection = None
+
+    try:
+        selection = revit.get_selection()
+    except:
+        selection = None
+
+    if selection is None:
+        try:
+            selection = revit.selection
+        except:
+            selection = None
+
+    if selection is None:
+        return result
+
+    candidate_set = None
+
+    try:
+        candidate_set = selection.elements
+    except:
+        candidate_set = None
+
+    if candidate_set is None:
+        try:
+            candidate_set = selection
+        except:
+            candidate_set = None
+
+    if candidate_set is None:
+        return result
+
+    try:
+        for element in candidate_set:
+            try:
+                result.add(
+                    element.Id.IntegerValue
+                )
+            except:
+                pass
+    except:
+        pass
+
+    return result
+
+
+# ============================================================
+# SETTINGS PERSISTENCE
+# ============================================================
+
+def get_settings_path():
+    """Return the JSON settings path stored in the user profile folder."""
+    home = ""
+
+    try:
+        home = os.path.expanduser("~")
+    except:
+        home = ""
+
+    return os.path.join(
+        home,
+        ".rcc_boq_settings.json"
+    )
+
+
+def load_app_settings():
+    """Load saved settings (selections, filters, last folder) or empty dict."""
+    result = {}
+
+    try:
+        path = get_settings_path()
+
+        if os.path.exists(path):
+
+            with open(path, "r") as handle:
+
+                loaded = json.load(handle)
+
+                if isinstance(loaded, dict):
+                    result = loaded
+
+    except:
+        pass
+
+    return result
+
+
+def save_app_settings(settings):
+    """Persist the given settings dict to the JSON settings file."""
+    try:
+        path = get_settings_path()
+
+        with open(path, "w") as handle:
+
+            json.dump(
+                settings,
+                handle,
+                indent=2
+            )
+
+    except:
+        pass
 
 
 # ============================================================
@@ -684,6 +801,27 @@ def build_element_data():
             []
         )
 
+        # When "Export selected only" is active, restrict to the elements
+        # currently selected in the Revit view.
+        if export_only_flag and active_selection_ids:
+
+            filtered = []
+
+            for element in elements:
+
+                try:
+                    element_id = element.Id.IntegerValue
+                except:
+                    element_id = None
+
+                if element_id is None:
+                    continue
+
+                if element_id in active_selection_ids:
+                    filtered.append(element)
+
+            elements = filtered
+
         for element in elements:
 
             try:
@@ -828,6 +966,19 @@ def xlsx_inline_string(value):
         except:
             text = ""
 
+    # Excel/Open XML requires strings to contain only XML 1.0-valid
+    # characters. Strip control characters (other than tab/newline/
+    # carriage-return) that some Revit parameter values may carry,
+    # otherwise the produced workbook may be rejected by Excel.
+    try:
+        text = re.sub(
+            u'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]',
+            u'',
+            text
+        )
+    except:
+        pass
+
     escaped = xml_escape(text)
 
     # xml:space preserves leading/trailing spaces in parameter values.
@@ -838,12 +989,60 @@ def xlsx_inline_string(value):
     )
 
 
+def try_export_as_number(value):
+    """
+    Return True when a value should be written as an XML numeric cell
+    instead of a text cell. Simple integers and decimals are exported
+    as numbers so Excel can sum/average them. Values bearing units or
+    other non-numeric text remain as strings.
+    """
+    try:
+
+        if isinstance(value, bool):
+            return False
+
+        if isinstance(value, (int, float)):
+            return True
+
+        text = str(value).strip()
+
+        if text == "":
+            return False
+
+        float(text)
+
+        return bool(
+            re.match(r'^-?\d+(\.\d+)?$', text)
+        )
+
+    except:
+        return False
+
+    return False
+
+
 def xlsx_cell(cell_ref, value, style_index=None):
-    """Create a worksheet cell using an inline string value."""
+    """Create a worksheet cell. Numeric values become real numbers."""
     style_part = ""
 
     if style_index is not None:
         style_part = ' s="{}"'.format(style_index)
+
+    if try_export_as_number(value):
+        numeric_text = None
+
+        if isinstance(value, (int, float)):
+            numeric_text = str(value)
+        else:
+            numeric_text = str(value).strip()
+
+        return (
+            '<c r="{}"{}><v>{}</v></c>'.format(
+                cell_ref,
+                style_part,
+                numeric_text
+            )
+        )
 
     return (
         '<c r="{}" t="inlineStr"{}>{}</c>'.format(
@@ -897,15 +1096,50 @@ def build_xlsx_sheet_xml(rows):
     else:
         dimension = "A1:A1"
 
-    # Reasonable fixed widths keep long parameter names readable without
-    # generating extreme worksheet widths.
-    cols = []
+    # Reasonable column widths keep long parameter names readable without
+    # generating extremely wide worksheets. Widths are auto-fitted from
+    # the header and cell content, then capped to keep sheets tidy.
+    column_widths = []
 
     for column_number in range(1, max_columns + 1):
-        width = 18
 
+        longest = 0
+
+        for values in rows:
+
+            if column_number <= len(values):
+
+                try:
+                    text_length = len(
+                        str(values[column_number - 1])
+                    )
+                except:
+                    text_length = 0
+
+                if text_length > longest:
+                    longest = text_length
+
+        # Approximate display width = longest text length + padding.
+        width = longest + 2
+
+        if width < 8:
+            width = 8
+
+        if width > 60:
+            width = 60
+
+        # The Element ID / index column gets a modest fixed width.
         if column_number == 1:
-            width = 14
+            width = 12
+
+        column_widths.append(width)
+
+    cols = []
+
+    for column_number, width in enumerate(
+        column_widths,
+        1
+    ):
 
         cols.append(
             '<col min="{}" max="{}" width="{}" customWidth="1"/>'.format(
@@ -1027,6 +1261,7 @@ def build_xlsx_workbook_rels_xml(sheet_count):
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '{}'
+        '</Relationships>'
     ).format("".join(rels))
 
 
@@ -1068,11 +1303,263 @@ def build_xlsx_content_types_xml(sheet_count):
     ).format("".join(overrides))
 
 
-def write_basic_xlsx(file_path, data_result):
+def build_parameter_metadata_sheet(parameter_metadata):
+    """
+    Flatten the captured parameter metadata dictionary into a 2D table
+    ready for the XLSX exporter. Each row describes one selected
+    parameter plus definition-level information captured by the
+    metadata engine.
+    """
+    headers = [
+        "Category",
+        "Order",
+        "Parameter Name",
+        "Instance / Type",
+        "Shared",
+        "Project Parameter",
+        "Global Parameter",
+        "Built-in Parameter",
+        "Read Only",
+        "Storage Type",
+        "Parameter ID",
+        "Definition Type",
+        "Definition Name",
+        "Data Type",
+        "Data Type TypeId",
+        "Group Type",
+        "Group TypeId"
+    ]
+
+    table = [headers]
+
+    if not parameter_metadata:
+        return table
+
+    for category in ("Beam", "Column", "Slab", "Foundation"):
+
+        records = parameter_metadata.get(
+            category,
+            []
+        )
+
+        for order, record in enumerate(
+            records,
+            1
+        ):
+
+            definition = {}
+
+            try:
+                raw_definition = record.get(
+                    "Parameter Definition"
+                )
+
+                if isinstance(
+                    raw_definition,
+                    dict
+                ):
+                    definition = raw_definition
+            except:
+                definition = {}
+
+            def metafield(key, default="Unknown"):
+                try:
+                    value = record.get(
+                        key,
+                        default
+                    )
+                    return safe_text(
+                        value,
+                        default
+                    )
+                except:
+                    return default
+
+            row = [
+                category,
+                order,
+                metafield(
+                    "Parameter Name",
+                    "Unknown"
+                ),
+                metafield(
+                    "Instance / Type",
+                    "Unknown"
+                ),
+                "Yes" if record.get(
+                    "Shared"
+                ) else "No",
+                "Yes" if record.get(
+                    "Project Parameter"
+                ) else "No",
+                "Yes" if record.get(
+                    "Global Parameter"
+                ) else "No",
+                "Yes" if record.get(
+                    "Built-in Parameter"
+                ) else "No",
+                "Yes" if record.get(
+                    "Read Only"
+                ) else "No",
+                metafield(
+                    "Storage Type",
+                    "Unknown"
+                ),
+                metafield(
+                    "Parameter ID",
+                    "N/A"
+                ),
+                safe_text(
+                    definition.get(
+                        "Definition Type",
+                        "Unknown"
+                    ),
+                    "Unknown"
+                ),
+                safe_text(
+                    definition.get(
+                        "Definition Name",
+                        "Unknown"
+                    ),
+                    "Unknown"
+                ),
+                safe_text(
+                    definition.get(
+                        "Data Type",
+                        "Unknown"
+                    ),
+                    "Unknown"
+                ),
+                safe_text(
+                    definition.get(
+                        "Data Type TypeId",
+                        "N/A"
+                    ),
+                    "N/A"
+                ),
+                safe_text(
+                    definition.get(
+                        "Group Type",
+                        "Unknown"
+                    ),
+                    "Unknown"
+                ),
+                safe_text(
+                    definition.get(
+                        "Group TypeId",
+                        "N/A"
+                    ),
+                    "N/A"
+                )
+            ]
+
+            table.append(row)
+
+    return table
+
+
+def build_missing_values_summary(data_result):
+    """
+    Build a compact data-quality report from the raw element data.
+    For every selected parameter that has at least one empty value it
+    reports: category, parameter name, total elements, missing/empty
+    count, filled count and fill percentage.
+
+    Columns that are completely empty on every element are reported too,
+    but such columns are pruned from the main element sheets.
+    """
+    headers = [
+        "Category",
+        "Parameter Name",
+        "Total Elements",
+        "Missing / Empty",
+        "Filled",
+        "Fill %"
+    ]
+
+    table = [headers]
+
+    for category in (
+        "Beam",
+        "Column",
+        "Slab",
+        "Foundation"
+    ):
+
+        rows = data_result.get(
+            category,
+            []
+        )
+
+        if not rows:
+            continue
+
+        # Parameter columns are ordered as stored in the first generated row.
+        parameter_names = []
+
+        try:
+            for key in rows[0].keys():
+                if key != "Element ID":
+                    parameter_names.append(key)
+        except:
+            parameter_names = []
+
+        total = len(rows)
+
+        for parameter_name in parameter_names:
+
+            missing = 0
+
+            for row in rows:
+
+                try:
+                    value = row.get(
+                        parameter_name,
+                        ""
+                    )
+                except:
+                    value = ""
+
+                if value in ("", None):
+                    missing += 1
+
+            if missing == 0:
+                continue
+
+            filled = total - missing
+
+            fill_percent = 0.0
+
+            if total:
+                fill_percent = round(
+                    (filled * 100.0) / total,
+                    1
+                )
+
+            table.append(
+                [
+                    category,
+                    parameter_name,
+                    total,
+                    missing,
+                    filled,
+                    "{} %".format(
+                        fill_percent
+                    )
+                ]
+            )
+
+    return table
+
+
+def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
     inside the pyRevit IronPython environment.
+
+    When parameter_metadata is provided and contains at least one
+    record, a dedicated "Parameter Metadata" sheet is appended.
     """
     sheet_names = [
         "Beam",
@@ -1094,18 +1581,62 @@ def write_basic_xlsx(file_path, data_result):
                 if key != "Element ID":
                     headers.append(key)
 
-        table = [headers]
+        # Prune parameter columns that are entirely empty for every element:
+        # such columns only add noise to the sheet. The raw data is still
+        # included in the Missing Values Summary report.
+        retained_headers = ["Element ID"]
+
+        for key in headers[1:]:
+
+            has_value = False
+
+            for row in rows:
+
+                try:
+                    value = row.get(key, "")
+                except:
+                    value = ""
+
+                if value not in ("", None):
+                    has_value = True
+                    break
+
+            if has_value or not rows:
+                retained_headers.append(key)
+
+        table = [retained_headers]
 
         for row in rows:
             values = []
             values.append(row.get("Element ID", ""))
 
-            for key in headers[1:]:
+            for key in retained_headers[1:]:
                 values.append(row.get(key, ""))
 
             table.append(values)
 
         sheet_rows[sheet_name] = table
+
+    # Append a dedicated Parameter Metadata sheet built from the captured
+    # metadata engine when at least one record exists. The workbook
+    # writing paths below already work from the (now extended) sheet list.
+    metadata_sheet = build_parameter_metadata_sheet(
+        parameter_metadata
+    )
+
+    if len(metadata_sheet) > 1:
+        sheet_names.append("Parameter Metadata")
+        sheet_rows["Parameter Metadata"] = metadata_sheet
+
+    # Append a data-quality report showing where parameter values are
+    # missing, so repeated gaps can be diagnosed visually.
+    missing_sheet = build_missing_values_summary(
+        data_result
+    )
+
+    if len(missing_sheet) > 1:
+        sheet_names.append("Missing Values Summary")
+        sheet_rows["Missing Values Summary"] = missing_sheet
 
     parent_dir = os.path.dirname(file_path)
 
@@ -1182,6 +1713,10 @@ def choose_excel_output_path():
         Environment.SpecialFolder.DesktopDirectory
     )
 
+    # Remember the previously used folder across sessions.
+    saved = load_app_settings()
+    last_dir = saved.get("last_dir", "")
+
     dialog = SaveFileDialog()
     dialog.Title = "Save RCC BOQ Excel Report"
     dialog.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
@@ -1189,13 +1724,24 @@ def choose_excel_output_path():
     dialog.AddExtension = True
     dialog.FileName = "RCC_BOQ_Report.xlsx"
 
-    if desktop:
+    if last_dir and os.path.exists(last_dir):
+        dialog.InitialDirectory = last_dir
+    elif desktop:
         dialog.InitialDirectory = desktop
 
     result = dialog.ShowDialog()
 
     if result != DialogResult.OK:
         return None
+
+    # Persist the chosen folder for the next export.
+    try:
+        saved["last_dir"] = os.path.dirname(
+            dialog.FileName
+        )
+        save_app_settings(saved)
+    except:
+        pass
 
     return dialog.FileName
 
@@ -1616,6 +2162,7 @@ try:
 
             "Beam": {
                 "available": "BeamAvailable",
+                "search": "BeamSearch",
                 "selected": "BeamSelected",
                 "add": "BeamAdd",
                 "remove": "BeamRemove",
@@ -1627,6 +2174,7 @@ try:
 
             "Column": {
                 "available": "ColumnAvailable",
+                "search": "ColumnSearch",
                 "selected": "ColumnSelected",
                 "add": "ColumnAdd",
                 "remove": "ColumnRemove",
@@ -1638,6 +2186,7 @@ try:
 
             "Slab": {
                 "available": "SlabAvailable",
+                "search": "SlabSearch",
                 "selected": "SlabSelected",
                 "add": "SlabAdd",
                 "remove": "SlabRemove",
@@ -1649,6 +2198,7 @@ try:
 
             "Foundation": {
                 "available": "FoundationAvailable",
+                "search": "FoundationSearch",
                 "selected": "FoundationSelected",
                 "add": "FoundationAdd",
                 "remove": "FoundationRemove",
@@ -1663,6 +2213,67 @@ try:
         # ====================================================
         # RCC SUBTYPE FILTERS
         # ====================================================
+
+        def filter_available_by_search(element_name):
+            """
+            Rebuild the Available list for a category, applying the
+            current search query on top of the master parameter pool.
+            Also respects the active subtype filter because the pool
+            itself is already narrowed down by refresh_category_view.
+            """
+            try:
+                controls = control_map[element_name]
+                available = window.FindName(
+                    controls["available"]
+                )
+
+                if not available:
+                    return
+
+                query = ""
+                search_box = window.FindName(
+                    controls["search"]
+                )
+
+                if search_box is not None:
+                    try:
+                        query = (
+                            str(search_box.Text or "")
+                            .strip()
+                            .lower()
+                        )
+                    except:
+                        query = ""
+
+                pool = category_parameters.get(
+                    element_name,
+                    []
+                )
+
+                available.Items.Clear()
+
+                for parameter in pool:
+
+                    try:
+                        name = parameter.Name
+                    except:
+                        name = safe_text(
+                            parameter,
+                            ""
+                        )
+
+                    if name is None:
+                        name = ""
+
+                    if (
+                        not query
+                        or query in name.lower()
+                    ):
+                        available.Items.Add(parameter)
+
+            except:
+                pass
+
 
         def refresh_category_view(element_name):
 
@@ -1700,20 +2311,12 @@ try:
                     selected_filter
                 )
 
-            category_parameters[element_name] = get_parameters(
-                category_elements.get(element_name, [])
-            )
-
             try:
-                controls = control_map[element_name]
-                available = window.FindName(
-                    controls['available']
+                category_parameters[element_name] = get_parameters(
+                    category_elements.get(element_name, [])
                 )
-                if available:
-                    available.Items.Clear()
-                    for parameter in category_parameters.get(
-                            element_name, []):
-                        available.Items.Add(parameter)
+
+                filter_available_by_search(element_name)
             except:
                 pass
 
@@ -1807,26 +2410,304 @@ try:
                 controls["selected"]
             )
 
-            if available:
-
-                available.Items.Clear()
-
-                for parameter in category_parameters[
-                    element_name
-                ]:
-
-                    available.Items.Add(
-                        parameter
-                    )
+            filter_available_by_search(
+                element_name
+            )
 
             if selected:
 
                 selected.Items.Clear()
 
+            search_box = window.FindName(
+                controls["search"]
+            )
+
+            if search_box is not None:
+
+                def on_search_changed(
+                    sender,
+                    args,
+                    name=element_name
+                ):
+                    try:
+                        filter_available_by_search(
+                            name
+                        )
+                    except:
+                        pass
+
+                search_box.TextChanged += (
+                    on_search_changed
+                )
+
 
         # Ensure the initial logical views use the active filters.
         refresh_category_view('Slab')
         refresh_category_view('Foundation')
+
+        # ====================================================
+        # RESTORE SAVED SETTINGS
+        # ====================================================
+        # Re-apply the previously saved filters and parameter selections
+        # so the user does not have to re-pick everything every session.
+
+        saved_settings = load_app_settings()
+
+        saved_filters = {}
+
+        try:
+            saved_filters = saved_settings.get(
+                "filters",
+                {}
+            )
+        except:
+            saved_filters = {}
+
+        # Apply saved subtype filters (validated against the options).
+        saved_slab_filter = saved_filters.get(
+            "Slab",
+            "All Slab Types"
+        )
+        saved_foundation_filter = saved_filters.get(
+            "Foundation",
+            "All Foundation Types"
+        )
+
+        if saved_slab_filter in SLAB_FILTER_OPTIONS:
+            active_filters["Slab"] = saved_slab_filter
+        else:
+            active_filters["Slab"] = "All Slab Types"
+
+        if saved_foundation_filter in FOUNDATION_FILTER_OPTIONS:
+            active_filters["Foundation"] = saved_foundation_filter
+        else:
+            active_filters["Foundation"] = "All Foundation Types"
+
+        refresh_category_view('Slab')
+        refresh_category_view('Foundation')
+
+        # Sync the subtype combo boxes to the restored filters.
+        try:
+            slab_combo = window.FindName("SlabFilter")
+            if slab_combo:
+                try:
+                    slab_combo.SelectedItem = saved_slab_filter
+                except:
+                    slab_combo.SelectedIndex = 0
+        except:
+            pass
+
+        try:
+            foundation_combo = window.FindName("FoundationFilter")
+            if foundation_combo:
+                try:
+                    foundation_combo.SelectedItem = saved_foundation_filter
+                except:
+                    foundation_combo.SelectedIndex = 0
+        except:
+            pass
+
+        # Restore the saved checkbox defaults ("Export selected only" and
+        # "Open file after export").
+        try:
+            only_check = window.FindName("ExportOnlyCheck")
+            if only_check:
+                try:
+                    only_check.IsChecked = bool(
+                        saved_settings.get("export_only", False)
+                    )
+                except:
+                    pass
+        except:
+            pass
+
+        try:
+            auto_check = window.FindName("AutoOpenCheck")
+            if auto_check:
+                try:
+                    auto_check.IsChecked = bool(
+                        saved_settings.get("auto_open", False)
+                    )
+                except:
+                    pass
+        except:
+            pass
+
+        # Restore the previously selected parameters in saved order.
+        saved_selected = {}
+
+        try:
+            saved_selected = saved_settings.get(
+                "selected",
+                {}
+            )
+        except:
+            saved_selected = {}
+
+        for element_name in control_map.keys():
+
+            controls = control_map[element_name]
+
+            selected = window.FindName(
+                controls["selected"]
+            )
+
+            if selected is None:
+                continue
+
+            saved_names = []
+
+            try:
+                saved_names = saved_selected.get(
+                    element_name,
+                    []
+                )
+            except:
+                saved_names = []
+
+            if not saved_names:
+                continue
+
+            name_to_item = {}
+
+            for parameter in category_parameters.get(
+                element_name,
+                []
+            ):
+
+                try:
+                    name_to_item[
+                        parameter.Name
+                    ] = parameter
+                except:
+                    pass
+
+            restored = []
+
+            for saved_name in saved_names:
+
+                parameter = name_to_item.get(
+                    saved_name
+                )
+
+                if parameter is not None:
+                    selected.Items.Add(parameter)
+                    restored.append(saved_name)
+
+            # Keep the internal list consistent with what was restored.
+            try:
+                selected_parameters[
+                    element_name
+                ] = restored
+            except:
+                pass
+
+        # ====================================================
+        # INTERNAL PARAMETER ORDER SYNC
+        # ====================================================
+
+        def sync_selected_parameters(
+            element_name
+        ):
+            """
+            Keep the internal selected_parameters list aligned with the
+            exact order currently visible in the Selected / Export ListBox.
+            This keeps the parallel data structure accurate after Add,
+            Remove, and Up / Down / Top / Bottom reordering.
+            """
+            controls = control_map[
+                element_name
+            ]
+
+            selected = window.FindName(
+                controls["selected"]
+            )
+
+            if selected is None:
+                return
+
+            ordered_names = []
+
+            try:
+                for item in selected.Items:
+                    try:
+                        ordered_names.append(
+                            item.Name
+                        )
+                    except:
+                        ordered_names.append(
+                            safe_text(
+                                item,
+                                "Unknown"
+                            )
+                        )
+            except:
+                ordered_names = []
+
+            try:
+                selected_parameters[
+                    element_name
+                ] = ordered_names
+            except:
+                pass
+
+
+        # ====================================================
+        # CAPTURE & SAVE SETTINGS
+        # ====================================================
+
+        def capture_and_save_settings():
+            """
+            Persist the current selections, subtype filters and the
+            checkbox options to the JSON settings file so the next run
+            restores them automatically.
+            """
+            settings = {}
+
+            # Re-sync every category from its visible ListBox first.
+            for element_name in control_map.keys():
+                try:
+                    sync_selected_parameters(element_name)
+                except:
+                    pass
+
+            settings["selected"] = {}
+
+            for element_name in selected_parameters.keys():
+                settings["selected"][element_name] = list(
+                    selected_parameters.get(element_name, [])
+                )
+
+            settings["filters"] = dict(
+                active_filters
+            )
+
+            # Persist the checkbox states as the new defaults.
+            try:
+                only_check = window.FindName("ExportOnlyCheck")
+                if only_check:
+                    try:
+                        settings["export_only"] = bool(
+                            only_check.IsChecked
+                        )
+                    except:
+                        pass
+            except:
+                pass
+
+            try:
+                auto_check = window.FindName("AutoOpenCheck")
+                if auto_check:
+                    try:
+                        settings["auto_open"] = bool(
+                            auto_check.IsChecked
+                        )
+                    except:
+                        pass
+            except:
+                pass
+
+            save_app_settings(settings)
 
 
         # ====================================================
@@ -1875,11 +2756,10 @@ try:
                         item
                     )
 
-                    selected_parameters[
-                        element_name
-                    ].append(
-                        item.Name
-                    )
+            # keep the internal list aligned with the visible order
+            sync_selected_parameters(
+                element_name
+            )
 
             # deselect
             available.UnselectAll()
@@ -1934,21 +2814,14 @@ try:
                     index
                 ]
 
-                try:
-
-                    selected_parameters[
-                        element_name
-                    ].remove(
-                        item.Name
-                    )
-
-                except:
-
-                    pass
-
                 selected.Items.RemoveAt(
                     index
                 )
+
+            # keep the internal list aligned with the visible order
+            sync_selected_parameters(
+                element_name
+            )
 
             selected.UnselectAll()
 
@@ -2005,6 +2878,11 @@ try:
                 selected.SelectedItems.Add(
                     item
                 )
+
+            # keep the internal list aligned with the visible order
+            sync_selected_parameters(
+                element_name
+            )
 
 
         # ====================================================
@@ -2064,6 +2942,11 @@ try:
                 selected.SelectedItems.Add(
                     item
                 )
+
+            # keep the internal list aligned with the visible order
+            sync_selected_parameters(
+                element_name
+            )
 
 
         # ====================================================
@@ -2132,6 +3015,11 @@ try:
                     item
                 )
 
+            # keep the internal list aligned with the visible order
+            sync_selected_parameters(
+                element_name
+            )
+
 
         # ====================================================
         # MOVE BOTTOM
@@ -2198,6 +3086,11 @@ try:
                 selected.SelectedItems.Add(
                     item
                 )
+
+            # keep the internal list aligned with the visible order
+            sync_selected_parameters(
+                element_name
+            )
 
 
         # ====================================================
@@ -2420,6 +3313,11 @@ try:
                 args
             ):
 
+                try:
+                    capture_and_save_settings()
+                except:
+                    pass
+
                 window.Close()
 
             close_button.Click += (
@@ -2467,6 +3365,32 @@ try:
                     return
 
                 try:
+
+                    # Respect the "Export selected only" checkbox: collect
+                    # the currently selected Revit elements up front.
+                    global export_only_flag
+                    global active_selection_ids
+
+                    only_check = window.FindName(
+                        "ExportOnlyCheck"
+                    )
+
+                    if only_check:
+                        try:
+                            export_only_flag = bool(
+                                only_check.IsChecked
+                            )
+                        except:
+                            export_only_flag = False
+                    else:
+                        export_only_flag = False
+
+                    if export_only_flag:
+                        active_selection_ids = (
+                            get_selection_ids()
+                        )
+                    else:
+                        active_selection_ids = set()
 
                     # Always rebuild metadata before export so the
                     # workbook reflects the current selection/order.
@@ -2519,7 +3443,8 @@ try:
 
                     sheet_rows = write_basic_xlsx(
                         output_path,
-                        element_data
+                        element_data,
+                        parameter_metadata
                     )
 
                     non_empty_sheets = 0
@@ -2548,6 +3473,27 @@ try:
                             )
                         )
 
+                    # Optionally launch the workbook in Excel once written.
+                    auto_check = window.FindName(
+                        "AutoOpenCheck"
+                    )
+
+                    if auto_check:
+                        try:
+                            if auto_check.IsChecked:
+                                import subprocess
+                                _ = subprocess.Popen(
+                                    ["start", "", output_path],
+                                    shell=True
+                                )
+                            else:
+                                pass
+                        except:
+                            try:
+                                os.startfile(output_path)
+                            except:
+                                pass
+
                     forms.alert(
                         "Excel export successful.\n\n"
                         "File: {}\n"
@@ -2556,7 +3502,8 @@ try:
                         "Element data rows: {}\n"
                         "Missing / empty values: {}\n"
                         "Sheets with element data: {}\n\n"
-                        "Workbook sheets: Beam, Column, Slab, Foundation".format(
+                        "Workbook sheets: Beam, Column, Slab, Foundation, "
+                        "Parameter Metadata and Missing Values Summary".format(
                             output_path,
                             total,
                             metadata_total,
