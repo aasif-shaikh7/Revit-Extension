@@ -42,6 +42,11 @@ selected_parameters = {
 export_only_flag = False
 active_selection_ids = set()
 
+# Quantity takeoff flag. When True, the export appends numeric quantity
+# columns (volume, area, length) to the element sheets and builds the
+# BOQ Summary sheet with live SUM formulas.
+quantities_flag = True
+
 
 def get_selection_ids():
     """
@@ -754,6 +759,172 @@ def safe_parameter_value(parameter):
     return ""
 
 
+# ============================================================
+# QUANTITY TAKEOFF ENGINE
+# ============================================================
+
+# Internal Revit units are fixed imperial bases, so metric conversion
+# constants are deterministic even when the UnitUtils API is not
+# available on older Revit versions.
+FEET_TO_METERS = 0.3048
+SQUARE_FEET_TO_SQUARE_METERS = 0.09290304
+CUBIC_FEET_TO_CUBIC_METERS = 0.028316846592
+
+
+def convert_quantity_value(internal_value, unit_kind):
+    """
+    Convert one raw internal-unit double into the matching metric
+    value (meters / square meters / cubic meters).
+
+    Conversion order:
+    1. UnitUtils with UnitTypeId (Revit 2021+ API).
+    2. UnitUtils with DisplayUnitType (Revit 2014-2020 API).
+    3. Fixed foot-based conversion constants.
+    """
+    if internal_value is None:
+        return ""
+
+    type_id_map = None
+
+    try:
+        type_id_map = {
+            "length": DB.UnitTypeId.Meter,
+            "area": DB.UnitTypeId.SquareMeter,
+            "volume": DB.UnitTypeId.CubicMeter
+        }
+    except:
+        type_id_map = None
+
+    if type_id_map is not None:
+
+        try:
+            converted = DB.UnitUtils.ConvertFromInternalUnits(
+                internal_value,
+                type_id_map[unit_kind]
+            )
+
+            return round(converted, 4)
+        except:
+            pass
+
+    display_type_map = None
+
+    try:
+        display_type_map = {
+            "length": DB.DisplayUnitType.DUT_METERS,
+            "area": DB.DisplayUnitType.DUT_SQUARE_METERS,
+            "volume": DB.DisplayUnitType.DUT_CUBIC_METERS
+        }
+    except:
+        display_type_map = None
+
+    if display_type_map is not None:
+
+        try:
+            converted = DB.UnitUtils.ConvertFromInternalUnits(
+                internal_value,
+                display_type_map[unit_kind]
+            )
+
+            return round(converted, 4)
+        except:
+            pass
+
+    factor_map = {
+        "length": FEET_TO_METERS,
+        "area": SQUARE_FEET_TO_SQUARE_METERS,
+        "volume": CUBIC_FEET_TO_CUBIC_METERS
+    }
+
+    try:
+        converted = internal_value * factor_map.get(
+            unit_kind,
+            1.0
+        )
+
+        return round(converted, 4)
+    except:
+        return ""
+
+
+def get_element_quantities(element):
+    """
+    Collect quantity takeoff values for one element.
+
+    Returns an ordered list of (column_label, value) tuples where the
+    value is either a rounded float (metric) or an empty string when
+    the quantity does not apply to the element.
+    """
+    quantity_sources = [
+        (
+            "Volume (m3)",
+            "volume",
+            DB.BuiltInParameter.HOST_VOLUME_COMPUTED
+        ),
+        (
+            "Area (m2)",
+            "area",
+            DB.BuiltInParameter.HOST_AREA_COMPUTED
+        ),
+        (
+            "Length (m)",
+            "length",
+            DB.BuiltInParameter.INSTANCE_LENGTH_PARAM
+        )
+    ]
+
+    results = []
+
+    for column_label, unit_kind, built_in_parameter in quantity_sources:
+
+        value = ""
+
+        try:
+            parameter = element.get_Parameter(
+                built_in_parameter
+            )
+        except:
+            parameter = None
+
+        if parameter is not None:
+
+            has_value = False
+
+            try:
+                has_value = bool(parameter.HasValue)
+            except:
+                has_value = True
+
+            storage_is_double = False
+
+            try:
+                storage_is_double = (
+                    parameter.StorageType
+                    == DB.StorageType.Double
+                )
+            except:
+                storage_is_double = False
+
+            if has_value and storage_is_double:
+
+                try:
+                    value = convert_quantity_value(
+                        parameter.AsDouble(),
+                        unit_kind
+                    )
+                except:
+                    value = ""
+
+        results.append(
+            (
+                "Qty: " + column_label,
+                value
+            )
+        )
+
+    return results
+
+
 def build_element_data():
     """
     Read actual values from the parameters currently selected in the UI.
@@ -857,6 +1028,16 @@ def build_element_data():
                     missing_values += 1
 
                 row[parameter_name] = value
+
+            # Quantity takeoff columns (numeric, metric) are appended
+            # after the selected parameters so they never interfere
+            # with the parameter completeness audit.
+            if quantities_flag:
+
+                for column_label, quantity_value in (
+                    get_element_quantities(element)
+                ):
+                    row[column_label] = quantity_value
 
             data_result[
                 element_name
@@ -1053,8 +1234,58 @@ def xlsx_cell(cell_ref, value, style_index=None):
     )
 
 
-def build_xlsx_sheet_xml(rows):
-    """Build worksheet XML for a 2D list of values."""
+# Style indexes into build_xlsx_styles_xml() cellXfs.
+STYLE_DEFAULT = 0
+STYLE_HEADER = 1
+STYLE_NUMBER = 2
+STYLE_TOTAL_TEXT = 3
+STYLE_TOTAL_NUMBER = 4
+
+
+def xlsx_formula_cell(cell_ref, expression, style_index=None):
+    """
+    Create a worksheet cell holding a live Excel formula.
+    The expression is stored without its leading "=" sign, exactly as
+    Open XML expects inside the <f> element. Excel evaluates formulas
+    on load because workbook.xml enables fullCalcOnLoad.
+    """
+    style_part = ""
+
+    if style_index is not None:
+        style_part = ' s="{}"'.format(style_index)
+
+    try:
+        expression_text = str(expression).strip()
+
+        if expression_text[:1] == "=":
+            expression_text = expression_text[1:]
+
+    except:
+        expression_text = ""
+
+    escaped_expression = xml_escape(expression_text)
+
+    return (
+        '<c r="{}"{}><f>{}</f></c>'.format(
+            cell_ref,
+            style_part,
+            escaped_expression
+        )
+    )
+
+
+def build_xlsx_sheet_xml(rows, number_columns=None):
+    """
+    Build worksheet XML for a 2D list of values.
+
+    number_columns: optional collection of 1-based column indexes that
+    hold numeric quantity data; those cells receive #,##0.00 styling.
+
+    Cell values may be ("FORMULA", "SUM(A1:A2)") tuples which render as
+    live Excel formulas. A trailing row containing such markers (or a
+    leading "TOTAL" label) is treated as the totals row: it is styled
+    with the bold/gray/border styles and excluded from auto-filter.
+    """
     row_xml = []
     max_columns = 0
 
@@ -1064,14 +1295,82 @@ def build_xlsx_sheet_xml(rows):
         if len(values) > max_columns:
             max_columns = len(values)
 
+        # Detect a trailing totals row for styling purposes.
+        is_totals_row = False
+
+        if rows and row_number == len(rows) and row_number > 1:
+
+            has_marker = False
+
+            for candidate in values:
+                if isinstance(candidate, tuple):
+                    has_marker = True
+                    break
+
+            first_is_total_label = False
+
+            try:
+                first_is_total_label = (
+                    isinstance(values[0], str)
+                    and (
+                        values[0] == "TOTAL"
+                        or values[0][:11] == "GRAND TOTAL"
+                    )
+                )
+            except:
+                first_is_total_label = False
+
+            if has_marker or first_is_total_label:
+                is_totals_row = True
+
         for column_number, value in enumerate(values, 1):
             cell_ref = "{}{}".format(
                 xlsx_column_name(column_number),
                 row_number
             )
 
-            # Header row uses style 1.
-            style_index = 1 if row_number == 1 else None
+            # Formula marker tuples render as live Excel formulas.
+            if (
+                isinstance(value, tuple)
+                and len(value) == 2
+                and value[0] == "FORMULA"
+            ):
+
+                # Formula cells that belong to a totals row keep the bold
+                # gray totals style; formula cells in normal data rows use
+                # the plain #,##0.00 numeric style instead.
+                formula_style = STYLE_TOTAL_NUMBER
+
+                if not is_totals_row:
+                    formula_style = STYLE_NUMBER
+
+                cells.append(
+                    xlsx_formula_cell(
+                        cell_ref,
+                        value[1],
+                        formula_style
+                    )
+                )
+
+                continue
+
+            style_index = None
+
+            if row_number == 1:
+                # Styled header row: bold white on dark blue fill.
+                style_index = STYLE_HEADER
+            elif is_totals_row:
+                if try_export_as_number(value):
+                    style_index = STYLE_TOTAL_NUMBER
+                else:
+                    style_index = STYLE_TOTAL_TEXT
+            elif (
+                number_columns
+                and column_number in number_columns
+                and try_export_as_number(value)
+            ):
+                # Numeric quantity cells with thousand separators.
+                style_index = STYLE_NUMBER
 
             cells.append(
                 xlsx_cell(
@@ -1151,13 +1450,43 @@ def build_xlsx_sheet_xml(rows):
 
     auto_filter = ""
 
-    if rows and len(rows) >= 1 and max_columns:
-        auto_filter = (
-            '<autoFilter ref="A1:{}{}"/>'.format(
-                xlsx_column_name(max_columns),
-                len(rows)
+    if rows and max_columns:
+
+        filter_end_row = len(rows)
+
+        # Exclude a trailing totals row from the auto-filter range so
+        # sorting and filtering never drag the SUM row around.
+        last_values = rows[-1]
+
+        last_has_marker = False
+
+        for candidate in last_values:
+            if isinstance(candidate, tuple):
+                last_has_marker = True
+                break
+
+        last_is_total = last_has_marker
+
+        if not last_is_total:
+
+            try:
+                last_is_total = (
+                    isinstance(last_values[0], str)
+                    and last_values[0] == "TOTAL"
+                )
+            except:
+                last_is_total = False
+
+        if last_is_total:
+            filter_end_row = len(rows) - 1
+
+        if filter_end_row >= 1:
+            auto_filter = (
+                '<autoFilter ref="A1:{}{}"/>'.format(
+                    xlsx_column_name(max_columns),
+                    filter_end_row
+                )
             )
-        )
 
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -1183,28 +1512,43 @@ def build_xlsx_sheet_xml(rows):
 
 
 def build_xlsx_styles_xml():
-    """Minimal styles: normal + bold header."""
+    """
+    Workbook styles used by the export engine:
+
+    xf 0 - default body text
+    xf 1 - header row: bold white on dark blue fill
+    xf 2 - numeric quantity cells with #,##0.00 formatting
+    xf 3 - totals label cells: bold on light gray with top border
+    xf 4 - totals number cells: bold #,##0.00 on light gray
+    """
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
         '<numFmts count="0"/>'
-        '<fonts count="2">'
+        '<fonts count="3">'
         '<font><sz val="11"/><name val="Calibri"/></font>'
+        '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
         '<font><b/><sz val="11"/><name val="Calibri"/></font>'
         '</fonts>'
-        '<fills count="2">'
+        '<fills count="4">'
         '<fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FF305496"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>'
         '</fills>'
-        '<borders count="1">'
+        '<borders count="2">'
         '<border><left/><right/><top/><bottom/><diagonal/></border>'
+        '<border><left/><right/><top><style>thin</style></top><bottom/><diagonal/></border>'
         '</borders>'
         '<cellStyleXfs count="1">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'
         '</cellStyleXfs>'
-        '<cellXfs count="2">'
+        '<cellXfs count="5">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-        '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
+        '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+        '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+        '<xf numFmtId="4" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
         '</cellXfs>'
         '<cellStyles count="1">'
         '<cellStyle name="Normal" xfId="0" builtinId="0"/>'
@@ -1230,6 +1574,7 @@ def build_xlsx_workbook_xml(sheet_names):
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         '<sheets>{}</sheets>'
+        '<calcPr calcId="191029" fullCalcOnLoad="1"/>'
         '</workbook>'
     ).format("".join(sheets))
 
@@ -1499,8 +1844,16 @@ def build_missing_values_summary(data_result):
 
         try:
             for key in rows[0].keys():
-                if key != "Element ID":
-                    parameter_names.append(key)
+                if key == "Element ID":
+                    continue
+
+                # Quantity columns carry their own totals on the
+                # element sheets and the BOQ Summary; they are not
+                # part of the parameter completeness audit.
+                if key[:4] == "Qty:":
+                    continue
+
+                parameter_names.append(key)
         except:
             parameter_names = []
 
@@ -1552,26 +1905,194 @@ def build_missing_values_summary(data_result):
     return table
 
 
+def build_costing_sheet(data_result):
+    """
+    Build a per-element Costing sheet.
+
+    Each exported element contributes one row that shows its primary metric
+    quantity, its unit rate (sourced from a Cost / Rate / Price parameter
+    already present in the element row) and a live amount equal to
+    quantity x rate. A trailing TOTAL row sums the amount column.
+
+    Returns a 2D row table ready for the XLSX writer. When no element
+    carries both a quantity and a usable rate, only the header remains.
+    """
+    rate_hints = (
+        "cost",
+        "rate",
+        "price"
+    )
+
+    headers = [
+        "Category",
+        "Element ID",
+        "Quantity",
+        "Rate",
+        "Amount"
+    ]
+
+    table = [headers]
+
+    for category_name in ("Beam", "Column", "Slab", "Foundation"):
+
+        rows = data_result.get(category_name, [])
+
+        if not rows:
+            continue
+
+        # Find the rate parameter for this category. Prefer a column whose
+        # name clearly marks it as a unit cost / rate / price.
+        rate_key = None
+
+        for key in rows[0].keys():
+
+            if key in ("Element ID",):
+                continue
+
+            try:
+                lowered = str(key).lower()
+            except:
+                lowered = ""
+
+            if lowered[:4] == "qty:":
+                continue
+
+            if any(hint in lowered for hint in rate_hints):
+                rate_key = key
+                break
+
+        # Choose the primary quantity column when multiple metrics exist.
+        quantity_keys = [
+            "Qty: Volume (m3)",
+            "Qty: Area (m2)",
+            "Qty: Length (m)"
+        ]
+
+        for row in rows:
+
+            element_id = row.get("Element ID", "")
+
+            quantity_value = ""
+
+            for qkey in quantity_keys:
+                try:
+                    quantity_value = row.get(qkey, "")
+                except Exception:
+                    quantity_value = ""
+
+                if quantity_value not in ("", None):
+                    break
+
+            rate_value = ""
+
+            if rate_key is not None:
+                try:
+                    rate_value = row.get(rate_key, "")
+                except Exception:
+                    rate_value = ""
+
+            quantity_number = None
+            rate_number = None
+
+            try:
+                quantity_number = float(quantity_value)
+            except Exception:
+                quantity_number = None
+
+            try:
+                rate_number = float(rate_value)
+            except Exception:
+                rate_number = None
+
+            row_number = len(table) + 1
+
+            amount = ""
+
+            if quantity_number is not None and rate_number is not None:
+                amount = (
+                    "FORMULA",
+                    "{0}{1}*{2}{1}".format(
+                        xlsx_column_name(3),
+                        row_number,
+                        xlsx_column_name(4),
+                        row_number
+                    )
+                )
+
+            table.append(
+                [
+                    category_name,
+                    element_id,
+                    quantity_value,
+                    rate_value,
+                    amount
+                ]
+            )
+
+    if len(table) > 1:
+
+        total_row_number = len(table) + 1
+
+        total_row = [
+            "TOTAL",
+            "",
+            "",
+            "",
+            (
+                "FORMULA",
+                "SUM({0}2:{0}{1})".format(
+                    xlsx_column_name(5),
+                    total_row_number - 1
+                )
+            )
+        ]
+
+        table.append(total_row)
+
+    return table
+
+
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
     inside the pyRevit IronPython environment.
 
-    When parameter_metadata is provided and contains at least one
-    record, a dedicated "Parameter Metadata" sheet is appended.
+    The workbook contains one sheet per populated category (Beam, Column,
+    Slab, Foundation - empty categories are skipped), a BOQ Summary sheet
+    with live SUM formulas and a per-element Costing sheet when rate data
+    is available.
     """
-    sheet_names = [
-        "Beam",
-        "Column",
-        "Slab",
-        "Foundation"
+    # Only categories that actually contain at least one element produce a
+    # sheet. Entirely empty tabs (e.g. an unused Slab category) are omitted
+    # so the exported workbook stays free of blank worksheet tabs.
+    element_categories = [
+        category_name
+        for category_name in (
+            "Beam",
+            "Column",
+            "Slab",
+            "Foundation"
+        )
+        if data_result.get(category_name)
     ]
+
+    sheet_names = []
 
     sheet_rows = {}
 
-    for sheet_name in sheet_names:
+    # Tracks which 1-based column indexes hold numeric quantities per
+    # sheet so the worksheet writer can apply #,##0.00 styling.
+    quantity_column_map = {}
+
+    # Records per-category total row positions and quantity column
+    # letters so the BOQ Summary sheet can reference them by formula.
+    summary_info = {}
+
+    for sheet_name in element_categories:
         rows = data_result.get(sheet_name, [])
+
+        sheet_names.append(sheet_name)
 
         headers = ["Element ID"]
 
@@ -1615,28 +2136,166 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
 
             table.append(values)
 
+        # Quantity takeoff columns are appended by the engine with a
+        # "Qty:" prefix. They receive numeric styling and a live SUM
+        # totals row at the bottom of the sheet.
+        quantity_indexes = []
+
+        for position, header_text in enumerate(retained_headers):
+
+            try:
+                is_quantity = header_text[:4] == "Qty:"
+            except:
+                is_quantity = False
+
+            if is_quantity:
+                quantity_indexes.append(position + 1)
+
+        if quantity_indexes and quantity_indexes[0] > 1:
+            quantity_column_map[sheet_name] = quantity_indexes
+
+        if quantity_indexes and rows:
+
+            total_row_number = len(table) + 1
+
+            total_values = ["TOTAL"]
+
+            for _unused in retained_headers[1:]:
+                total_values.append("")
+
+            for column_index in quantity_indexes:
+
+                column_letter = xlsx_column_name(column_index)
+
+                total_values[column_index - 1] = (
+                    "FORMULA",
+                    "SUM({0}2:{0}{1})".format(
+                        column_letter,
+                        len(table)
+                    )
+                )
+
+            table.append(total_values)
+
+            summary_info[sheet_name] = {
+                "elements": len(rows),
+                "total_row": total_row_number,
+                "columns": {}
+            }
+
+            for column_index in quantity_indexes:
+
+                header_text = retained_headers[
+                    column_index - 1
+                ]
+
+                # Strip the "Qty: " prefix; strip() guards the space
+                # that follows the colon so metric keys line up with
+                # the BOQ Summary column labels exactly.
+                summary_info[sheet_name]["columns"][
+                    header_text[4:].strip()
+                ] = xlsx_column_name(column_index)
+
         sheet_rows[sheet_name] = table
 
-    # Append a dedicated Parameter Metadata sheet built from the captured
-    # metadata engine when at least one record exists. The workbook
-    # writing paths below already work from the (now extended) sheet list.
-    metadata_sheet = build_parameter_metadata_sheet(
-        parameter_metadata
-    )
+    # Build the BOQ Summary sheet from the recorded category totals.
+    # Each cell references its category TOTAL row directly, so Excel
+    # keeps every figure in sync with the underlying element sheets.
+    summary_metric_order = [
+        ("Volume (m3)", "Total Volume (m3)"),
+        ("Area (m2)", "Total Area (m2)"),
+        ("Length (m)", "Total Length (m)")
+    ]
 
-    if len(metadata_sheet) > 1:
-        sheet_names.append("Parameter Metadata")
-        sheet_rows["Parameter Metadata"] = metadata_sheet
+    summary_table = [
+        [
+            "Category",
+            "Elements",
+            "Total Volume (m3)",
+            "Total Area (m2)",
+            "Total Length (m)"
+        ]
+    ]
 
-    # Append a data-quality report showing where parameter values are
-    # missing, so repeated gaps can be diagnosed visually.
-    missing_sheet = build_missing_values_summary(
+    for category_name in ("Beam", "Column", "Slab", "Foundation"):
+
+        info = summary_info.get(category_name)
+
+        if not info:
+            continue
+
+        summary_row = [
+            category_name,
+            info["elements"]
+        ]
+
+        for metric_key, _summary_header in summary_metric_order:
+
+            reference = ""
+
+            metric_column = info["columns"].get(metric_key)
+
+            if metric_column:
+                reference = (
+                    "FORMULA",
+                    "{0}!{1}{2}".format(
+                        category_name,
+                        metric_column,
+                        info["total_row"]
+                    )
+                )
+
+            summary_row.append(reference)
+
+        summary_table.append(summary_row)
+
+    if len(summary_table) > 1:
+
+        summary_data_end = len(summary_table) - 1
+
+        grand_values = ["GRAND TOTAL"]
+
+        grand_values.append(
+            (
+                "FORMULA",
+                "SUM(B2:B{0})".format(summary_data_end)
+            )
+        )
+
+        for offset in range(3, 6):
+
+            grand_letter = xlsx_column_name(offset)
+
+            grand_values.append(
+                (
+                    "FORMULA",
+                    "SUM({0}2:{0}{1})".format(
+                        grand_letter,
+                        summary_data_end
+                    )
+                )
+            )
+
+        summary_table.append(grand_values)
+
+        # Place the summary right after the element sheets so it is the
+        # first thing reviewers see after the raw category data.
+        summary_position = len(sheet_names)
+        sheet_names.insert(summary_position, "BOQ Summary")
+        sheet_rows["BOQ Summary"] = summary_table
+
+        quantity_column_map["BOQ Summary"] = [2, 3, 4, 5]
+
+    # Per-element Costing sheet. Each element row carries its primary
+    # quantity, its unit rate and a computed amount (quantity x rate).
+    costing_sheet = build_costing_sheet(
         data_result
     )
 
-    if len(missing_sheet) > 1:
-        sheet_names.append("Missing Values Summary")
-        sheet_rows["Missing Values Summary"] = missing_sheet
+    if len(costing_sheet) > 1:
+        sheet_names.append("Costing")
+        sheet_rows["Costing"] = costing_sheet
+        quantity_column_map["Costing"] = [3, 4, 5]
 
     parent_dir = os.path.dirname(file_path)
 
@@ -1692,7 +2351,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
             archive.writestr(
                 "xl/worksheets/sheet{}.xml".format(index),
                 build_xlsx_sheet_xml(
-                    sheet_rows[sheet_name]
+                    sheet_rows[sheet_name],
+                    quantity_column_map.get(sheet_name)
                 ).encode("utf-8")
             )
 
@@ -2533,6 +3193,23 @@ try:
         except:
             pass
 
+        # Restore the saved "Include quantities" default (enabled
+        # unless the user turned it off in a previous session).
+        try:
+            qty_restore = window.FindName("QuantitiesCheck")
+            if qty_restore:
+                try:
+                    qty_restore.IsChecked = bool(
+                        saved_settings.get(
+                            "include_quantities",
+                            True
+                        )
+                    )
+                except:
+                    pass
+        except:
+            pass
+
         # Restore the previously selected parameters in saved order.
         saved_selected = {}
 
@@ -2701,6 +3378,19 @@ try:
                     try:
                         settings["auto_open"] = bool(
                             auto_check.IsChecked
+                        )
+                    except:
+                        pass
+            except:
+                pass
+
+            # Persist the "Include quantities" choice as the new default.
+            try:
+                qty_save = window.FindName("QuantitiesCheck")
+                if qty_save:
+                    try:
+                        settings["include_quantities"] = bool(
+                            qty_save.IsChecked
                         )
                     except:
                         pass
@@ -3392,17 +4082,30 @@ try:
                     else:
                         active_selection_ids = set()
 
+                    # Respect the "Include quantities" checkbox: when
+                    # active, numeric quantity takeoff columns and the
+                    # BOQ Summary sheet are added to the workbook.
+                    global quantities_flag
+
+                    qty_check = window.FindName(
+                        "QuantitiesCheck"
+                    )
+
+                    if qty_check:
+                        try:
+                            quantities_flag = bool(
+                                qty_check.IsChecked
+                            )
+                        except:
+                            quantities_flag = True
+                    else:
+                        quantities_flag = True
+
                     # Always rebuild metadata before export so the
                     # workbook reflects the current selection/order.
                     global parameter_metadata
                     parameter_metadata = (
                         build_parameter_metadata()
-                    )
-
-                    metadata_total = (
-                        count_parameter_metadata(
-                            parameter_metadata
-                        )
                     )
 
                     (
@@ -3494,22 +4197,52 @@ try:
                             except:
                                 pass
 
+                    # Summarize quantity takeoff coverage for the dialog.
+                    quantity_columns = 0
+
+                    for category_name in (
+                        "Beam",
+                        "Column",
+                        "Slab",
+                        "Foundation"
+                    ):
+
+                        category_table = sheet_rows.get(
+                            category_name,
+                            []
+                        )
+
+                        if not category_table:
+                            continue
+
+                        for header_text in category_table[0]:
+
+                            try:
+                                if header_text[:4] == "Qty:":
+                                    quantity_columns += 1
+                            except:
+                                pass
+
+                    # Build the workbook listing dynamically from the sheets
+                    # actually written, so the dialog always matches the file.
+                    sheets_listing = ", ".join(
+                        list(sheet_rows.keys())
+                    )
+
                     forms.alert(
                         "Excel export successful.\n\n"
                         "File: {}\n"
                         "Selected parameters: {}\n"
-                        "Metadata records: {}\n"
                         "Element data rows: {}\n"
-                        "Missing / empty values: {}\n"
-                        "Sheets with element data: {}\n\n"
-                        "Workbook sheets: Beam, Column, Slab, Foundation, "
-                        "Parameter Metadata and Missing Values Summary".format(
+                        "Sheets with element data: {}\n"
+                        "Quantity columns: {}\n\n"
+                        "Workbook sheets: {}".format(
                             output_path,
                             total,
-                            metadata_total,
                             total_rows,
-                            missing_values,
-                            non_empty_sheets
+                            non_empty_sheets,
+                            quantity_columns,
+                            sheets_listing
                         ),
                         title="RCC BOQ - Excel Export"
                     )

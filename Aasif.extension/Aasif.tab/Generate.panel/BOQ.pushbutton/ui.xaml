@@ -583,6 +583,14 @@
                         VerticalContentAlignment="Center"
                         ToolTip="Automatically launch the generated Excel workbook."/>
 
+                    <CheckBox
+                        x:Name="QuantitiesCheck"
+                        Content="Include quantities"
+                        IsChecked="True"
+                        VerticalContentAlignment="Center"
+                        Margin="16,0,0,0"
+                        ToolTip="Append metric quantity columns (volume, area, length), styled totals rows and a live-formula BOQ Summary sheet."/>
+
                 </StackPanel>
 
             </DockPanel>
