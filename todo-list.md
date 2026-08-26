@@ -39,9 +39,9 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 | Phase | Feature | Rating (P/B/C/E) | Status |
 |---|---|---|---|
-| P0 | Live-Revit confirmation of the current dialog | — | `testing` (owner) |
-| P1 | Structural Quantity Engine (extend, don't duplicate) | 5/5/3/4 | `next` |
-| P2 | Structural BOQ Grouping (level / material / concrete grade) | 4/4/2/5 | `todo` |
+| P0 | Live-Revit confirmation of the current dialog | — | **done** (`v1.0.1`) |
+| P1 | Structural Quantity Engine (extend, don't duplicate) | 5/5/3/4 | **done** (`v1.1.0`) |
+| P2 | Structural BOQ Grouping (level done; material/grade pending) | 4/4/2/5 | `in progress` |
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | `todo` |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | `todo` |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `todo` |
@@ -85,7 +85,7 @@ parity testing is promised or tracked here.
 
 ## P2 — Structural BOQ Grouping (started)
 
-### P2-01 — Level-wise BOQ grouping — `testing` (code v1.2.0, live pending)
+### P2-01 — Level-wise BOQ grouping — **done** (`v1.2.0`)
 **Built:** every element row carries an engine-added `Level` column (deterministic column B),
 resolved from reference/schedule level parameters with a `LevelId` fallback. A new `BOQ by Level`
 sheet groups quantities per Level x Category using live SUMIF formulas against the category
@@ -93,14 +93,33 @@ sheets; Elements is a static per-group count. Missing-values audit excludes the 
 **Tested (harness):** Level placement, grouped rows for every collected level (incl. `(No Level)`),
 9 live SUMIF cells for the sample layout, static counts, final sheet order
 Beam/Column/Foundation/BOQ Summary/BOQ by Level/Costing.
-**Remaining:** live Revit confirmation that levels resolve correctly on a real model (owner), plus
-the pending P1 confirmation; then close P1/P2 increments and tag `v1.1.0` / `v1.2.0`.
+**Confirmed live (`v1.2.0`).** Owner verified Level resolution, grouped totals and the full export
+in Revit 2025; tagged `v1.2.0`.
+
+---
+
+## Professional output — Summary cover + site naming (started)
+
+### OUT-01 — Site naming convention + front Summary cover — `testing` (code v1.3.0)
+**Built:** Save dialog suggests `YYYYMMDD-<Project>-CONCRETE_FINISHING_BOQ.xlsx`
+(`sanitize_file_name` + document title); a front `Summary` cover sheet carries project name,
+generation stamp, tool version and the sheet listing.
+**Tested (harness):** cover meta/listing checks, sanitization and default-name regex all pass.
+**Remaining:** live Revit confirmation of the suggested filename and cover contents; then tag
+`v1.3.0`.
+
+### OUT-02 — 3D view snapshot — `decision pending`
+A true/embedded Revit 3D view inside Excel is **not feasible** via the supported API. The realistic
+option is an *Experimental* image sheet capturing the current 3D view (window screenshot) — only if
+the owner opts in. Exact column styling from
+`20260312-CHHANYADO_HOSPITAL_SURAT-CONCRETE_FINISHING_BOQ.xlsm` also needs a layout reference
+(screenshot/sheet dump) since binary workbooks cannot be read here.
 
 ---
 
 ## P1 — Structural Quantity Engine (next phase)
 
-### P1-01 — Extend quantity engine per category — `testing` (code v1.1.0, live pending)
+### P1-01 — Extend quantity engine per category — **done** (`v1.1.0`)
 **Goal:** Keep the existing dependency-free engine and extend it per category — Beam (Volume, Area,
 Length, Count), Column (Volume, Area, Height/Length, Count), Slab (Volume, Area, Thickness, Count),
 Foundation (Volume, Area, Thickness/Count).
@@ -110,10 +129,10 @@ Quantity** (Volume/Area/Length); never creates a duplicate engine.
 category-aware; adds `Qty: Height (m)` for Column, `Qty: Thickness (m)` for Slab/Foundation (pruned
 if absent), and `Qty: Count` (=1/row, TOTAL sums to count). Harness asserts Count + Height +
 Thickness columns.
-**Remaining:** live-Revit confirmation that real `Height`/`Thickness`/`Count` values gather correctly
-(owner); then mark `done` and add the `v1.1.0` release tag.
+**Confirmed live (`v1.1.0`).** Owner verified real Height/Thickness/Count values in Revit 2025;
+tagged `v1.1.0`.
 
-### P1-02 — Element Count column — **implemented in P1-01** — `testing` (live pending)
+### P1-02 — Element Count column — **done** (`v1.1.0`) — implemented in P1-01
 **Built** as part of `get_element_quantities`: `Qty: Count` = 1 per element row; the sheet TOTAL row
 sums to the element count, and the BOQ Summary already reports the per-category count in its
 `Elements` column. **Tested (harness):** asserts a Count quantity column on each populated sheet.

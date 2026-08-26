@@ -22,7 +22,42 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
-## [Unreleased] — P2 Level-wise BOQ Grouping + single-engine decision (code v1.2.0, tags pending)
+## [Unreleased] — Professional output: Summary cover + site naming convention (code v1.3.0, tag pending)
+
+**New feature (P13-direction, first increment).**
+
+- **Site naming convention** for exports, mirroring workbooks like
+  `20260312-CHHANYADO_HOSPITAL_SURAT-CONCRETE_FINISHING_BOQ.xlsm`: the Save dialog now suggests
+  **`YYYYMMDD-<Project>-CONCRETE_FINISHING_BOQ.xlsx`**, built from today's date plus the Revit
+  document title (`sanitize_file_name` strips Windows-forbidden characters). The name stays
+  editable before saving.
+- **Front `Summary` cover sheet** (first tab): project name, generation stamp, tool version, and a
+  listing of every sheet in the workbook.
+- **3D view:** a true/embedded Revit 3D view inside Excel is **not feasible** through the supported
+  API. The realistic option is an *Experimental* snapshot of the current 3D view embedded as an
+  image sheet via window capture — implemented only if the project owner opts in.
+
+**Tested (harness).** Cover title/meta/listing checks, file-name sanitization, and the default-name
+convention regex all pass alongside every existing check.
+
+**Not yet released.** `v1.3.0` tag is withheld until live Revit confirmation on CP3123.
+
+---
+
+## [1.2.0] — 2026-08-26
+
+**Released.** P2 level-wise grouping (Level column + BOQ by Level SUMIF sheet) and the CP3123-only
+engine decision — confirmed live in Revit 2025 by the project owner (points 1–4 passed, no
+regression). Tag `v1.2.0`.
+
+---
+
+## [1.1.0] — 2026-08-26
+
+**Released.** P1 quantity engine increment (category-aware quantities, Count, Column Height,
+Slab/Foundation Thickness) — confirmed live by the project owner. Tag `v1.1.0`.
+
+---
 
 **New feature (P2, first increment).**
 
@@ -47,8 +82,8 @@ sheets; the BOQ by Level header set; grouped rows for every collected level (inc
 Foundation has no Length column); static Elements counts; and the sheet order
 Beam / Column / Foundation / BOQ Summary / BOQ by Level / Costing. All checks pass.
 
-**Not yet released.** Git tags for **v1.1.0** (P1) and **v1.2.0** (P2) are withheld until the
-project owner confirms both increments in a live Revit 2025 session on CP3123.
+**Released as `v1.2.0`.** Both increments confirmed live in Revit 2025 on CP3123 by the project
+owner (parameter columns, level grouping, export — all correct, no regression).
 
 ---
 
@@ -70,10 +105,8 @@ per-element **Count**, plus per-category parameter dimensions:
 **Tested (harness).** `python test_xlsx_writer.py` now asserts the P1 `Count` column on populated
 sheets, `Height (m)` on Column and `Thickness (m)` on Foundation. All checks pass.
 
-**Not yet released.** Live Revit gathering (real `Height`/`Thickness` values from model elements) is
-**pending project-owner confirmation**. Until that passes, this code is versioned `1.1.0` in
-`script.py` but **no `v1.1.0` git tag is created**; on confirmation the tag is added and the
-`[1.1.0]` release entry is written.
+**Released as `v1.1.0`.** Live Revit gathering of real `Height`/`Thickness`/`Count` values confirmed
+by the project owner.
 
 ---
 

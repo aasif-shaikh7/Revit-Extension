@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.2.0'
+__version__ = '1.3.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -24,6 +24,7 @@ import os
 import traceback
 import re
 import json
+import time
 import zipfile
 from xml.sax.saxutils import escape as xml_escape
 from System import Environment
@@ -50,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.2.0'
+SCRIPT_VERSION = '1.3.0'
 
 selected_parameters = {
     "Beam": [],
@@ -2369,7 +2370,95 @@ def build_level_summary_table(data_result, summary_info):
     return (headers, rows_out)
 
 
-def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
+def sanitize_file_name(value):
+    """
+    Return a filesystem-safe name fragment for output files.
+
+    Replaces characters Windows forbids in file names with a hyphen,
+    collapses whitespace to single hyphens, and never returns an empty
+    string (falls back to "Revit Project").
+    """
+    try:
+        text = str(value or "")
+    except:
+        text = ""
+
+    cleaned_chars = []
+
+    for character in text:
+        if character in '\\/:*?"<>|':
+            cleaned_chars.append("-")
+        else:
+            cleaned_chars.append(character)
+
+    cleaned = "".join(cleaned_chars)
+
+    try:
+        cleaned = re.sub(r"\s+", "-", cleaned.strip())
+        cleaned = re.sub(r"-{2,}", "-", cleaned)
+    except:
+        pass
+
+    return cleaned if cleaned else "Revit-Project"
+
+
+def build_default_output_name(doc_title):
+    """
+    Professional output naming convention, mirroring site workbooks such as
+    20260312-CHHANYADO_HOSPITAL_SURAT-CONCRETE_FINISHING_BOQ.xlsm :
+
+        YYYYMMDD-<Project>-CONCRETE_FINISHING_BOQ.xlsx
+
+    The date is today; the project fragment comes from the Revit document
+    title, sanitized for the filesystem.
+    """
+    stamp = time.strftime("%Y%m%d")
+
+    return "{0}-{1}-CONCRETE_FINISHING_BOQ.xlsx".format(
+        stamp,
+        sanitize_file_name(doc_title)
+    )
+
+
+def build_summary_cover_rows(
+        project_name,
+        generated_stamp,
+        tool_version,
+        sheet_names_list):
+    """
+    Build the front Summary cover sheet rows.
+
+    Returns a uniform-width grid (every row padded to six columns) so the
+    worksheet writer can emit it like any other sheet. Static content only:
+    project identity, generation stamp, tool version and the workbook's
+    sheet listing.
+    """
+    width = 6
+
+    def pad(cells):
+        row = list(cells)
+        while len(row) < width:
+            row.append("")
+        return row[:width]
+
+    rows = [
+        pad(["RCC - CONCRETE FINISHING BOQ"]),
+        pad([]),
+        pad(["Project", project_name]),
+        pad(["Generated", generated_stamp]),
+        pad(["Tool", tool_version]),
+        pad([]),
+        pad(["Workbook contents"]),
+    ]
+
+    for sheet_name in sheet_names_list:
+        rows.append(pad([sheet_name]))
+
+    return rows
+
+
+def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
+                     project_name="", tool_version="", generated_stamp=""):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2643,6 +2732,17 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
         sheet_rows["Costing"] = costing_sheet
         quantity_column_map["Costing"] = [3, 4, 5]
 
+    # Professional output: front Summary cover as the first sheet.
+    summary_cover = build_summary_cover_rows(
+        project_name,
+        generated_stamp,
+        tool_version,
+        list(sheet_names)
+    )
+
+    sheet_names.insert(0, "Summary")
+    sheet_rows["Summary"] = summary_cover
+
     parent_dir = os.path.dirname(file_path)
 
     if parent_dir and not os.path.exists(parent_dir):
@@ -2728,7 +2828,13 @@ def choose_excel_output_path():
     dialog.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
     dialog.DefaultExt = "xlsx"
     dialog.AddExtension = True
-    dialog.FileName = "RCC_BOQ_Report.xlsx"
+
+    # Professional naming convention:
+    # YYYYMMDD-<Project>-CONCRETE_FINISHING_BOQ.xlsx (user can still edit it).
+    try:
+        dialog.FileName = build_default_output_name(doc.Title)
+    except:
+        dialog.FileName = "RCC_BOQ_Report.xlsx"
 
     if last_dir and os.path.exists(last_dir):
         dialog.InitialDirectory = last_dir
@@ -4493,7 +4599,16 @@ try:
                     sheet_rows = write_basic_xlsx(
                         output_path,
                         element_data,
-                        parameter_metadata
+                        parameter_metadata,
+                        project_name=(
+                            safe_text(doc.Title, "Revit Project")
+                        ),
+                        tool_version=(
+                            "RCC BOQ Parameter Manager v{0}".format(
+                                SCRIPT_VERSION
+                            )
+                        ),
+                        generated_stamp=time.strftime("%Y-%m-%d %H:%M")
                     )
 
                     non_empty_sheets = 0

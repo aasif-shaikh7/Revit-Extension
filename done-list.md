@@ -114,6 +114,41 @@ text is now more useful.
 
 ---
 
+### BOQ-6 — P1 category-aware quantity engine — **done** (`v1.1.0`)
+
+**Asked for.** Roadmap Phase 1: per-category quantities with Count and dimensions, distinguishing
+Parameter vs Calculated quantity.
+
+**Built.** `get_element_quantities(element, element_name)` — Calculated Volume/Area/Length
+preserved; Parameter `Qty: Height (m)` for Column and `Qty: Thickness (m)` for Slab/Foundation via
+`read_metric_parameter` (name lookup across element/Symbol/type); `Qty: Count` = 1 per row with the
+TOTAL summing to element count.
+
+**How it is known.** **Tested (harness)** for export; **owner-confirmed live** in Revit 2025 — real
+Height/Thickness/Count values correct. Tagged `v1.1.0`.
+
+**Cost.** Height/Thickness rely on parameters literally named "Height"/"Thickness"; projects using
+different names get empty (auto-pruned) columns until a mapping is added.
+
+---
+
+### BOQ-7 — P2 level-wise grouping + CP3123-only decision — **done** (`v1.2.0`)
+
+**Asked for.** Level-wise BOQ grouping; single supported engine.
+
+**Built.** Engine-added `Level` column on every element sheet (`get_element_level`: reference/
+schedule level params → LevelId fallback); new `BOQ by Level` sheet with live SUMIF formulas per
+Level x Category and static Elements counts. Engine standardized on **CP3123 (CPython 3.12.3)**;
+IP27 documented best-effort/untested.
+
+**How it is known.** **Tested (harness)** (grouped rows, 9 SUMIF cells, sheet order); **owner-
+confirmed live** in Revit 2025 (points 1–4 passed, no regression). Tagged `v1.2.0`.
+
+**Cost.** Grouping is by level only so far — material-wise and concrete-grade-wise grouping (rest of
+Phase 2) is still open.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

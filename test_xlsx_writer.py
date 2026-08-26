@@ -42,6 +42,9 @@ FUNCTION_NAMES = [
     "build_missing_values_summary",
     "build_costing_sheet",
     "build_level_summary_table",
+    "sanitize_file_name",
+    "build_default_output_name",
+    "build_summary_cover_rows",
     "write_basic_xlsx"
 ]
 
@@ -76,10 +79,13 @@ def main():
     with io.open(SCRIPT_PATH, "r", encoding="utf-8") as handle:
         source = handle.read()
 
+    import time
+
     namespace = {
         "os": os,
         "re": re,
         "zipfile": zipfile,
+        "time": time,
     }
 
     from xml.sax.saxutils import escape as xml_escape
@@ -162,7 +168,10 @@ def main():
     sheet_rows = namespace["write_basic_xlsx"](
         output_path,
         data_result,
-        parameter_metadata
+        parameter_metadata,
+        project_name="CHHANYADO HOSPITAL SURAT",
+        tool_version="RCC BOQ Parameter Manager v1.3.0",
+        generated_stamp="2026-08-26 10:00"
     )
 
     try:
@@ -301,6 +310,66 @@ def main():
             "P2 Elements count is a static number per grouped row"
         )
 
+        # Professional output: front Summary cover + naming convention
+        summary_cover = sheet_rows["Summary"]
+
+        check(
+            summary_cover[0][0] == "RCC - CONCRETE FINISHING BOQ",
+            "Summary cover title present as the first sheet"
+        )
+
+        cover_pairs = dict(
+            (row[0], row[1]) for row in summary_cover
+            if row[0] in ("Project", "Generated", "Tool")
+        )
+
+        check(
+            cover_pairs.get("Project") == "CHHANYADO HOSPITAL SURAT"
+            and cover_pairs.get("Generated") == "2026-08-26 10:00"
+            and "v1.3.0" in str(cover_pairs.get("Tool")),
+            "Summary cover carries project, stamp and tool version"
+        )
+
+        listed = set(
+            row[0] for row in summary_cover
+            if row[0] in (
+                "Beam", "Column", "Foundation",
+                "BOQ Summary", "BOQ by Level", "Costing"
+            )
+        )
+
+        check(
+            listed == set(
+                [
+                    "Beam", "Column", "Foundation",
+                    "BOQ Summary", "BOQ by Level", "Costing"
+                ]
+            ),
+            "Summary cover lists every workbook sheet"
+        )
+
+        sanitized = namespace["sanitize_file_name"]('My / Project: "X"*?')
+
+        check(
+            sanitized == "My-Project-X-",
+            "File-name sanitization strips Windows-forbidden characters "
+            "and collapses separator runs (got {})".format(sanitized)
+        )
+
+        default_name = namespace["build_default_output_name"](
+            "CHHANYADO HOSPITAL SURAT"
+        )
+
+        name_pattern = re.compile(
+            r"^\d{8}-CHHANYADO-HOSPITAL-SURAT-CONCRETE_FINISHING_BOQ\.xlsx$"
+        )
+
+        check(
+            name_pattern.match(default_name) is not None,
+            "Default output name follows YYYYMMDD-Project-BOQ convention "
+            "(got {})".format(default_name)
+        )
+
     finally:
 
         # Early failures above may leave the sample workbook behind;
@@ -343,7 +412,7 @@ def main():
         )
 
         expected_order = [
-            "Beam", "Column", "Foundation",
+            "Summary", "Beam", "Column", "Foundation",
             "BOQ Summary", "BOQ by Level", "Costing"
         ]
 
@@ -376,7 +445,7 @@ def main():
         )
 
         beam_xml = archive.read(
-            "xl/worksheets/sheet1.xml"
+            "xl/worksheets/sheet2.xml"
         ).decode("utf-8")
 
         check(
@@ -406,7 +475,7 @@ def main():
         )
 
         summary_xml = archive.read(
-            "xl/worksheets/sheet4.xml"
+            "xl/worksheets/sheet5.xml"
         ).decode("utf-8")
 
         check(
