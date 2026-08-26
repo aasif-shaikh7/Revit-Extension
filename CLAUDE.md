@@ -88,6 +88,10 @@ logical classifier for slab/foundation subtypes.
 - **Never propagate a false "tested"** — state whether you verified the engine (harness) versus the
   live Revit UI (not verifiable by an agent).
 - **`CHANGELOG.md`** is the record and must be updated in the same change it describes.
+- **Source of truth is the code.** `script.py`, `ui.xaml` and `test_xlsx_writer.py` beat any prompt
+  or roadmap. Read all three completely before writing code; never invent or remove functionality.
+- **Roadmap phases in `PRD.md` §12.** Work one phase at a time (P1 quantity engine first). Do not
+  jump to rebar / BBS / rate analysis before earlier phases are stable in a live Revit 2025 project.
 
 ---
 

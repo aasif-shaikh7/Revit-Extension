@@ -22,6 +22,26 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Roadmap planned (planning only, no code change)
+
+Adopted the **Structural BOQ Development Roadmap** (see `PRD.md` §12–§18). This is documentation
+only; the version stays `1.0.0` because no code changed.
+
+- `PRD.md` — added the 16-phase Structural BOQ roadmap, feature rating system + priority ranking,
+  architecture principle (keep `script.py` modular), error handling, testing workflow, regression
+  protection, and the source-of-truth rule.
+- `todo-list.md` — restructured around the phased roadmap (P0–P16), with P1 (quantity engine) next.
+- `README.md` — added a Development Roadmap section and updated the project status.
+- `CLAUDE.md` / `AI_DEVELOPMENT_GUIDE.md` — added source-of-truth, roadmap-discipline and testing
+  workflow rules.
+- `PROJECT_STRUCTURE.md` — added a Roadmap→Architecture section mapping each phase to its intended
+  landing point.
+
+No engine change → next semantic release is still a feature release when a real phase (e.g. P1)
+is implemented.
+
+---
+
 ## [1.0.0] — 2026-08-26
 
 **First semantic release.** Adds version control to the extension and its pushbutton.

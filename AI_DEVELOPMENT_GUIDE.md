@@ -70,6 +70,27 @@ Read existing parameters, tests, call sites, and implementations before changing
 `script.py` file is one large file by design today; changes must respect the module layout in
 `PROJECT_STRUCTURE.md` §4.
 
+## Source of truth is the code
+
+The attached existing working project is more important than any prompt, roadmap, or documentation.
+`script.py`, `ui.xaml` and `test_xlsx_writer.py` win when they disagree with a task description.
+Read all three completely before writing code. Never invent functionality, never remove working
+functionality, never rewrite from scratch.
+
+## Roadmap discipline
+
+The Development Roadmap is in `PRD.md` §12 (Phases 1–16) with ratings in §13. Work one phase at a
+time, in order, and never jump to advanced phases (rebar/BBS/rates/dashboard) before the earlier
+ones are stable in a live Revit 2025 project. The source code may suggest a better order than the
+roadmap — trust the source code.
+
+## Testing workflow
+
+For every major change: explain what will change, modify the minimum required code, provide the
+complete updated file(s), then let the project owner test in Revit 2025. Only after a successful
+test does the next major phase begin. Never assume code works before it is tested. Engine changes
+still run `python test_xlsx_writer.py` first.
+
 ## Tests are part of implementation
 
 If behavior changes in the XLSX engine, update `test_xlsx_writer.py`. If the change is Revit-only

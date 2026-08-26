@@ -178,6 +178,38 @@ Revit session by the user. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
+## Development Roadmap
+
+The project is evolving from **Parameter Selection + Basic Quantity Export** into a
+**Professional Structural BOQ System** — building on the existing working pushbutton, one phase at a
+time, never as a rewrite.
+
+```text
+P1  Quantity Engine (extend existing)
+P2  BOQ Grouping (level / material / concrete grade)
+P3  Formwork Engine
+P4  Rebar Quantity Engine
+P5  Rebar Summary / BBS
+P6  Structural BOQ Assembly
+P7  Site / Manual Structural Items
+P8  Structural Rule Engine
+P9  Validation Engine
+P10 Unmapped Element Report
+P11 Rate Analysis
+P12 Rate Database
+P13 Professional Excel BOQ
+P14 BOQ Revision
+P15 Model Change Detection
+P16 Structural Dashboard
+```
+
+Only **structural** scope is in the roadmap (Beam/Column/Slab/Foundation + concrete, reinforcement,
+formwork, rates, costing). Each phase starts only after the previous one is stable on a live Revit
+2025 project. Phases are rated (priority / benefit / complexity / ease) in [`PRD.md`](PRD.md) §13,
+and the current status is tracked in [`todo-list.md`](todo-list.md).
+
+---
+
 ## Versioning
 
 The extension follows **semantic versioning** (`MAJOR.MINOR.PATCH`) as recommended by GitHub
@@ -223,6 +255,7 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Building one working BOQ pushbutton.** The current priority is the RCC BOQ Parameter Manager and
-making the exported workbook a complete costing / Bill of Quantities report. Start at
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current priority
+is the RCC BOQ Parameter Manager (confirmed live in Revit) and then the roadmap phases —
+quantity engine first. See [`README.md`](README.md) → Development Roadmap and
 [`PRD.md`](PRD.md).

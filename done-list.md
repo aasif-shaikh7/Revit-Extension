@@ -28,6 +28,34 @@ harness proves the XLSX engine; a live Revit session is the only proof of the di
 
 ---
 
+## Existing working foundation (confirmed in source code — do not rebuild)
+
+The items below are confirmed present in the current `script.py` / `ui.xaml`. Future agents must
+**extend, not duplicate** them (see `PRD.md` §18 source-of-truth rule).
+
+- **Parameter engine** — discovery, names/values, storage type, shared/read-only/built-in/global
+  parameter handling, definition metadata, and instance vs type **scope resolution**
+  (`find_parameter_with_scope`, `safe_*` readers).
+- **Parameter selection UI** — Available / Selected lists, multi-select, Add/Remove, and **Up /
+  Down / Top / Bottom reordering** (`move_up / move_down / move_top / move_bottom`). Selected order
+  is preserved into Excel.
+- **Settings persistence** — `.rcc_boq_settings.json` under the user profile stores selected
+  parameters, ordering, filters, `export_only`, `auto_open`, `quantities` and last folder, restored
+  on the next run.
+- **RCC classification / filtering** — Slab (Slab / Fold Slab / Grade Slab / Other) and Foundation
+  (Footing / Combined Footing / PCC / Raft / Combined Raft / Other) with raw collections kept so
+  filters can change without re-querying.
+- **Quantity takeoff** — `Qty: Volume (m3)`, `Qty: Area (m2)`, `Qty: Length (m)`, controlled by
+  *Include quantities*, with deterministic metric conversion.
+- **Export options** — *Export selected only*, *Open file after export*, *Include quantities*.
+- **Dependency-free XLSX/Open XML writer** — element sheets, BOQ Summary (live SUM + GRAND TOTAL),
+  Costing (Qty × Rate = Amount + TOTAL), empty-category skipping, fully-empty column pruning,
+  auto-filter, styled headers, `fullCalcOnLoad`.
+- **Regression test** — `test_xlsx_writer.py` extracts the pure-Python engine and validates the
+  workbook (sheet order, formulas, styles, totals, content types).
+
+---
+
 ## Closed items
 
 ### BOQ-1 — RCC BOQ Parameter Manager dialog — **done** (`09dab85`)

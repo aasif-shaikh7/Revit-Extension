@@ -202,3 +202,40 @@ compatible. From `1.0.0` onward the normal rules apply.
 3. Update `done-list.md` / `todo-list.md` accordingly.
 4. Run `python test_xlsx_writer.py` when the engine changed.
 5. Tag the release commit (`git tag v1.0.0`).
+
+---
+
+# 9. Roadmap → Architecture (how phases land here)
+
+The Development Roadmap in `PRD.md` §12 drives how code is added. Two structural rules apply to
+every phase:
+
+- **Extend, don't duplicate.** Every phase extends an existing engine (quantity, parameter,
+  settings, XLSX) rather than adding a parallel one. See the roadmap's explicit "do not duplicate"
+  notes.
+- **Keep `script.py` modular, but don't split for its own sake.** `PRD.md` §14 shows the target
+  layout (`quantity_engine.py`, `rebar_engine.py`, `formwork_engine.py`, `rule_engine.py`,
+  `validation_engine.py`, `costing_engine.py`, `export_engine.py`, `settings_engine.py`). A module
+  is created only when a phase genuinely needs it and it improves maintainability without breaking
+  the current single-file architecture. Until then code continues to live in `script.py`.
+
+## Where each phase's code will go (planned)
+
+| Phase | Planned landing point |
+|---|---|
+| P1 Quantity Engine | extend existing quantity section of `script.py` |
+| P2 Grouping | new grouping/summary module or section |
+| P3 Formwork Engine | `formwork_engine.py` (once split is justified) |
+| P4 Rebar Engine | `rebar_engine.py` |
+| P5 Rebar Summary / BBS | `rebar_engine.py` |
+| P6 Assembly | settings-driven configuration + export |
+| P7 Site items | settings + element sheets |
+| P8 Rule Engine | `rule_engine.py` |
+| P9 Validation Engine | `validation_engine.py` |
+| P10 Unmapped report | reuse validation engine |
+| P11 Rate Analysis | `costing_engine.py` |
+| P12 Rate Database | settings + data module |
+| P13 Professional Excel BOQ | extend XLSX engine |
+| P14 Revision | export engine |
+| P15 Model change detection | separate diagnostic module |
+| P16 Dashboard | new feature/UI module |

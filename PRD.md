@@ -26,6 +26,16 @@ This is **not a general Revit scheduling tool**. It is deliberately narrow: the 
 categories used in RCC takeoff — **Beam, Column, Slab, Foundation** — and a repeatable export of
 their parameter data and quantities.
 
+**Project direction.** The agreed, incremental direction is to evolve from
+**Parameter Selection + Basic Quantity Export** into a **Professional Structural BOQ System**:
+concrete, reinforcement, formwork, grouping, rate analysis, validation and a complete Excel BOQ —
+built one roadmap phase at a time **on top of the existing working project**, never as a rewrite.
+
+**Structural scope only.** Beam, Column, Slab, Foundation + RCC concrete, reinforcement, formwork,
+binding wire, cover blocks, structural labour, materials, wastage, rate analysis, costing and BOQ
+export. Architecture, Doors, Windows, Plumbing, Electrical, HVAC and other MEP modules are **out of
+scope** for now.
+
 ---
 
 # 2. Product Goals
@@ -274,3 +284,167 @@ BOQ.pushbutton (script.py + ui.xaml)
 
 The design is **dependency-free, data-driven, discoverable, and testable**. The first priority is
 keeping the exported workbook a complete, correct BOQ report.
+
+---
+
+# 12. Development Roadmap (evolving into a Professional Structural BOQ System)
+
+The project evolves incrementally from **Parameter Selection + Basic Quantity Export** into a
+**Professional Structural BOQ System**. Every phase builds on the existing working project and
+is **not a rewrite**. A phase starts only after the previous one is stable on a real Revit 2025
+project.
+
+- **Phase 1 — Structural Quantity Engine.** Extend the existing quantity engine per category. Beam:
+  Volume, Area, Length, Count, dimensions where available. Column: Volume, Area, Height/Length,
+  Count, dimensions. Slab: Volume, Area, Thickness where available, Count. Foundation: Volume, Area,
+  Dimensions, Count. Distinguish **Parameter Quantity** vs **Calculated Quantity** where necessary.
+- **Phase 2 — Structural BOQ Grouping.** Level-wise (Foundation, Ground, First, Second, Roof…),
+  material-wise (Concrete, Reinforcement, Steel…), concrete grade-wise (M20, M25, M30, M35, M40…)
+  read from the model where possible. Also consider wastage, selected-element BOQ and view-based BOQ.
+- **Phase 3 — Formwork Engine.** Dedicated, configurable per-category rules: Beam (bottom, sides,
+  ends where applicable), Column (four sides), Slab (bottom, edge where applicable), Foundation
+  (sides where applicable). Rules must be configurable — no one universal formula.
+- **Phase 4 — Rebar Quantity Engine.** Extract Bar Mark, Diameter, Shape, Quantity, Bar Length,
+  Total Length, Host Element/Category/ID, Level. Compute Unit Weight and Total Weight using standard
+  steel unit-weight logic.
+- **Phase 5 — Rebar Summary / BBS.** Diameter-wise summary (Diameter, Total Length, Total Weight,
+  Number of Bars, Total in Ton), then BBS (Bar Mark, Shape, Diameter, Quantity, A/B/C/D, Cutting
+  Length, Total Length, Unit Weight, Total Weight, Host, Level). High-value/high-complexity; only
+  after the Rebar Engine is stable.
+- **Phase 6 — Structural BOQ Assembly.** Configurable assemblies e.g. RCC Beam → Concrete,
+  Reinforcement, Formwork, Binding Wire, Cover Blocks, Labour (similarly for columns, slabs,
+  foundations), with support for future custom components.
+- **Phase 7 — Site / Non-Model Structural Items.** Items not explicitly modeled (binding wire,
+  cover blocks, consumables, site items, temporary works) with Item Code, Description, Quantity,
+  Unit, Rate, Remarks, coexisting with model-derived quantities.
+- **Phase 8 — Structural Rule Engine.** Configurable rules (`IF Category = Structural Column THEN
+  Concrete = Volume`, `THEN Formwork = Column Formwork Rule`, `IF Rebar Exists THEN Rebar Quantity =
+  Rebar Weight`). Modular and structural-only; prevents `script.py` becoming a large hard-coded
+  condition pile.
+- **Phase 9 — Validation Engine.** Before export validate missing parameters/materials/concrete
+  grade, zero volume/area/quantity, missing rebar/mapping, invalid/unclassified elements, duplicate
+  marks. Compact report (errors/warnings count + short lines) — no huge raw debug in the main dialog.
+- **Phase 10 — Unmapped Element Report.** Identify elements that cannot be processed (Beam B12 →
+  missing material, Column C08 → missing concrete grade, Foundation F22 → missing BOQ mapping) so
+  the user can fix the model.
+
+- **Phase 11 — Structural Rate Analysis.** Only after quantities are stable. Material, Labour,
+  Machinery, Wastage, Overheads. `Quantity × Rate = Amount`.
+- **Phase 12 — Structural Rate Database.** Configurable Item Code, Description, Unit, Rate,
+  Currency, Location, Vendor, Effective Date. Rates are never hard-coded.
+- **Phase 13 — Professional Excel BOQ.** Extend the existing XLSX engine toward Summary, Beam,
+  Column, Slab, Foundation, Concrete Summary, Rebar Summary, Formwork Summary, Rate Analysis,
+  Detailed BOQ, Costing, using live formulas where appropriate.
+- **Phase 14 — BOQ Revision.** Rev 00/01/02 with Previous vs Current Quantity, Difference, and
+  Percentage Difference.
+- **Phase 15 — Model Change Detection.** Detect added/modified/deleted structural elements and BOQ
+  impact. High complexity; only after the core BOQ system is mature.
+- **Phase 16 — Structural Dashboard.** Concrete, Rebar (Ton), Formwork, Elements, Estimated Cost,
+  Warnings.
+
+Only **Structural** scope is in the current roadmap; Architecture / Doors / Windows / Plumbing /
+Electrical / HVAC / MEP are not.
+
+---
+
+# 13. Feature Rating System
+
+Every candidate feature is evaluated on four axes with ⭐ ratings (⭐⭐⭐⭐⭐ = very high, ⭐ = very low):
+
+- **Priority** — how urgently it should be implemented
+- **Benefit** — practical project/tender/BOQ value
+- **Complexity** — technical difficulty
+- **Implementation Ease** — how safely it integrates without destabilizing the project
+
+## Priority ranking
+
+| # | Feature | Priority | Benefit | Complexity | Ease |
+|---:|---|---|---|---|---|
+| 1 | Existing quantity engine enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| 2 | Beam/Column/Slab/Foundation BOQ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 3 | Parameter mapping enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| 4 | Existing Excel export enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| 5 | Level-wise BOQ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 6 | Material-wise BOQ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 7 | Concrete grade-wise BOQ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 8 | Wastage | ⭐⭐⭐ | ⭐⭐⭐ | ⭐ | ⭐⭐⭐⭐⭐ |
+| 9 | Formwork Engine | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| 10 | Rebar Quantity Engine | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
+| 11 | Rebar Diameter Summary | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| 12 | Validation Engine | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| 13 | Unmapped Element Report | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| 14 | Rule Engine | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ |
+| 15 | Structural Assembly | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
+| 16 | Site/Manual Structural Items | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| 17 | Rate Analysis | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ |
+| 18 | Rate Database | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ |
+| 19 | BBS | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ |
+| 20 | Revision System | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ |
+| 21 | Model Change Detection | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐ |
+| 22 | Dashboard | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+
+# 14. Architecture Principle — keep `script.py` modular
+
+Do not turn `script.py` into one giant calculation file. The project may eventually be modularized
+as:
+
+```text
+BOQ.pushbutton/
+├── script.py
+├── ui.xaml
+├── quantity_engine.py
+├── rebar_engine.py
+├── formwork_engine.py
+├── rule_engine.py
+├── validation_engine.py
+├── costing_engine.py
+├── export_engine.py
+└── settings_engine.py
+```
+
+However, do **not** split files merely for the sake of splitting. Inspect the existing code first
+and modularize only when it genuinely improves maintainability without breaking the current
+architecture. The pure-Python engine dependency rule in `PROJECT_STRUCTURE.md` still applies.
+
+---
+
+# 15. Error Handling
+
+One invalid Revit element must never crash the whole BOQ. Safely handle missing/invalid parameters,
+missing materials, missing volume/area/level/type, invalid/deleted elements and unsupported
+categories. Valid elements keep processing while problematic elements are reported separately.
+
+---
+
+# 16. Testing Workflow
+
+For every major change:
+
+1. Explain what will change.
+2. Modify the minimum required code.
+3. Provide the complete updated file(s).
+4. The user tests in Revit 2025.
+5. The user reports success or error.
+6. Only after a successful test does the next major phase begin.
+
+Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
+first.
+
+---
+
+# 17. Regression Protection
+
+After every change verify: WPF startup; Beam/Column/Slab/Foundation tabs; parameter loading,
+selection, multi-selection, Add/Remove, Up/Down/Top/Bottom; parameter order preservation; filter
+system; saved settings; export selected only; auto-open; include quantities; Excel export; BOQ
+Summary; Costing; XLSX formulas; the existing regression test. Do not sacrifice a working feature
+for a new one without explicitly explaining why.
+
+---
+
+# 18. Source-of-Truth Rule
+
+The attached existing working project is more important than this document. If this document and the
+actual source code disagree, **trust the actual source code**. Do not invent functionality, do not
+remove working functionality, do not rewrite from scratch, and do not jump straight to advanced
+features. Build the Structural BOQ system incrementally on the existing project.
