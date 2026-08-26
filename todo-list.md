@@ -84,18 +84,24 @@ value in Revit; record any engine adjustments.
 
 ## P1 — Structural Quantity Engine (next phase)
 
-### P1-01 — Extend quantity engine per category — `todo`
+### P1-01 — Extend quantity engine per category — `testing` (code v1.1.0, live pending)
 **Goal:** Keep the existing dependency-free engine and extend it per category — Beam (Volume, Area,
-Length, Count, dimensions where available), Column (Volume, Area, Height/Length, Count), Slab
-(Volume, Area, Thickness, Count), Foundation (Volume, Area, Dimensions, Count).
-**Notes:** distinguish **Parameter Quantity** vs **Calculated Quantity** where necessary; never
-create a duplicate engine.
-**Acceptance:** pure-Python engine functions extended + `test_xlsx_writer.py` updated; live-Revit
-confirmation by the owner before P1 is closed.
+Length, Count), Column (Volume, Area, Height/Length, Count), Slab (Volume, Area, Thickness, Count),
+Foundation (Volume, Area, Thickness/Count).
+**Notes:** distinguishes **Parameter Quantity** (Height/Thickness, read by name) vs **Calculated
+Quantity** (Volume/Area/Length); never creates a duplicate engine.
+**What landed (first increment, code v1.1.0):** `get_element_quantities(element, element_name)` is
+category-aware; adds `Qty: Height (m)` for Column, `Qty: Thickness (m)` for Slab/Foundation (pruned
+if absent), and `Qty: Count` (=1/row, TOTAL sums to count). Harness asserts Count + Height +
+Thickness columns.
+**Remaining:** live-Revit confirmation that real `Height`/`Thickness`/`Count` values gather correctly
+(owner); then mark `done` and add the `v1.1.0` release tag.
 
-### P1-02 — Element Count column — `todo`
-**Goal:** add a per-category element **Count** usable by grouping (P2) and summaries.
-**Acceptance:** harness asserts a Count quantity column on each populated sheet.
+### P1-02 — Element Count column — **implemented in P1-01** — `testing` (live pending)
+**Built** as part of `get_element_quantities`: `Qty: Count` = 1 per element row; the sheet TOTAL row
+sums to the element count, and the BOQ Summary already reports the per-category count in its
+`Elements` column. **Tested (harness):** asserts a Count quantity column on each populated sheet.
+**Remaining:** live Revit confirmation with P1-01.
 
 ---
 

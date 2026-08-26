@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.0.1'
+__version__ = '1.1.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -50,7 +50,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.0.1'
+SCRIPT_VERSION = '1.1.0'
 
 selected_parameters = {
     "Beam": [],
@@ -893,13 +893,70 @@ def convert_quantity_value(internal_value, unit_kind):
         return ""
 
 
-def get_element_quantities(element):
+def read_metric_parameter(element, name_hint):
     """
-    Collect quantity takeoff values for one element.
+    Read a single metric (metres) double parameter by name from an element.
 
-    Returns an ordered list of (column_label, value) tuples where the
-    value is either a rounded float (metric) or an empty string when
-    the quantity does not apply to the element.
+    This is a Parameter Quantity (a dimension the user set in the model),
+    unlike the geometry-computed Volume / Area / Length. Searches the
+    element's own parameters and its type parameters via LookupParameter,
+    then converts the value to metres. Returns "" when absent so the
+    column is pruned from the sheet.
+    """
+    def has_metric_value(param):
+        try:
+            if param is None:
+                return False
+            if not param.HasValue:
+                return False
+            return param.StorageType == DB.StorageType.Double
+        except:
+            return False
+
+    param = None
+
+    candidates = [element]
+
+    try:
+        candidates.append(element.Symbol)
+    except:
+        pass
+    try:
+        candidates.append(element.get_Type())
+    except:
+        pass
+
+    for candidate in candidates:
+        try:
+            candidate_param = candidate.LookupParameter(name_hint)
+        except:
+            candidate_param = None
+        if has_metric_value(candidate_param):
+            param = candidate_param
+            break
+
+    if not has_metric_value(param):
+        return ""
+
+    try:
+        return convert_quantity_value(param.AsDouble(), "length")
+    except:
+        return ""
+
+
+def get_element_quantities(element, element_name=""):
+    """
+    Collect quantity takeoff values for one element, category-aware.
+
+    Returns an ordered list of (column_label, value) tuples. The value is
+    either a rounded float (metric) or an empty string when the quantity
+    does not apply to the element.
+
+    Source distinction (PRD Phase 1):
+      - Calculated quantity : Volume, Area, Length (geometry / computed).
+      - Parameter quantity : Height (Column), Thickness (Slab/Foundation)
+        read from model parameters by name.
+      - Count : one per element row (the TOTAL row sums to element count).
     """
     quantity_sources = [
         (
@@ -967,6 +1024,30 @@ def get_element_quantities(element):
                 value
             )
         )
+
+    # P1: per-category parameter dimension (pruned automatically when "")
+    if element_name == "Column":
+        results.append(
+            (
+                "Qty: Height (m)",
+                read_metric_parameter(element, "Height")
+            )
+        )
+    elif element_name in ("Slab", "Foundation"):
+        results.append(
+            (
+                "Qty: Thickness (m)",
+                read_metric_parameter(element, "Thickness")
+            )
+        )
+
+    # P1: every element row counts once; TOTAL row sums to element count
+    results.append(
+        (
+            "Qty: Count",
+            1
+        )
+    )
 
     return results
 
@@ -1081,7 +1162,7 @@ def build_element_data():
             if quantities_flag:
 
                 for column_label, quantity_value in (
-                    get_element_quantities(element)
+                    get_element_quantities(element, element_name)
                 ):
                     row[column_label] = quantity_value
 

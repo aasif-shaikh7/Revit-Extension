@@ -101,7 +101,8 @@ def main():
                 "Rate": 1200.0,
                 "Qty: Volume (m3)": 0.2832,
                 "Qty: Area (m2)": "",
-                "Qty: Length (m)": 3.048
+                "Qty: Length (m)": 3.048,
+                "Qty: Count": 1
             },
             {
                 "Element ID": "101",
@@ -110,7 +111,8 @@ def main():
                 "Rate": 1200.0,
                 "Qty: Volume (m3)": 0.567,
                 "Qty: Area (m2)": "",
-                "Qty: Length (m)": 6.096
+                "Qty: Length (m)": 6.096,
+                "Qty: Count": 1
             }
         ],
         "Column": [
@@ -120,7 +122,9 @@ def main():
                 "Rate": 1500.0,
                 "Qty: Volume (m3)": 0.42,
                 "Qty: Area (m2)": 0.16,
-                "Qty: Length (m)": 3.5
+                "Qty: Length (m)": 3.5,
+                "Qty: Height (m)": 3.5,
+                "Qty: Count": 1
             }
         ],
         "Slab": [],
@@ -131,7 +135,9 @@ def main():
                 "Rate": 1800.0,
                 "Qty: Volume (m3)": 1.85,
                 "Qty: Area (m2)": 9.3,
-                "Qty: Length (m)": ""
+                "Qty: Length (m)": "",
+                "Qty: Thickness (m)": 0.3,
+                "Qty: Count": 1
             }
         ]
     }
@@ -165,11 +171,16 @@ def main():
 
         check(
             beam_table[0][-2:] == [
-                "Qty: Volume (m3)",
-                "Qty: Length (m)"
+                "Qty: Length (m)",
+                "Qty: Count"
             ],
-            "Non-empty quantity columns retained on Beam sheet "
-            "(fully-empty Qty: Area pruned)"
+            "Non-empty quantity columns retained on Beam sheet; "
+            "Count appended (fully-empty Qty: Area pruned)"
+        )
+
+        check(
+            "Qty: Count" in beam_table[0],
+            "P1 element Count column present on Beam sheet"
         )
 
         check(
@@ -214,6 +225,26 @@ def main():
         check(
             amount_formula_count == 4,
             "Every element row has a live Quantity x Rate formula"
+        )
+
+        column_table = sheet_rows["Column"]
+
+        check(
+            "Qty: Height (m)" in column_table[0],
+            "P1 Column Height (Parameter quantity) column present"
+        )
+
+        foundation_table = sheet_rows["Foundation"]
+
+        check(
+            "Qty: Thickness (m)" in foundation_table[0],
+            "P1 Foundation Thickness (Parameter quantity) column present"
+        )
+
+        check(
+            "Qty: Count" in foundation_table[0]
+            and "Qty: Count" in column_table[0],
+            "P1 element Count column present on all populated sheets"
         )
 
     finally:

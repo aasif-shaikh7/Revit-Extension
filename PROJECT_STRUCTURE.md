@@ -95,8 +95,10 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
 4. **Settings persistence** — JSON under the user profile (`.rcc_boq_settings.json`).
 5. **Safe value readers** — `safe_text`, `safe_storage_type`, `safe_is_built_in`,
    `safe_definition_info`, `read_parameter_value`, resolution-with-scope helpers.
-6. **Quantity takeoff engine** — metric conversion (`convert_quantity_value`) and
-   `get_element_quantities`, plus `get_sample_values` / `build_element_data`.
+6. **Quantity takeoff engine** — metric conversion (`convert_quantity_value`),
+   `read_metric_parameter` (Parameter quantity by name), category-aware
+   `get_element_quantities(element, element_name)` (Calculated Volume/Area/Length + Parameter
+   Height/Thickness + Count), plus `get_sample_values` / `build_element_data`.
 7. **XLSX engine** — pure-Python, dependency-free Open XML writer: `xlsx_column_name`,
    `xlsx_inline_string`, `try_export_as_number`, `xlsx_cell`, `xlsx_formula_cell`,
    `build_xlsx_sheet_xml`, `build_xlsx_styles_xml`, `build_xlsx_workbook_xml`,

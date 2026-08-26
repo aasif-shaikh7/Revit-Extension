@@ -22,6 +22,31 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — P1 Structural Quantity Engine (code v1.1.0, release tag pending)
+
+**New feature (P1, first increment).** The quantity engine is now category-aware and adds
+per-element **Count**, plus per-category parameter dimensions:
+
+- **Calculated quantity (geometry/computed):** `Qty: Volume (m3)`, `Qty: Area (m2)`,
+  `Qty: Length (m)` — unchanged and preserved.
+- **Parameter quantity (from model, by name):** `Qty: Height (m)` for **Column**; `Qty: Thickness
+  (m)` for **Slab** and **Foundation**. Read via `LookupParameter` on the element, its Symbol and
+  its type; absent dimensions return `""` and are pruned automatically (existing behaviour).
+- **Count:** `Qty: Count` = 1 per element row; the sheet TOTAL row sums to the element count.
+  The BOQ Summary's `Elements` column is already the per-category count.
+- `get_element_quantities(element)` is now `get_element_quantities(element, element_name)`; the
+  value reader distinguishes **Calculated vs Parameter** quantity explicitly in the docstring.
+
+**Tested (harness).** `python test_xlsx_writer.py` now asserts the P1 `Count` column on populated
+sheets, `Height (m)` on Column and `Thickness (m)` on Foundation. All checks pass.
+
+**Not yet released.** Live Revit gathering (real `Height`/`Thickness` values from model elements) is
+**pending project-owner confirmation**. Until that passes, this code is versioned `1.1.0` in
+`script.py` but **no `v1.1.0` git tag is created**; on confirmation the tag is added and the
+`[1.1.0]` release entry is written.
+
+---
+
 ## [1.0.1] — 2026-08-26
 
 **Bug fix.** Element-referencing parameters exported as raw numeric ElementId.
