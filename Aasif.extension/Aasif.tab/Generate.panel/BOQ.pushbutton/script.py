@@ -1,5 +1,22 @@
 # -*- coding: utf-8 -*-
 
+"""
+RCC BOQ Parameter Manager
+=========================
+Generates an RCC (Reinforced Cement Concrete) Bill of Quantities workbook
+from the structural elements in the active Revit document.
+
+Targets Revit 2025+ with pyRevit 6.10.0+ on the CP3123 (CPython 3.12.3) or
+IP27 (IronPython 2.7) engine. The XLSX engine is dependency-free and is
+covered by test_xlsx_writer.py.
+
+__title__ = 'RCC BOQ'
+__author__ = 'Aasif'
+__version__ = '1.0.0'
+__min_revit_ver__ = '2025'
+__doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
+"""
+
 from pyrevit import revit, forms
 from Autodesk.Revit import DB
 
@@ -29,6 +46,11 @@ class ParameterItem(object):
 # ============================================================
 # GLOBAL DATA
 # ============================================================
+
+# Single source of truth for the runtime version. Keep in sync with the
+# `__version__` value declared in the module docstring at the top of this
+# script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
+SCRIPT_VERSION = '1.0.0'
 
 selected_parameters = {
     "Beam": [],
@@ -4230,6 +4252,7 @@ try:
                     )
 
                     forms.alert(
+                        "Version: {} · RCC BOQ\n\n"
                         "Excel export successful.\n\n"
                         "File: {}\n"
                         "Selected parameters: {}\n"
@@ -4237,6 +4260,7 @@ try:
                         "Sheets with element data: {}\n"
                         "Quantity columns: {}\n\n"
                         "Workbook sheets: {}".format(
+                            SCRIPT_VERSION,
                             output_path,
                             total,
                             total_rows,

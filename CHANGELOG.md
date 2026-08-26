@@ -5,12 +5,13 @@
 
 All notable changes to the Revit-Extension (RCC BOQ) will be documented in this file.
 
-The extension is early-stage with one pushbutton, so this changelog intentionally records only what
-has actually been established — commits in git and, where applicable, what the XLSX harness verifies.
+The extension uses **semantic versioning** (`MAJOR.MINOR.PATCH`, see `PROJECT_STRUCTURE.md`
+§Versioning). This changelog records only what has actually been established — commits in git and,
+where applicable, what the XLSX harness verifies.
 
-The format is inspired by [Keep a Changelog](https://keepachangelog.com/). Because there is no
-released software version yet, entries are keyed to the commits and to labelled milestones rather
-than to pseudo-semver numbers.
+The format is inspired by [Keep a Changelog](https://keepachangelog.com/). Development history that
+predates the first semantic release is recorded under "Established so far" and retrospectively
+tagged `v0.x`.
 
 **Verification vocabulary** used in this file:
 - **Tested** — verified by `python test_xlsx_writer.py` (engine) when labelled `(harness)`.
@@ -18,6 +19,21 @@ than to pseudo-semver numbers.
   owner confirms in-Revit behavior on a real project.
 
 Nothing below claims a live Revit feature was verified by an agent when only the harness ran.
+
+---
+
+## [1.0.0] — 2026-08-26
+
+**First semantic release.** Adds version control to the extension and its pushbutton.
+
+- `script.py` declares module metadata in its docstring — `__title__`, `__author__`,
+  `__version__ = '1.0.0'`, `__min_revit_ver__ = '2025'` — and exposes a runtime `SCRIPT_VERSION`
+  constant.
+- The Excel export alert now reports the running version.
+- Git tags `v0.1.0` … `v0.3.1` were added to the earlier commits to make development history
+  visible.
+
+**Tested (harness).** `python test_xlsx_writer.py` passes; `script.py` syntax is valid.
 
 ---
 

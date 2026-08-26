@@ -178,6 +178,18 @@ Revit session by the user. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
+## Versioning
+
+The extension follows **semantic versioning** (`MAJOR.MINOR.PATCH`) as recommended by GitHub
+(<https://semver.org/>). The current version is declared in `script.py` on the pushbutton — in the
+pyRevit docstring (`__version__`) and the runtime `SCRIPT_VERSION` constant — and is shown in the
+Excel export dialog.
+
+Every release is tagged with git (`vMAJOR.MINOR.PATCH`); the pre-release development history is
+tagged `v0.x`. Full bump rules are in `PROJECT_STRUCTURE.md` §Versioning.
+
+---
+
 ## Reporting Bugs
 
 Include as much as can be reproduced:

@@ -155,3 +155,50 @@ functions from the real `script.py` and validates the generated workbook by unzi
   design constraint.
 - **Empty tabs don't export** — skip wasted blank worksheets.
 - **Keep documentation discoverable** — new docs belong at the root or under `docs/` only.
+---
+
+# 8. Versioning
+
+The extension is versioned with **semantic versioning** (`MAJOR.MINOR.PATCH`), following the
+GitHub-recommended practice from <https://semver.org/>.
+
+## Single source of truth
+
+The version lives in two places, **both inside `BOQ.pushbutton/script.py`** and both must be bumped
+together:
+
+- the `__version__` attribute in the module docstring (read by pyRevit for the button tooltip and
+  extension manager), and
+- the `SCRIPT_VERSION` constant used by the running code (shown in the Excel export dialog).
+
+## Revit / pyRevit gating
+
+The docstring declares the environment contract for pyRevit so the button only loads on supported
+hosts: `__min_revit_ver__ = '2025'` (Revit **2025 and above**), with the CP3123 (CPython 3.12.3) and
+IP27 (IronPython 2.7) engines supported on pyRevit 6.10.0+.
+
+## Bump rules (semver)
+
+Given `MAJOR.MINOR.PATCH`:
+
+- **MAJOR** — an incompatible change: output format, supported Revit behavior, category API, or a
+  behaviour a user depends on.
+- **MINOR** — backward-compatible new functionality (new category, new export option, new sheet).
+- **PATCH** — backward-compatible fix or refactor with no behaviour change.
+
+Pre-`1.0.0` (`0.x.y`) means "not yet stable": MINOR is a breaking change, PATCH is new/backward
+compatible. From `1.0.0` onward the normal rules apply.
+
+## How versions are recorded
+
+- Every release commit is tagged `vMAJOR.MINOR.PATCH`.
+- Development commits that predate the first semantic release are tagged `v0.x.y` so history is
+  visible (`v0.1.0` … `v0.3.1`).
+
+## Definition of done for a version bump
+
+1. Bump `__version__` and `SCRIPT_VERSION` to the same number.
+2. Add a `[CHANGELOG.md](CHANGELOG.md)` entry describing the change.
+3. Update `done-list.md` / `todo-list.md` accordingly.
+4. Run `python test_xlsx_writer.py` when the engine changed.
+5. Tag the release commit (`git tag v1.0.0`).
