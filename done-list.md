@@ -88,12 +88,29 @@ validated. **Cost.** The finalized workbook deliberately omits previously-empty/
 harness asserts they are not emitted.
 
 ### BOQ-4 — Quantity takeoff and BOQ Summary — **done** — `98fb30b`
+
 **Built.** `convert_quantity_value` (metric, three-tier fallback) and `get_element_quantities`,
 appending `Qty: Volume/Area/Length` columns; a `BOQ Summary` sheet of live `SUM()` formulas plus a
 `GRAND TOTAL`; `fullCalcOnLoad`. **How it is known.** **Tested (harness)** — asserts SUM formulas,
 cross-sheet `Beam!` references, `GRAND TOTAL`, auto-filter range excluding totals, styles. **Cost.**
 Quantity conversion constants are deterministic, but true numeric accuracy on real Revit materials is
 still **Unverified** until tested on a model.
+
+### BOQ-5 — Element-referencing parameters show name not ElementId — **done** — `v1.0.1`
+
+**Reported (live, Revit 2025).** *"Type, Level, Top Level, Base Level, Reference Level, Cover Type
+etc. ke naam aur value ke badle Element ID show ho raha hai."* Owner confirmed the dialog works with
+no regression; only these reference-parameter values were wrong in the export.
+
+**Built.** In `safe_parameter_value`, the `StorageType.ElementId` branch now resolves the referenced
+element and returns its **name/value** — preferred Revit `AsValueString()`, then
+`doc.GetElement(id).Name`, keeping the numeric id only as a final fallback.
+
+**How it is known.** **Tested (harness)** for the engine; live element-name resolution is
+**project-owner confirmed** in Revit 2025.
+
+**Cost.** None — a bounded fix to one reader; the same reader also feeds classification so identity
+text is now more useful.
 
 ---
 

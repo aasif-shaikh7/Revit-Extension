@@ -22,6 +22,25 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [1.0.1] — 2026-08-26
+
+**Bug fix.** Element-referencing parameters exported as raw numeric ElementId.
+
+- **Reported (live, Revit 2025):** Beam/Column/Slab/Foundation tabs work with no regression, but
+  for parameters such as **Type, Level, Top Level, Base Level, Reference Level, Cover Type** the
+  Excel cells showed the raw **ElementId number** instead of the element's name/value.
+- **Fixed:** `safe_parameter_value` now resolves `StorageType.ElementId` parameters to the
+  referenced element's **name** — preferred Revit `AsValueString()`, then `doc.GetElement(id).Name`
+  (e.g. a Level shows "Level 1", a Type shows its type-family name), with the numeric id kept only
+  as a last fallback. This is a single, bounded change to the value reader, so it also improves the
+  classification/identity text that uses the same reader.
+- Version bumped `1.0.0` → `1.0.1` (PATCH, backward-compatible bug fix).
+
+**Tested (harness).** `python test_xlsx_writer.py` passes; `script.py` syntax valid. Live element-name
+resolution requires a Revit session (project-owner confirmation; recorded in `done-list.md`).
+
+---
+
 ## [Unreleased] — Roadmap planned (planning only, no code change)
 
 Adopted the **Structural BOQ Development Roadmap** (see `PRD.md` §12–§18). This is documentation

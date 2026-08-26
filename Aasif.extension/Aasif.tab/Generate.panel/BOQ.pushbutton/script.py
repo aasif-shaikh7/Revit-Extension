@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -50,7 +50,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.0.0'
+SCRIPT_VERSION = '1.0.1'
 
 selected_parameters = {
     "Beam": [],
@@ -755,6 +755,30 @@ def safe_parameter_value(parameter):
                         return ""
                 except:
                     pass
+
+            # Element-referencing parameters (Type, Level, Base/Top/Reference
+            # Level, Cover Type, etc.) must export the referenced element's
+            # NAME, not the raw numeric ElementId. Prefer Revit's own display
+            # value, then the resolved element's Name, then the id as fallback.
+            try:
+                value_string = parameter.AsValueString()
+                if value_string not in (None, ""):
+                    return str(value_string)
+            except:
+                pass
+
+            try:
+                referenced = doc.GetElement(element_id)
+                if referenced is not None:
+                    name = None
+                    try:
+                        name = referenced.Name
+                    except:
+                        name = None
+                    if name not in (None, ""):
+                        return str(name)
+            except:
+                pass
 
             try:
                 return str(element_id.IntegerValue)

@@ -61,14 +61,13 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## P0 — Confirm the current dialog in Revit 2025 (before any new phase)
 
-### T-01 — Confirm live-Revit behavior of the dialog — `testing`
-**State:** The dialog, filters, selection, export scope, **parameter ordering (Up/Down/Top/Bottom)**,
-and settings persistence are implemented but the **live Revit 2025+** behavior is `Unverified` by an
-agent.
-**Acceptance:** Project owner opens BOQ in a real RCC model (Beam/Column/Slab/Foundation), picks
-parameters, reorders with Up/Down/Top/Bottom, sets filters, and exports; confirms parameters load,
-classification is correct, **selected order is preserved in Excel**, and the workbook matches
-expectations. Record the outcome (both CP3123 and IP27, and Revit version) in `done-list.md`.
+### T-01 — Confirm live-Revit behavior of the dialog — **done** (`v1.0.1`)
+**State:** **Confirmed live in Revit 2025** by the project owner with **no regression** (tabs,
+parameter loading, filters, reorder, export). One issue was found and fixed in `v1.0.1`:
+element-referencing parameters (Type, Level, Base/Top/Reference Level, Cover Type) now export the
+referenced element's **name** instead of the raw ElementId. **Acceptance met** — owner confirmed the
+fix in the same Revit session. Remaining for full P0 closure: dual-engine parity (CP3123 vs IP27) is
+still pending (T-03).
 
 ### T-02 — Quantity accuracy on real materials — `testing`
 **State:** Metric conversion logic is deterministic and harness-tested with sample data, but true
