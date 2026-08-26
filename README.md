@@ -1,0 +1,216 @@
+# Revit-Extension
+
+**Document:** `README.md`
+**Status:** Project overview, vision, and status — for the pyRevit RCC BOQ extension
+
+---
+
+This repository contains a **pyRevit extension** that runs inside Autodesk Revit and
+automates the generation of **RCC (Reinforced Cement Concrete) BOQ** workbooks.
+
+Right now it ships one working button — **BOQ** in the **Generate** panel of the **Aasif** tab —
+that opens the **RCC BOQ Parameter Manager**.
+
+**Target environment:**
+- **Revit 2025 and above**
+- **pyRevit 6.10.0 and above** — both the CP3123 (CPython 3.12.3) engine and the IP27 (IronPython 2.7) engine
+
+---
+
+## Project Status
+
+**Status: Working single-tool extension, actively extended**
+
+The extension is functional and installed under the standard pyRevit extension layout
+(`*.extension` / `*.tab` / `*.panel` / `*.pushbutton`). The core Excel writer is covered by a
+standalone regression harness, and the Revit-facing functionality is being expanded feature by feature.
+
+See:
+
+- [`PRD.md`](PRD.md) — what is being built and why
+- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) — where code lives and the rules that keep it testable
+- [`docs/reference/`](docs/reference) — reference documentation from a previous project (kept for study, not Revit)
+
+> **Note.** The `docs/reference/` folder holds the older Kestrel (Android) documentation that used to
+> live at the repository root. It is preserved for reference and its structure inspired these
+> Revit-specific documents. Nothing in `docs/reference/` describes this extension.
+
+---
+
+## Why RCC BOQ
+
+Structural engineers and quantity surveyors repeatedly select the same **parameters** and
+**quantities** from structural elements — beams, columns, slabs, and foundations — and send them to a
+costing sheet or a client workbook.
+
+Doing that by hand in Revit is slow, repetitive and error prone:
+
+- you scroll through dozens of parameters to find the ones that matter
+- you re-select them for every new project or element type
+- you copy values out one row at a time
+
+The BOQ pushbutton turns the selection and export into one repeatable step and produces a real
+`.xlsx` workbook **without requiring Excel or any external Python package**.
+
+---
+
+## The Vision
+
+```text
+Revit Project
+      │
+      ▼
+Aasif tab ▶ Generate panel ▶ BOQ pushbutton
+      │
+      ▼
+RCC BOQ Parameter Manager
+      │  (choose Beam / Column / Slab / Foundation parameters)
+      ▼
+Revit element data + metric quantities
+      │
+      ▼
+Dependency-free XLSX (Open XML):
+      Element sheets  ▶  BOQ Summary  ▶  Costing
+```
+
+The user opens the manager, picks the columns they want per category, optionally limits the export
+to the current selection or filters slab/foundation subtypes, and gets a real Excel workbook with
+numeric quantities and live SUM formulas — with no `openpyxl`, no Excel automation, and no
+dependencies imported into the pyRevit host.
+
+---
+
+## What It Does
+
+**RCC BOQ Parameter Manager** (`BOQ.pushbutton`):
+
+- **One dialog, four structural categories** — Beam, Column, Slab, Foundation.
+- **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
+  built from the actual parameters found on the real elements in the current document.
+- **Add / Remove selection** with a live search box per tab.
+- **Logical classification filters** for Slab and Foundation. A floor modeled as a Structural
+  Foundation (and vice-versa) is still classified by its real name/code — Slab, Fold Slab, Grade
+  Slab, Footing, Combined Footing, PCC, Raft, Combined Raft, Other.
+- **Export scope** — optionally restrict output to exactly the elements selected in the current
+  Revit view.
+- **Quantity takeoff** (toggleable) — numeric metric columns `Qty: Volume (m3)`, `Qty: Area (m2)`,
+  `Qty: Length (m)`, converted from internal Revit units.
+- **Dependency-free XLSX writer** — builds the workbook from Open XML parts directly, so it runs
+  inside the pyRevit environment without external packages.
+- **BOQ Summary sheet** — live cross-sheet `SUM()` formulas plus a `GRAND TOTAL` row.
+- **Costing sheet** — per-element Quantity × Rate with a `TOTAL` amount, driven from a user
+  rate/price parameter on each category.
+- **Settings persistence** — the last parameter selection, filters, and output folder are stored in
+  a JSON settings file under the user profile and restored on the next run.
+
+---
+
+## How to Use It
+
+1. Install the extension so `Aasif.extension` is picked up by pyRevit (see the layout below).
+2. Open a Revit 2025+ project; ensure the structural elements for the categories you want exist.
+3. In the **Generate** panel click **BOQ**.
+4. For each category tab, search and move parameters to **Available → Selected / Export**.
+5. Optionally narrow Slab/Foundation by subtype and tick **Export selected only**.
+6. Click **Export Excel**, choose the `.xlsx` destination.
+7. Optionally tick **Open file after export** / **Include quantities** before exporting.
+
+---
+
+## Installation / Layout
+
+A pyRevit extension is read from a folder named `*.extension` with a `*.tab`, a `*.panel`, and
+one or more `*.pushbutton` folders:
+
+```text
+Revit-Extension/
+│
+├── Aasif.extension/
+│   └── Aasif.tab/
+│       └── Generate.panel/
+│           └── BOQ.pushbutton/
+│               ├── script.py     <- the whole tool (entry, UI wiring, XLSX engine)
+│               ├── ui.xaml        <- WPF window definition
+│               └── icon.png       <- pushbutton icon
+│
+├── docs/
+│   └── reference/                 <- older Kestrel docs, kept for study
+│
+├── README.md
+├── PRD.md
+├── PROJECT_STRUCTURE.md
+├── AI_DEVELOPMENT_GUIDE.md
+├── CLAUDE.md
+├── CHANGELOG.md
+├── done-list.md
+├── todo-list.md
+└── test_xlsx_writer.py           <- standalone regression harness (pure Python)
+```
+
+Register the root folder as an **extension search path** in pyRevit settings, then reload. Further
+detail is in [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
+
+---
+
+## Testing
+
+A feature is not *done* because `script.py` is syntactically valid.
+
+The XLSX writer is the only part that runs outside Revit, so it is tested at two levels:
+
+```text
+Standalone regression (test_xlsx_writer.py)
+    ↓
+In-Revit / on-project verification (manual, by the project owner)
+```
+
+`test_xlsx_writer.py` extracts the pure-Python XLSX functions straight from the real
+`script.py`, builds a sample workbook, unzips it, and XML-validates every part (sheet order, SUM
+formulas, auto-filter range, styles, GRAND TOTAL). It runs in any Python 3.x:
+
+```bash
+python test_xlsx_writer.py
+```
+
+The pure-Python engine (unit conversion, classification, sheets, styles, formulas) is intended to
+stay dependency-free and unit-testable. Forms/UI and Revit API access are only exercised in a live
+Revit session by the user. See [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## Reporting Bugs
+
+Include as much as can be reproduced:
+
+- Revit version (2025+)
+- pyRevit version and engine (CP3123 vs IP27)
+- structural category and the element/type affected
+- the exact steps: category, parameters, export options
+- the generated file (or a portion) and any error message/traceback
+
+---
+
+## License
+
+This extension is provided for use on the structural/RCC workspace it was built for. The project
+owner remains responsible for production review and release readiness.
+
+---
+
+## A Final Note
+
+Revit automation lives inside a host application that changes between releases, and pyRevit offers a
+choice of Python engines (CPython + IronPython). The honest goal of this repository is to keep the
+**pure-Python core** (unit conversion, classification, the XLSX writer) free of host dependencies so
+that the necessarily-live parts (selection, filters, dialog) stay small and concrete wherever
+possible.
+
+If the extension eventually saves the engineer a workbook every day, that is the measure of success.
+
+---
+
+## Project Status (short)
+
+**Building one working BOQ pushbutton.** The current priority is the RCC BOQ Parameter Manager and
+making the exported workbook a complete costing / Bill of Quantities report. Start at
+[`PRD.md`](PRD.md).
