@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -50,7 +50,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.1.0'
+SCRIPT_VERSION = '1.2.0'
 
 selected_parameters = {
     "Beam": [],
@@ -1052,6 +1052,75 @@ def get_element_quantities(element, element_name=""):
     return results
 
 
+def get_element_level(element):
+    """
+    Return the element's associated level name for level-wise grouping.
+
+    Tries the standard reference/schedule level built-in parameters first,
+    then falls back to the element's own LevelId. Returns "" when no level
+    can be resolved so the cell stays empty rather than failing the export.
+    """
+    level_parameter_ids = []
+
+    try:
+        level_parameter_ids.append(
+            DB.BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM
+        )
+    except:
+        pass
+    try:
+        level_parameter_ids.append(
+            DB.BuiltInParameter.LEVEL_PARAM
+        )
+    except:
+        pass
+    try:
+        level_parameter_ids.append(
+            DB.BuiltInParameter.SCHEDULE_LEVEL_PARAM
+        )
+    except:
+        pass
+
+    for built_in_parameter in level_parameter_ids:
+        try:
+            parameter = element.get_Parameter(built_in_parameter)
+        except:
+            parameter = None
+
+        if parameter is None:
+            continue
+
+        try:
+            if not parameter.HasValue:
+                continue
+            if parameter.StorageType != DB.StorageType.ElementId:
+                continue
+            level_id = parameter.AsElementId()
+        except:
+            continue
+
+        if level_id is None:
+            continue
+
+        try:
+            if level_id.IntegerValue == -1:
+                continue
+            level_element = doc.GetElement(level_id)
+            if level_element is not None and level_element.Name:
+                return str(level_element.Name)
+        except:
+            continue
+
+    try:
+        level_element = doc.GetElement(element.LevelId)
+        if level_element is not None and level_element.Name:
+            return str(level_element.Name)
+    except:
+        pass
+
+    return ""
+
+
 def build_element_data():
     """
     Read actual values from the parameters currently selected in the UI.
@@ -1132,6 +1201,10 @@ def build_element_data():
                 row = {
                     "Element ID": "N/A"
                 }
+
+            # P2: level grouping column, written directly after Element ID so
+            # it sits in a deterministic column (B) on every element sheet.
+            row["Level"] = get_element_level(element)
 
             for parameter_name in selected_names:
 
@@ -1974,6 +2047,11 @@ def build_missing_values_summary(data_result):
                 if key == "Element ID":
                     continue
 
+                # P2: Level is an engine-added grouping column, not a
+                # selected parameter; it is not part of the audit.
+                if key == "Level":
+                    continue
+
                 # Quantity columns carry their own totals on the
                 # element sheets and the BOQ Summary; they are not
                 # part of the parameter completeness audit.
@@ -2179,6 +2257,118 @@ def build_costing_sheet(data_result):
     return table
 
 
+def build_level_summary_table(data_result, summary_info):
+    """
+    P2: build the level-wise grouping table.
+
+    Returns (headers, rows). One row per (Level x Category) pair present in
+    the collected data. Elements is a static count; every metric cell is a
+    live SUMIF formula against that category sheet's Level column, so the
+    report stays in sync with the underlying element data.
+    """
+    category_order = ("Beam", "Column", "Slab", "Foundation")
+
+    level_order = []
+    level_counts = {}
+
+    for category_name in category_order:
+        rows = data_result.get(category_name, [])
+        for row in rows:
+            try:
+                level_text = str(row.get("Level", "") or "").strip()
+            except:
+                level_text = ""
+
+            level_key = level_text if level_text else "(No Level)"
+
+            if level_key not in level_counts:
+                level_counts[level_key] = {}
+                level_order.append(level_key)
+
+            per_category = level_counts[level_key]
+            per_category[category_name] = (
+                per_category.get(category_name, 0) + 1
+            )
+
+    headers = [
+        "Level",
+        "Category",
+        "Elements",
+        "Total Volume (m3)",
+        "Total Area (m2)",
+        "Total Length (m)"
+    ]
+
+    metric_keys = (
+        "Volume (m3)",
+        "Area (m2)",
+        "Length (m)"
+    )
+
+    rows_out = []
+
+    for level_key in level_order:
+
+        per_category = level_counts[level_key]
+
+        for category_name in category_order:
+
+            if category_name not in per_category:
+                continue
+
+            info = summary_info.get(category_name) or {}
+
+            try:
+                columns = info.get("columns") or {}
+            except:
+                columns = {}
+
+            try:
+                level_col = info.get("level_col") or ""
+            except:
+                level_col = ""
+
+            try:
+                data_end = info.get("data_end") or 0
+            except:
+                data_end = 0
+
+            row = [
+                level_key,
+                category_name,
+                per_category[category_name]
+            ]
+
+            for metric_key in metric_keys:
+
+                cell = ""
+
+                metric_letter = columns.get(metric_key)
+
+                if metric_letter and level_col and data_end > 1:
+
+                    criteria = '"{0}"'.format(level_key)
+
+                    formula = (
+                        "SUMIF({0}!${1}$2:${1}${4},{2},"
+                        "{0}!${3}$2:${3}${4})"
+                    ).format(
+                        category_name,
+                        level_col,
+                        criteria,
+                        metric_letter,
+                        data_end
+                    )
+
+                    cell = ("FORMULA", formula)
+
+                row.append(cell)
+
+            rows_out.append(row)
+
+    return (headers, rows_out)
+
+
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
@@ -2307,7 +2497,9 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
             summary_info[sheet_name] = {
                 "elements": len(rows),
                 "total_row": total_row_number,
-                "columns": {}
+                "columns": {},
+                "level_col": "",
+                "data_end": 0
             }
 
             for column_index in quantity_indexes:
@@ -2322,6 +2514,19 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
                 summary_info[sheet_name]["columns"][
                     header_text[4:].strip()
                 ] = xlsx_column_name(column_index)
+
+            # P2: remember the Level column letter and the last data row so
+            # the level-wise grouping sheet can build live SUMIF formulas.
+            try:
+                summary_info[sheet_name]["level_col"] = (
+                    xlsx_column_name(
+                        retained_headers.index("Level") + 1
+                    )
+                )
+            except:
+                pass
+
+            summary_info[sheet_name]["data_end"] = len(table)
 
         sheet_rows[sheet_name] = table
 
@@ -2412,6 +2617,20 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None):
         sheet_rows["BOQ Summary"] = summary_table
 
         quantity_column_map["BOQ Summary"] = [2, 3, 4, 5]
+
+    # P2: level-wise grouping. One row per Level x Category with live SUMIF
+    # formulas against the category sheets, placed between BOQ Summary and
+    # Costing so reviewers see grouped quantities right after totals.
+    level_headers, level_rows = build_level_summary_table(
+        data_result,
+        summary_info
+    )
+
+    if level_rows:
+
+        sheet_names.append("BOQ by Level")
+        sheet_rows["BOQ by Level"] = [level_headers] + level_rows
+        quantity_column_map["BOQ by Level"] = [4, 5, 6]
 
     # Per-element Costing sheet. Each element row carries its primary
     # quantity, its unit rate and a computed amount (quantity x rate).

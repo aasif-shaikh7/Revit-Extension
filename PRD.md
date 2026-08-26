@@ -4,7 +4,8 @@
 **Project status:** Product definition / working single-tool extension
 **Target platform:** Autodesk Revit, structural / RCC (Reinforced Cement Concrete) workspace
 **Minimum Revit version:** 2025 and above
-**Runtime:** pyRevit 6.10.0 and above — CP3123 (CPython 3.12.3) and IP27 (IronPython 2.7) engines
+**Runtime:** pyRevit 6.10.0 and above — **CP3123 (CPython 3.12.3) is the supported engine**; IP27
+(IronPython 2.7) is best-effort/untested
 **Technology:** Python (pyRevit API), WPF `ui.xaml` for the dialog, dependency-free Open XML XLSX writer
 **Primary development method:** AI-assisted development with human product direction and testing
 

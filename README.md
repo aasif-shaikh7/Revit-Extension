@@ -13,7 +13,9 @@ that opens the **RCC BOQ Parameter Manager**.
 
 **Target environment:**
 - **Revit 2025 and above**
-- **pyRevit 6.10.0 and above** — both the CP3123 (CPython 3.12.3) engine and the IP27 (IronPython 2.7) engine
+- **pyRevit 6.10.0 and above** on the **CP3123 (CPython 3.12.3)** engine — the single supported
+  runtime. The legacy **IP27 (IronPython 2.7)** engine is best-effort/untested (code stays
+  2.7-syntax-safe but is not a support target).
 
 ---
 

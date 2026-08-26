@@ -104,7 +104,8 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
    `build_xlsx_sheet_xml`, `build_xlsx_styles_xml`, `build_xlsx_workbook_xml`,
    `build_xlsx_workbook_rels_xml`, `build_xlsx_root_rels_xml`, `build_xlsx_content_types_xml`,
    `build_parameter_metadata_sheet`, `build_missing_values_summary`, `build_costing_sheet`,
-   `write_basic_xlsx`, `choose_excel_output_path`.
+   `build_level_summary_table` (P2 level grouping), `write_basic_xlsx`,
+   `choose_excel_output_path`.
 8. **Document + category definitions** — `CATEGORY_INFO` mapping the four tabs to Revit
    `BuiltInCategory` values.
 9. **Collection / classification** — `get_elements`, `get_parameters`, the slab/foundation

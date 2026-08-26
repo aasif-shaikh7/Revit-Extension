@@ -41,6 +41,7 @@ FUNCTION_NAMES = [
     "build_parameter_metadata_sheet",
     "build_missing_values_summary",
     "build_costing_sheet",
+    "build_level_summary_table",
     "write_basic_xlsx"
 ]
 
@@ -96,6 +97,7 @@ def main():
         "Beam": [
             {
                 "Element ID": "100",
+                "Level": "Ground Floor",
                 "Mark": "B1",
                 "Concrete Volume": "",
                 "Rate": 1200.0,
@@ -106,6 +108,7 @@ def main():
             },
             {
                 "Element ID": "101",
+                "Level": "First Floor",
                 "Mark": "B2",
                 "Concrete Volume": "",
                 "Rate": 1200.0,
@@ -118,6 +121,7 @@ def main():
         "Column": [
             {
                 "Element ID": "200",
+                "Level": "Ground Floor",
                 "Mark": "C1",
                 "Rate": 1500.0,
                 "Qty: Volume (m3)": 0.42,
@@ -131,6 +135,7 @@ def main():
         "Foundation": [
             {
                 "Element ID": "300",
+                "Level": "(No Level)",
                 "Mark": "F1",
                 "Rate": 1800.0,
                 "Qty: Volume (m3)": 1.85,
@@ -247,6 +252,55 @@ def main():
             "P1 element Count column present on all populated sheets"
         )
 
+        # P2: level-wise grouping
+        check(
+            beam_table[0][1] == "Level",
+            "P2 Level column sits directly after Element ID on element sheets"
+        )
+
+        level_table = sheet_rows["BOQ by Level"]
+
+        check(
+            level_table[0] == [
+                "Level",
+                "Category",
+                "Elements",
+                "Total Volume (m3)",
+                "Total Area (m2)",
+                "Total Length (m)"
+            ],
+            "P2 BOQ by Level headers correct"
+        )
+
+        level_keys = set(row[0] for row in level_table[1:])
+
+        check(
+            level_keys == set(["Ground Floor", "First Floor", "(No Level)"]),
+            "P2 every collected level produces a grouped row"
+        )
+
+        sumif_count = sum(
+            1 for row in level_table[1:]
+            for cell in row[3:]
+            if isinstance(cell, tuple)
+            and cell[0] == "FORMULA"
+            and "SUMIF(" in cell[1]
+        )
+
+        check(
+            sumif_count == 9,
+            "P2 live SUMIF per Level x Category x available-metric cell "
+            "(expected 9: Beam has no Area col, Foundation has no Length "
+            "col; got {})".format(sumif_count)
+        )
+
+        check(
+            any(
+                isinstance(row[2], int) for row in level_table[1:]
+            ),
+            "P2 Elements count is a static number per grouped row"
+        )
+
     finally:
 
         # Early failures above may leave the sample workbook behind;
@@ -290,7 +344,7 @@ def main():
 
         expected_order = [
             "Beam", "Column", "Foundation",
-            "BOQ Summary", "Costing"
+            "BOQ Summary", "BOQ by Level", "Costing"
         ]
 
         check(

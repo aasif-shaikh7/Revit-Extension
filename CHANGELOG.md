@@ -22,6 +22,36 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — P2 Level-wise BOQ Grouping + single-engine decision (code v1.2.0, tags pending)
+
+**New feature (P2, first increment).**
+
+- Every element row now carries an engine-added **`Level`** column, written directly after
+  `Element ID` (deterministic column B). The level name is resolved from the reference/schedule
+  level built-in parameters with an `element.LevelId` fallback; unresolvable levels stay empty.
+- New **`BOQ by Level`** sheet (between BOQ Summary and Costing): one row per
+  **Level x Category**, with a static per-group `Elements` count and **live SUMIF formulas**
+  against each category sheet's Level column — so grouped totals stay in sync with the element
+  data.
+- The missing-values audit excludes the engine-added Level column (it is grouping metadata, not a
+  selected parameter).
+
+**Engine decision (T-03 closed).** Only one engine is supported going forward: **CP3123 (CPython
+3.12.3)** — the modern runtime. **IP27 (IronPython 2.7)** is legacy/EOL Python and is documented as
+best-effort/untested rather than a support target. Code remains 2.7-syntax-safe so IP27 may still
+work, but no parity testing is promised.
+
+**Tested (harness).** `python test_xlsx_writer.py` asserts: Level column placement on element
+sheets; the BOQ by Level header set; grouped rows for every collected level (including
+`(No Level)`); exactly 9 live SUMIF metric cells for the sample layout (Beam has no Area column,
+Foundation has no Length column); static Elements counts; and the sheet order
+Beam / Column / Foundation / BOQ Summary / BOQ by Level / Costing. All checks pass.
+
+**Not yet released.** Git tags for **v1.1.0** (P1) and **v1.2.0** (P2) are withheld until the
+project owner confirms both increments in a live Revit 2025 session on CP3123.
+
+---
+
 ## [Unreleased] — P1 Structural Quantity Engine (code v1.1.0, release tag pending)
 
 **New feature (P1, first increment).** The quantity engine is now category-aware and adds

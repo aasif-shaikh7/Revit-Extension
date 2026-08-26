@@ -12,8 +12,8 @@ Guidance for Claude Code and other AI coding agents working in this repository.
 **Revit-Extension** — a **pyRevit** extension that generates **RCC (Reinforced Cement Concrete) BOQ**
 workbooks from Autodesk Revit.
 
-**Target env:** Revit **2025+**; pyRevit **6.10.0+**, running on either the **CP3123** (CPython
-3.12.3) or **IP27** (IronPython 2.7) engine.
+**Target env:** Revit **2025+**; pyRevit **6.10.0+** on the **CP3123** (CPython 3.12.3) engine — the
+single supported runtime. IP27 (IronPython 2.7) is best-effort/untested.
 
 **Current state: one working pushbutton.** `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton`
 contains `script.py` (the whole tool), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC

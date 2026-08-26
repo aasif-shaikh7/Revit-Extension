@@ -75,10 +75,26 @@ still pending (T-03).
 **Acceptance:** compare at least one beam/column/slab/foundation quantity against a known-correct
 value in Revit; record any engine adjustments.
 
-### T-03 — Dual-engine parity (CP3123 and IP27) — `pending`
-**State:** Target environments explicitly include both engines, but neither has been exercised here.
-**Acceptance:** run the export end-to-end once per engine on the same model and record differences in
-`CHANGELOG.md`.
+### T-03 — Dual-engine parity — **closed by decision** (`1.2.0`)
+**Decision (owner, 2026-08-26):** only ONE engine is supported — **CP3123 (CPython 3.12.3)**, the
+modern runtime. **IP27 (IronPython 2.7)** is legacy EOL Python and is documented as best-effort /
+untested, not a support target. The code stays 2.7-syntax-safe so IP27 may still work, but no
+parity testing is promised or tracked here.
+
+---
+
+## P2 — Structural BOQ Grouping (started)
+
+### P2-01 — Level-wise BOQ grouping — `testing` (code v1.2.0, live pending)
+**Built:** every element row carries an engine-added `Level` column (deterministic column B),
+resolved from reference/schedule level parameters with a `LevelId` fallback. A new `BOQ by Level`
+sheet groups quantities per Level x Category using live SUMIF formulas against the category
+sheets; Elements is a static per-group count. Missing-values audit excludes the Level column.
+**Tested (harness):** Level placement, grouped rows for every collected level (incl. `(No Level)`),
+9 live SUMIF cells for the sample layout, static counts, final sheet order
+Beam/Column/Foundation/BOQ Summary/BOQ by Level/Costing.
+**Remaining:** live Revit confirmation that levels resolve correctly on a real model (owner), plus
+the pending P1 confirmation; then close P1/P2 increments and tag `v1.1.0` / `v1.2.0`.
 
 ---
 
