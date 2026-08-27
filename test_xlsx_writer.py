@@ -616,23 +616,31 @@ def main():
 
         check(
             summary_table_s[1][0] == "RCC - CONCRETE FINISHING BOQ"
-            and summary_table_s[2][0] == "ITEM-WISE SUMMARY",
-            "Summary title block carries the simple ITEM-WISE caption"
+            and summary_table_s[2][0]
+            == "ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING",
+            "Summary title block carries the VOL/SHUT caption"
         )
 
         check(
-            summary_table_s[4] == [("MERGE_V", "SNO"), "CATEGORY", "ELEMENTS"]
+            summary_table_s[4] == [
+                ("MERGE_V", "SNO"),
+                ("MERGE_V", "CATEGORY"),
+                "ELEMENTS",
+                "VOLUME (m3)",
+                "SHUTTERING (m2)",
+            ]
             and summary_table_s[6][0] == 1
             and summary_table_s[6][1] == "BEAM"
             and summary_table_s[6][2] == 2,
-            "Summary lists each populated category with its element count"
+            "Summary header lists SNO|CATEGORY|ELEMENTS|VOL|SHUT columns"
         )
 
         check(
             summary_meta_s["levels"] == []
-            and summary_meta_s["total_columns"] == 3
-            and summary_meta_s["columns"] == {},
-            "Summary meta records the fixed 3-column cover contract"
+            and summary_meta_s["total_columns"] == 5
+            and summary_meta_s["columns"]["Volume (m3)"] == "D"
+            and summary_meta_s["columns"]["Shuttering (m2)"] == "E",
+            "Summary meta exposes the 5-column VOL/SHUT column plan"
         )
 
     finally:

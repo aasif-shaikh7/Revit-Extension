@@ -3717,18 +3717,36 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
         "Foundation": "FOUNDATION"
     }
 
-    # Simple per-category element-count summary. The detail sheets
-    # now carry only the user-selected parameters (no VOLUME /
-    # SHUTTERING / LEVEL), so this cover reports how many elements
-    # each category contributed instead of the old level grid.
+    # Element rows in data_result still carry the metric columns even
+    # though the selection-only detail sheets hide them. Aggregate
+    # VOLUME and SHUTTERING per category straight from data_result so
+    # the Summary keeps both figures while the detail tabs stay clean.
+    def aggregate_metric(category_name, metric_key):
+        total = 0.0
+        for row in (data_result.get(category_name) or []):
+            try:
+                metric_value = float(row.get(metric_key, 0) or 0)
+            except:
+                metric_value = 0.0
+            total += metric_value
+        return round(total, 2) if total else ""
+
     out_rows = [
         [str(project_name or "")],
         ["RCC - CONCRETE FINISHING BOQ"],
-        ["ITEM-WISE SUMMARY"],
+        ["ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING"],
         [],
-        [("MERGE_V", "SNO"), "CATEGORY", "ELEMENTS"],
-        ["", "", ""],
+        [
+            ("MERGE_V", "SNO"),
+            ("MERGE_V", "CATEGORY"),
+            "ELEMENTS",
+            "VOLUME (m3)",
+            "SHUTTERING (m2)"
+        ],
+        ["", "", "", "", ""],
     ]
+
+    first_data_row = len(out_rows) + 1
 
     item_number = 1
 
@@ -3740,18 +3758,49 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
             [
                 item_number,
                 header_label_map[category_name],
-                category_meta.get("elements", 0)
+                category_meta.get("elements", 0),
+                aggregate_metric(category_name, "Qty: Volume (m3)"),
+                aggregate_metric(category_name, "Qty: Shuttering (m2)")
             ]
         )
 
         item_number += 1
 
+    total_row_number = len(out_rows) + 1
+
+    vol_col = 4
+    shut_col = 5
+
+    vol_letter = xlsx_column_name(vol_col)
+    shut_letter = xlsx_column_name(shut_col)
+
+    out_rows.append(
+        [
+            "TOTAL",
+            "",
+            "",
+            (
+                "FORMULA",
+                "SUM({0}{1}:{0}{2})".format(
+                    vol_letter, first_data_row, total_row_number - 1)
+            ),
+            (
+                "FORMULA",
+                "SUM({0}{1}:{0}{2})".format(
+                    shut_letter, first_data_row, total_row_number - 1)
+            )
+        ]
+    )
+
     meta = {
         "present_categories": present_categories,
-        "columns": {},
-        "total_columns": 3,
+        "columns": {
+            "Volume (m3)": vol_letter,
+            "Shuttering (m2)": shut_letter
+        },
+        "total_columns": 5,
         "bands": (5, 6),
-        "grid_start": 7,
+        "grid_start": first_data_row,
         "levels": []
     }
 
@@ -3838,7 +3887,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
     total_columns = summary_meta.get("total_columns", 3)
 
-    summary_widths = [7, 24, 10]  # SNO | CATEGORY | ELEMENTS cover
+    summary_widths = [7, 24, 10, 14, 17]  # SNO|CATEGORY|ELEMENTS|VOL|SHUT
 
 
     sheet_rows["Summary"] = summary_table
