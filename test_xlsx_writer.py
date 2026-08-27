@@ -50,6 +50,7 @@ FUNCTION_NAMES = [
     "_site_cell_value",
     "_site_numeric",
     "_site_dim_value",
+    "_site_desc_text",
     "meters_to_millimeters",
     "build_section_description",
     "resolve_element_dimensions",
@@ -586,8 +587,15 @@ def main():
         )
 
         check(
-            first_site_row[1] == "ITEM B1 | 230 X 6096",
-            "DESCRIPTION shows the ITEM mark plus cross-section in MM"
+            first_site_row[1] == "B1 | 230 X 6096",
+            "DESCRIPTION follows the selected parameters, then cross-section"
+        )
+
+        check(
+            namespace["_site_desc_text"](1200.0) == "1200"
+            and namespace["_site_desc_text"](" 450 mm ") == "450 mm"
+            and namespace["_site_desc_text"]("") == "",
+            "Selected-parameter values render without trailing .0 noise"
         )
 
         site_total_row = detail_table[-1]
@@ -942,6 +950,178 @@ def main():
         check(
             'rgb="FFBDD7EE"' in site_styles_xml,
             "Site styles define the light blue band fill"
+        )
+
+        # ---- Merge-grid integrity (owner saw Excel's repair prompt) ----
+        # A degenerate (single-cell), duplicate or overlapping mergeCell
+        # span makes Excel raise "We found a problem with some content".
+        # This pass mechanically disproves that class of corruption on
+        # EVERY generated site worksheet.
+        problem_spans = []
+        total_span_count = 0
+
+        for part_index in range(1, len(sheet_order_site) + 1):
+
+            sheet_part_name = "xl/worksheets/sheet{0}.xml".format(
+                part_index
+            )
+
+            sheet_xml_text = site_archive.read(
+                sheet_part_name
+            ).decode("utf-8")
+
+            refs = re.findall(
+                r'<mergeCell ref="([^"]+)"/>',
+                sheet_xml_text
+            )
+
+            total_span_count += len(refs)
+
+            sheet_bounds = []
+
+            for ref in refs:
+
+                try:
+                    start_ref, end_ref = ref.split(":")
+
+                    def _parse_cell(cell_text):
+                        cell_match = re.match(
+                            r"([A-Z]+)(\d+)",
+                            cell_text
+                        )
+
+                        letters = cell_match.group(1)
+                        digits = int(cell_match.group(2))
+
+                        column_number = 0
+
+                        for letter in letters:
+                            column_number = (
+                                column_number * 26
+                                + ord(letter) - 64
+                            )
+
+                        return digits, column_number
+
+                    row_a, col_a = _parse_cell(start_ref)
+                    row_b, col_b = _parse_cell(end_ref)
+                except Exception:
+                    problem_spans.append(
+                        "{} malformed {}".format(sheet_part_name, ref)
+                    )
+                    continue
+
+                bounds = (
+                    min(row_a, row_b),
+                    min(col_a, col_b),
+                    max(row_a, row_b),
+                    max(col_a, col_b)
+                )
+
+                if bounds[:2] == bounds[2:]:
+                    problem_spans.append(
+                        "{0} degenerate {1}".format(
+                            sheet_part_name,
+                            ref
+                        )
+                    )
+                    continue
+
+                if bounds in sheet_bounds:
+                    problem_spans.append(
+                        "{0} duplicate {1}".format(
+                            sheet_part_name,
+                            ref
+                        )
+                    )
+                    continue
+
+                for existing in sheet_bounds:
+                    overlaps = not (
+                        bounds[2] < existing[0]
+                        or existing[2] < bounds[0]
+                        or bounds[3] < existing[1]
+                        or existing[3] < bounds[1]
+                    )
+
+                    if overlaps:
+                        problem_spans.append(
+                            "{0} overlapping {1} vs prior span"
+                            .format(sheet_part_name, ref)
+                        )
+                        break
+
+                sheet_bounds.append(bounds)
+
+        check(
+            total_span_count > 0 and not problem_spans,
+            "Merge grid clean on all site sheets: {0} spans, zero "
+            "degenerate/duplicate/overlapping (problems={1})".format(
+                total_span_count,
+                problem_spans
+            )
+        )
+
+        # ---- Bordered grid wiring ----
+        cellxfs_body = site_styles_xml.split("<cellXfs")[1].split(
+            "</cellXfs>"
+        )[0]
+
+        xf_openings = re.findall(r"<xf [^>]*>", cellxfs_body)
+
+        bordered_style_indexes = [
+            position
+            for position, opening in enumerate(xf_openings)
+            if 'borderId="2"' in opening
+        ]
+
+        check(
+            '<left style="thin"' in site_styles_xml
+            and len(bordered_style_indexes) >= 6,
+            "Styles expose the full thin-border box and wire it into "
+            "{} grid formats".format(len(bordered_style_indexes))
+        )
+
+        row7_search = re.search(
+            r'<row r="7">(.*?)</row>',
+            site_beam_xml,
+            re.S
+        )
+
+        row7_attributes = []
+
+        if row7_search:
+            row7_attributes = re.findall(
+                r'<c r="[A-Z]+7"([^<>]*)>',
+                row7_search.group(1)
+            )
+
+        unbordered_cells = []
+
+        for cell_attributes in row7_attributes:
+
+            style_match = re.search(
+                r' s="(\d+)"',
+                cell_attributes
+            )
+
+            if style_match is None:
+                unbordered_cells.append(cell_attributes)
+                continue
+
+            try:
+                style_number = int(style_match.group(1))
+            except Exception:
+                unbordered_cells.append(cell_attributes)
+                continue
+
+            if style_number not in bordered_style_indexes:
+                unbordered_cells.append(cell_attributes)
+
+        check(
+            bool(row7_attributes) and not unbordered_cells,
+            "Every first data-row cell carries a bordered grid style "
+            "(offenders={})".format(unbordered_cells)
         )
 
     finally:

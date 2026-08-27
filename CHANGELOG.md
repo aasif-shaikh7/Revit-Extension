@@ -37,6 +37,11 @@ VOLUME + SHUTTERING columns, level-wise front Summary).
   integer columns, VOLUME/SHUTTERING figures, bordered TOTAL rows with live SUMs, gridlines off,
   panes frozen below the header band. Front `Summary` = LEVEL × category grid with live SUMIF
   formulas against each detail sheet's hidden LEVEL column, closing with TOTAL m3/sqm pairs.
+- **Owner feedback round (2026-08-27):** merged-cell XML no longer emits degenerate /
+  overlapping spans (root cause of Excel's "We found a problem with some content…" repair
+  prompt); band, data and TOTAL cells now carry a full thin-border box grid; DESCRIPTION is
+  built strictly from the parameters selected for that category in the UI (selection order
+  preserved), closing with the `W X L` millimetre cross-section.
 - **Switch:** `site_format_flag = True` selects the site writer at export time; the classic
   (v1.3.0-style) workbook remains available as rollback via `write_basic_xlsx(site_format=False)` —
   which itself now honours the flag when called directly.
@@ -44,8 +49,11 @@ VOLUME + SHUTTERING columns, level-wise front Summary).
 
 **Tested (harness).** `python test_xlsx_writer.py` passes every check end-to-end: shuttering rules
 per category, dimension fallbacks, natural level sort, detail/summary builders (`MERGE_V` markers,
-MM integers, `ITEM <mark> | W X L` descriptions), mergeCells part, live SUMIF/SUM wiring, site +
-classic workbook XML validity, styles. `script.py` also compiles clean under CPython 3.12.
+MM integers, selection-driven descriptions closing with `W X L`), mergeCells part, live SUMIF/SUM
+wiring, site + classic workbook XML validity, styles, plus a merge-grid integrity pass asserting
+zero degenerate / duplicate / overlapping spans on every site sheet (Excel-repair regression
+guard) and a bordered-grid check over the first data row. `script.py` also compiles clean under
+CPython 3.12.
 
 **Not yet released.** Live Revit confirmation on CP3123 still required before tagging; `v1.3.0`
 remains tag-pending as well.

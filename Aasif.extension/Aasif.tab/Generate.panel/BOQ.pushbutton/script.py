@@ -1715,6 +1715,10 @@ STYLE_SITE_MM = 11
 STYLE_SITE_TOTAL_NUM = 12
 STYLE_SITE_TOTAL_TEXT = 13
 
+# Bordered plain text (descriptions, selected-parameter values, the
+# LEVEL feed column) so the whole site sheet carries the thin grid.
+STYLE_SITE_PLAIN = 14
+
 
 def xlsx_formula_cell(cell_ref, expression, style_index=None):
     """
@@ -2106,8 +2110,10 @@ def build_xlsx_sheet_xml_site(rows, widths=None):
                 and value[0] == "MERGE_V"
             ):
 
-                merged_spans.append((row_number, column_number))
-
+                # The span itself is collected inside _finish_site_sheet;
+                # appending here too produced a degenerate second entry
+                # for the same column and Excel answered with its repair
+                # prompt on open.
                 cells.append(
                     xlsx_cell(cell_ref, value[1], style_index)
                 )
@@ -2116,11 +2122,17 @@ def build_xlsx_sheet_xml_site(rows, widths=None):
             if style_index is None:
 
                 if isinstance(value, bool):
-                    style_index = None
+                    # Rare, but keep the bordered grid unbroken anyway.
+                    style_index = STYLE_SITE_PLAIN
                 elif isinstance(value, int):
                     style_index = STYLE_SITE_MM
                 elif isinstance(value, float):
                     style_index = STYLE_SITE_NUM
+                else:
+                    # Text, blank spacers and unknown payloads receive the
+                    # bordered plain style so every sheet shows a full
+                    # thin-border grid (owner feedback: "border rakho").
+                    style_index = STYLE_SITE_PLAIN
 
             cells.append(
                 xlsx_cell(cell_ref, value, style_index)
@@ -2175,11 +2187,28 @@ def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
             column_cursor += 1
             continue
 
+        # Vertically merged header cells (MERGE_V markers) always stand
+        # alone horizontally; neighbouring empties around them stay
+        # unmerged so two spans can never overlap. Overlapping mergeCell
+        # entries are exactly what made Excel raise its repair prompt.
+        if isinstance(band_value, tuple):
+
+            merged_spans.append(
+                (band_rows[0], column_cursor,
+                 band_rows[1], column_cursor)
+            )
+
+            column_cursor += 1
+            continue
+
         group_start = column_cursor
         group_end = column_cursor
 
+        # band_values is 0-based, so band_values[group_end] is the cell
+        # AFTER the 1-based column the cursor points at. Extend while the
+        # NEXT cell is blank; stop at the next real label.
         while (
-            group_end + 1 <= len(band_values)
+            group_end < len(band_values)
             and band_values[group_end] in ("", None)
         ):
             group_end += 1
@@ -2188,12 +2217,6 @@ def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
             merged_spans.append(
                 (band_rows[0], group_start,
                  band_rows[0], group_end)
-            )
-
-        if isinstance(band_value, tuple):
-            merged_spans.append(
-                (band_rows[0], group_start,
-                 band_rows[1], group_start)
             )
 
         column_cursor = group_end + 1
@@ -2205,6 +2228,11 @@ def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
 
         if len(span) == 2:
             span = (span[0], span[1], span[0], span[1])
+
+        # Safety net: never emit single-cell (degenerate) spans. Excel
+        # rejects mergeCell entries whose corners coincide.
+        if span[0] == span[2] and span[1] == span[3]:
+            continue
 
         if span in seen_spans:
             continue
@@ -2329,21 +2357,22 @@ def build_xlsx_styles_xml():
         '<cellStyleXfs count="1">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'
         '</cellStyleXfs>'
-        '<cellXfs count="14">'
+        '<cellXfs count="15">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
         '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
         '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
         '<xf numFmtId="4" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
-        '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
-        '<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
         '<xf numFmtId="0" fontId="0" fillId="5" borderId="2" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
         '<xf numFmtId="4" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
         '<xf numFmtId="4" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
         '</cellXfs>'
         '<cellStyles count="1">'
         '<cellStyle name="Normal" xfId="0" builtinId="0"/>'
@@ -3504,6 +3533,33 @@ def _site_dim_value(row, key):
         return ""
 
 
+def _site_desc_text(value):
+    """
+    Format one user-selected parameter value for the DESCRIPTION cell.
+
+    Whole-number values lose their trailing .0 (raw float payloads from
+    synthetic or typed-in parameters render as clean integers); every
+    other payload passes through as stripped text. Empty stays "".
+    """
+    if value in ("", None):
+        return ""
+
+    try:
+        text = str(value).strip()
+    except:
+        return ""
+
+    try:
+        number_value = float(text)
+
+        if number_value == int(number_value):
+            return str(int(number_value))
+    except:
+        pass
+
+    return text
+
+
 def build_site_detail_sheet(category_name, rows, project_name):
     """
     Build one site-format detail table.
@@ -3571,16 +3627,29 @@ def build_site_detail_sheet(category_name, rows, project_name):
 
         description_parts = []
 
-        mark_text = ""
+        # Owner direction: DESCRIPTION must follow exactly the parameters
+        # picked in the UI, in the order they were selected. Row dicts
+        # carry the chosen names straight through, so every key that is
+        # neither internal bookkeeping nor a Qty:* metric is a user pick.
+        try:
+            row_keys = list(row.keys())
+        except:
+            row_keys = []
 
-        for mark_key in ("Mark", "Type Mark"):
-            candidate = _site_cell_value(row, mark_key)
+        for row_key in row_keys:
+
+            key_text = str(row_key)
+
+            if key_text in ("Element ID", "Level"):
+                continue
+
+            if key_text[:4] == "Qty:":
+                continue
+
+            candidate = _site_desc_text(row.get(row_key))
+
             if candidate:
-                mark_text = candidate
-                break
-
-        if mark_text:
-            description_parts.append("ITEM {0}".format(mark_text))
+                description_parts.append(candidate)
 
         section_text = build_section_description(
             length_value,

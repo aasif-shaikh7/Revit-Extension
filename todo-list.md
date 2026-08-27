@@ -130,9 +130,13 @@ MM integer columns, VOLUME/SHUTTERING figures, bordered TOTAL rows and a front l
 Summary with live SUMIF formulas against each detail sheet's LEVEL feed column.
 Dispatch sits behind `site_format_flag = True`; classic workbook stays as rollback
 (`write_basic_xlsx(site_format=False)`).
-**Tested (harness):** full suite green — 33 functions extracted, shuttering rules, dim
-fallbacks, level ordering, description format, SUMIF criteria, merge spans and XML parts
-all pass; `script.py` compiles clean under CPython 3.12.
+**Fixed (owner feedback):** export no longer triggers Excel's repair dialog — the merge grid is
+mechanically validated free of degenerate/duplicate/overlapping spans; DESCRIPTION now follows
+exactly the parameters selected per category (UI selection order kept) before the `W X L` suffix;
+full thin-border box applied to band, data and TOTAL cells.
+**Tested (harness):** full suite green — shuttering rules, dim fallbacks, level ordering,
+param-driven description format, SUMIF criteria, merge-span integrity (zero bad spans),
+bordered-grid styles and XML parts all pass; `script.py` compiles clean under CPython 3.12.
 **Remaining:** live Revit confirmation on CP3123 (parameter-backed dims vs bbox fallback;
 shuttering overlap handling at frame intersections), then tag `v1.4.0`.
 
