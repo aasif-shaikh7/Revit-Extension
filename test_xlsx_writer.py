@@ -574,32 +574,22 @@ def main():
 
         check(
             detail_table[4][0] == ("MERGE_V", "SNO")
-            and detail_table[4][1] == ("MERGE_V", "MARK")
-            and detail_table[4][7] == ("MERGE_V", "LEVEL")
-            and detail_table[5][5] == "VOLUME (m3)"
-            and detail_table[5][6] == "SHUTTERING (SQM)",
-            "Two-tier header band merges SNO/params/LEVEL over QTY groups"
+            and detail_table[4][1] == ("MERGE_V", "MARK"),
+            "Detail band header is SNO + selected params only"
         )
 
         first_site_row = detail_table[6]
 
         check(
             first_site_row[0] == 1
-            and first_site_row[2] == 6096
-            and first_site_row[3] == 230
-            and first_site_row[4] == 600,
-            "Element rows render whole-millimetre SIZE integers"
+            and first_site_row[1] == "B1",
+            "Element rows are SNO followed by the selected MARK"
         )
 
         check(
-            first_site_row[5] == 0.84 and first_site_row[6] == 8.72,
-            "Element rows carry VOLUME and SHUTTERING figures rounded"
-        )
-
-        check(
-            first_site_row[1] == "B1"
+            len(first_site_row) == 2
             and detail_table[7][1] == "B2",
-            "Selected parameters land in their own columns (MARK)"
+            "No auto columns (SIZE/VOLUME/SHUTTERING/LEVEL) present"
         )
 
         check(
@@ -609,24 +599,12 @@ def main():
             "Selected-parameter values render without trailing .0 noise"
         )
 
-        site_total_row = detail_table[-1]
-
         check(
-            site_total_row[0] == "TOTAL"
-            and isinstance(site_total_row[5], tuple)
-            and str(site_total_row[5][1]).lstrip("=") == "SUM(F7:F8)"
-            and isinstance(site_total_row[6], tuple)
-            and str(site_total_row[6][1]).lstrip("=") == "SUM(G7:G8)",
-            "Detail TOTAL row holds live SUM formulas for both metrics"
-        )
-
-        check(
-            detail_meta["total_row"] == len(detail_table)
+            "TOTAL" not in detail_table[-1]
             and detail_meta["data_start"] == 7
-            and detail_meta["columns"]["Volume (m3)"] == "F"
-            and detail_meta["columns"]["Shuttering (m2)"] == "G"
-            and detail_meta["level_col"] == "H",
-            "Detail meta exposes the F/G/H contract for SUMIF feeds"
+            and detail_meta["columns"] == {}
+            and detail_meta["level_col"] == "",
+            "No SUM totals row; meta drops the F/G/H SUMIF contract"
         )
 
         summary_table_s, summary_meta_s = \
@@ -638,43 +616,23 @@ def main():
 
         check(
             summary_table_s[1][0] == "RCC - CONCRETE FINISHING BOQ"
-            and summary_table_s[2][0]
-            == "ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING",
-            "Summary title block matches the manual front page"
+            and summary_table_s[2][0] == "ITEM-WISE SUMMARY",
+            "Summary title block carries the simple ITEM-WISE caption"
         )
 
         check(
-            summary_table_s[4][:2]
-            == [("MERGE_V", "LEVEL"), ("MERGE_V", "ITEM")]
-            and summary_table_s[4][2] == "BEAM"
-            and summary_table_s[5][2] == "VOL (m3)"
-            and summary_table_s[5][3] == "SHUT (sqm)"
-            and summary_table_s[4][4] == "TOTAL (m3)"
-            and summary_table_s[4][5] == "TOTAL (sqm)",
-            "Summary bands pair each category with VOL/SHUT sub-columns"
-        )
-
-        grid_row = summary_table_s[6]
-
-        volume_formula = grid_row[2]
-
-        check(
-            isinstance(volume_formula, tuple)
-            and volume_formula[1].startswith("SUMIF(Beam!$H$7:$H$8,")
-            and '"Level 1"' in volume_formula[1],
-            "Summary level row holds a live SUMIF per metric column"
+            summary_table_s[4] == [("MERGE_V", "SNO"), "CATEGORY", "ELEMENTS"]
+            and summary_table_s[6][0] == 1
+            and summary_table_s[6][1] == "BEAM"
+            and summary_table_s[6][2] == 2,
+            "Summary lists each populated category with its element count"
         )
 
         check(
-            grid_row[4][0] == "FORMULA" and grid_row[5][0] == "FORMULA"
-            and "C7" in grid_row[4][1] and "D7" in grid_row[5][1],
-            "Summary TOTAL columns sum the category pairs horizontally"
-        )
-
-        check(
-            summary_meta_s["levels"] == ["Level 1", "Level 2"]
-            and summary_meta_s["total_columns"] == 6,
-            "Summary meta records sorted levels and the column plan"
+            summary_meta_s["levels"] == []
+            and summary_meta_s["total_columns"] == 3
+            and summary_meta_s["columns"] == {},
+            "Summary meta records the fixed 3-column cover contract"
         )
 
     finally:
@@ -921,20 +879,15 @@ def main():
         )
 
         check(
-            bool(merge_counts) and int(merge_counts[0]) >= 5,
+            bool(merge_counts) and int(merge_counts[0]) >= 4,
             "Summary title blocks and header band carry merged cells "
             "(count={})".format(merge_counts)
         )
 
         check(
-            "<f>SUMIF(Beam!$H$7:$H$8," in site_summary_xml,
-            "Summary level rows use live SUMIF against the Beam detail"
-        )
-
-        check(
-            ">Level 1<" in site_summary_xml
-            and ">Level 2<" in site_summary_xml,
-            "Summary lists every exported level as SUMIF criteria"
+            ">BEAM<" in site_summary_xml
+            and ">2<" in site_summary_xml,
+            "Summary lists each populated category with its element count"
         )
 
         site_beam_xml = site_archive.read(
@@ -943,15 +896,16 @@ def main():
 
         check(
             '<mergeCell ref="A5:A6"/>' in site_beam_xml
-            and '<mergeCell ref="C5:E5"/>' in site_beam_xml
-            and '<mergeCell ref="F5:G5"/>' in site_beam_xml,
-            "Detail sheet merges SIZE/QTY groups and single-column "
-            "vertical headers exactly like the manual layout"
+            and '<mergeCell ref="B5:B6"/>' in site_beam_xml,
+            "Detail sheet vertically merges SNO/MARK header cells "
+            "(selection-only layout)"
         )
 
         check(
-            "<f>SUM(F7:F8)</f>" in site_beam_xml,
-            "Detail TOTAL row sums the element VOLUME values"
+            ">B1<" in site_beam_xml and ">B2<" in site_beam_xml
+            and "<f>" not in site_beam_xml,
+            "Detail element rows carry selected MARK values and no "
+            "auto-sum formulas"
         )
 
         site_styles_xml = site_archive.read(

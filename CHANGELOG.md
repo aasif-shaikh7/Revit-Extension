@@ -47,6 +47,13 @@ VOLUME + SHUTTERING columns, level-wise front Summary).
   DESCRIPTION cell is gone; column widths adapt to the parameter count;
   dimension feeds switched to unrounded `_site_dim_value` so MM sizes can
   never drift (6.096 m must print 6096, not 6100).
+- **Owner feedback round 3 (2026-08-27):** the site workbook now exports
+  ONLY the parameters the user ticked in the UI. Every detail sheet is
+  `SNO` + one column per selected parameter (UI order preserved); the
+  automatic `SIZE (MM) L/B/D`, `VOLUME`, `SHUTTERING` and `LEVEL` columns
+  and the SUM totals row are removed. Because no quantitative feed remains,
+  the front `Summary` becomes a simple per-category element-count cover
+  (`SNO | CATEGORY | ELEMENTS`) instead of the level-vs-concrete SUMIF grid.
 - **Brand pass `docs/reference/brand-guidelines.md` (2026-08-27):** the
   exported workbook drops Revit's own blue and applies the **Ember** accent
   ramp (header fill `F2994A`, band tint `FCE8D5`, sub-band `FFF0E3`) declared

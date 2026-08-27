@@ -134,6 +134,12 @@ Dispatch sits behind `site_format_flag = True`; classic workbook stays as rollba
 mechanically validated free of degenerate/duplicate/overlapping spans; DESCRIPTION now follows
 exactly the parameters selected per category (UI selection order kept) with one column per selected parameter plus adaptive widths;
 full thin-border box applied to band, data and TOTAL cells.
+**Fixed (owner feedback round 3):** the site workbook now exports ONLY the
+parameters the user selected in the UI — each detail sheet is `SNO` + one
+column per selected parameter, with the automatic `SIZE (MM) L/B/D`,
+`VOLUME`, `SHUTTERING` and `LEVEL` columns and the SUM totals row removed;
+the front `Summary` is reduced to a simple per-category element-count cover
+(`SNO | CATEGORY | ELEMENTS`) since no quantitative feed remains.
 **Tested (harness):** full suite green — shuttering rules, dim fallbacks, level ordering,
 param-driven description format, SUMIF criteria, merge-span integrity (zero bad spans),
 bordered-grid styles and XML parts all pass; `script.py` compiles clean under CPython 3.12.

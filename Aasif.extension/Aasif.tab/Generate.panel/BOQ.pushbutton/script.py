@@ -3579,20 +3579,21 @@ def _site_desc_text(value):
 
 def build_site_detail_sheet(category_name, rows, project_name):
     """
-    Site detail sheet, selection-driven columns (v1.4.1).
+    Site detail sheet, selection-only columns.
 
-    Every user-selected parameter gets its OWN column between SNO and
-    the SIZE (MM) group; the old pipe-joined DESCRIPTION column is
-    gone. Parameters and their order come straight from the exported
-    row keys, so the sheet always mirrors the checkbox UI.
+    Shows exactly the parameters the user ticked in the UI - nothing
+    else. Every selected parameter gets its OWN column after SNO; the
+    automatic SIZE (MM) / VOLUME / SHUTTERING / LEVEL columns and the
+    SUM totals row are gone, so the sheet mirrors the checkbox
+    selection cleanly.
 
-    Layout: rows 1-3 merged title block, row 4 spacer,
-    rows 5/6 two-tier band, row 7+ one row per element, closing with a
-    bold TOTAL row holding live SUM formulas over VOLUME / SHUTTERING.
+    Layout: rows 1-3 merged title block, row 4 spacer, rows 5/6
+    two-tier band (each header vertically merged), row 7+ one row per
+    element with SNO followed by the selected values in UI order.
 
-    meta carries the dynamic column letters + widths so the front
-    Summary SUMIF formulas and the sheet writer stay aligned for any
-    number of parameters.
+    meta carries the dynamic widths (per parameter count); it no
+    longer exposes VOLUME/SHUTTERING column letters or a LEVEL feed,
+    so the front Summary stays a simple element-count cover.
     """
     data_rows = rows or []
 
@@ -3612,17 +3613,7 @@ def build_site_detail_sheet(category_name, rows, project_name):
                 continue
             param_names.append(key_text)
 
-    size_l_col = 2 + len(param_names)
-    size_b_col = size_l_col + 1
-    size_d_col = size_b_col + 1
-    vol_col = size_d_col + 1
-    shut_col = vol_col + 1
-    level_col = shut_col + 1
-    total_cols = level_col
-
-    vol_letter = xlsx_column_name(vol_col)
-    shut_letter = xlsx_column_name(shut_col)
-    level_letter = xlsx_column_name(level_col)
+    total_cols = 1 + len(param_names)
 
     def merge_vertical(label):
         return ("MERGE_V", label)
@@ -3632,16 +3623,7 @@ def build_site_detail_sheet(category_name, rows, project_name):
     for param_name in param_names:
         band_one.append(merge_vertical(str(param_name).upper()))
 
-    band_one.extend(["SIZE (MM)", "", "", "QTY", "",
-                     merge_vertical("LEVEL")])
-
-    band_two = [""]
-
-    for _unused in param_names:
-        band_two.append("")
-
-    band_two.extend(["L", "B", "D", "VOLUME (m3)",
-                     "SHUTTERING (SQM)", ""])
+    band_two = ["" for _band_cell in param_names]
 
     table = [
         [str(project_name or "")],
@@ -3655,13 +3637,6 @@ def build_site_detail_sheet(category_name, rows, project_name):
     item_number = 1
 
     for row in data_rows:
-
-        dims = resolve_element_dimensions(
-            category_name,
-            length_m=_site_dim_value(row, "Qty: Dim L (m)") or "",
-            width_m=_site_dim_value(row, "Qty: Dim W (m)") or "",
-            height_m=_site_dim_value(row, "Qty: Dim H (m)") or ""
-        )
 
         out_values = [item_number]
 
@@ -3686,51 +3661,17 @@ def build_site_detail_sheet(category_name, rows, project_name):
 
             out_values.append(display_value)
 
-        out_values.extend([
-            meters_to_millimeters(dims["length"]),
-            meters_to_millimeters(dims["width"]),
-            meters_to_millimeters(dims["height"]),
-            _site_numeric(row, "Qty: Volume (m3)"),
-            _site_numeric(row, "Qty: Shuttering (m2)"),
-            _site_cell_value(row, "Level")
-        ])
-
         table.append(out_values)
         item_number += 1
 
-    last_data_row = len(table)
-
-    total_values = ["TOTAL"]
-
-    for _pad in range(total_cols - 1):
-        total_values.append("")
-
-    total_values[vol_col - 1] = (
-        "FORMULA",
-        "=SUM({0}{1}:{0}{2})".format(
-            vol_letter, SITE_DETAIL_DATA_START_ROW, last_data_row)
-    )
-    total_values[shut_col - 1] = (
-        "FORMULA",
-        "=SUM({0}{1}:{0}{2})".format(
-            shut_letter, SITE_DETAIL_DATA_START_ROW, last_data_row)
-    )
-
-    table.append(total_values)
-
     meta = {
-        "columns": {
-            "Volume (m3)": vol_letter,
-            "Shuttering (m2)": shut_letter
-        },
-        "level_col": level_letter,
+        "columns": {},
+        "level_col": "",
         "total_row": len(table),
         "data_start": SITE_DETAIL_DATA_START_ROW,
-        "data_end": last_data_row,
+        "data_end": len(table),
         "elements": len(data_rows),
-        "widths": ([7]
-                   + [18 for _name in param_names]
-                   + [9, 9, 9, 12, 15, 14]),
+        "widths": [7] + [18 for _name in param_names],
         "param_columns": list(param_names)
     }
 
@@ -3776,168 +3717,42 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
         "Foundation": "FOUNDATION"
     }
 
-    # Column plan: A=LEVEL B=ITEM, then two columns per category,
-    # then the trailing TOTAL pair.
-    category_columns = {}
-
-    next_column = 3
-
-    for category_name in present_categories:
-
-        category_columns[category_name] = {
-            "volume": next_column,
-            "shuttering": next_column + 1
-        }
-
-        next_column += 2
-
-    total_volume_column = next_column
-    total_shuttering_column = next_column + 1
-    total_columns = total_shuttering_column
-
+    # Simple per-category element-count summary. The detail sheets
+    # now carry only the user-selected parameters (no VOLUME /
+    # SHUTTERING / LEVEL), so this cover reports how many elements
+    # each category contributed instead of the old level grid.
     out_rows = [
         [str(project_name or "")],
         ["RCC - CONCRETE FINISHING BOQ"],
-        ["ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING"],
+        ["ITEM-WISE SUMMARY"],
         [],
+        [("MERGE_V", "SNO"), "CATEGORY", "ELEMENTS"],
+        ["", "", ""],
     ]
 
-    band_one = [("MERGE_V", "LEVEL"), ("MERGE_V", "ITEM")]
-    band_two = ["", ""]
+    item_number = 1
 
     for category_name in present_categories:
 
-        band_one.extend([header_label_map[category_name], ""])
-        band_two.extend(["VOL (m3)", "SHUT (sqm)"])
+        category_meta = site_detail_meta.get(category_name, {})
 
-    band_one.extend(["TOTAL (m3)", "TOTAL (sqm)"])
-    band_two.extend(["", ""])
-
-    out_rows.append(band_one[:total_columns])
-    out_rows.append(band_two[:total_columns])
-
-    # Consolidate levels preserving export order, then natural-sort.
-    ordered_levels = {}
-    level_order = []
-
-    for category_name in present_categories:
-
-        for row in (data_result.get(category_name) or []):
-
-            level_key = _site_cell_value(row, "Level") or \
-                "(UNSET LEVEL)"
-
-            if level_key not in ordered_levels:
-                ordered_levels[level_key] = True
-                level_order.append(level_key)
-
-    level_order.sort(key=_site_sort_key)
-
-    for level_key in level_order:
-
-        criteria = '"{0}"'.format(level_key)
-
-        volume_letters = []
-        shuttering_letters = []
-
-        row_cells = []
-
-        for category_name in present_categories:
-
-            category_meta = site_detail_meta.get(category_name, {})
-
-            data_start = category_meta.get("data_start", 7)
-            data_end = category_meta.get("data_end", 7)
-
-            level_letter = category_meta.get("level_col", "H")
-            volume_letter = category_meta.get(
-                "columns", {}
-            ).get("Volume (m3)", "F")
-            shuttering_letter = category_meta.get(
-                "columns", {}
-            ).get("Shuttering (m2)", "G")
-
-            level_range = "{0}!${1}${2}:${1}${3}".format(
-                category_name,
-                level_letter,
-                data_start,
-                data_end
-            )
-
-            value_range_template = "{0}!${1}${2}:${1}${3}"
-
-            row_cells.append(
-                (
-                    "FORMULA",
-                    "SUMIF({0},{1},{2})".format(
-                        level_range,
-                        criteria,
-                        value_range_template.format(
-                            category_name,
-                            volume_letter,
-                            data_start,
-                            data_end
-                        )
-                    )
-                )
-            )
-
-            row_cells.append(
-                (
-                    "FORMULA",
-                    "SUMIF({0},{1},{2})".format(
-                        level_range,
-                        criteria,
-                        value_range_template.format(
-                            category_name,
-                            shuttering_letter,
-                            data_start,
-                            data_end
-                        )
-                    )
-                )
-            )
-
-            volume_letters.append(
-                xlsx_column_name(
-                    category_columns[category_name]["volume"]
-                )
-            )
-            shuttering_letters.append(
-                xlsx_column_name(
-                    category_columns[category_name]["shuttering"]
-                )
-            )
-
-        output_row_number = len(out_rows) + 1
-
-        volume_reference = ",".join(
-            "{0}{1}".format(letter, output_row_number)
-            for letter in volume_letters
+        out_rows.append(
+            [
+                item_number,
+                header_label_map[category_name],
+                category_meta.get("elements", 0)
+            ]
         )
 
-        shuttering_reference = ",".join(
-            "{0}{1}".format(letter, output_row_number)
-            for letter in shuttering_letters
-        )
-
-        row_cells.append(("FORMULA", "SUM({0})".format(volume_reference)))
-        row_cells.append(("FORMULA", "SUM({0})".format(shuttering_reference)))
-
-        display_level = "" if level_key == "(UNSET LEVEL)" \
-            else level_key
-
-        out_rows.append([display_level, ""] + row_cells)
+        item_number += 1
 
     meta = {
         "present_categories": present_categories,
-        "columns": dict(category_columns),
-        "total_volume_column": total_volume_column,
-        "total_shuttering_column": total_shuttering_column,
-        "total_columns": total_columns,
+        "columns": {},
+        "total_columns": 3,
         "bands": (5, 6),
         "grid_start": 7,
-        "levels": level_order
+        "levels": []
     }
 
     return (out_rows, meta)
@@ -3955,10 +3770,10 @@ def write_site_xlsx(file_path, data_result, project_name="",
       Summary                - level-wise CONCRETE / SHUTTERING grid
       Beam / Column / Slab /
       Foundation             - one detail sheet per populated category
-                               with title blocks, SIZE (MM) columns,
-                               VOLUME + SHUTTERING figures and a live
-                               TOTAL row; the LEVEL column stays as a
-                               plain rightmost feed for the SUMIFs.
+                               with title blocks and one column per
+                               user-selected parameter (no automatic
+                               SIZE / VOLUME / SHUTTERING / LEVEL
+                               columns and no SUM totals row).
 
     Returns a plain {sheet_name: table} mapping (identical contract to
     write_basic_xlsx) covering Summary plus every populated category.
@@ -3992,7 +3807,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
         sheet_rows[category_name] = table
 
-        sheet_widths[category_name] = meta.get("widths") or [7, 18, 9, 9, 9, 12, 15, 14]
+        sheet_widths[category_name] = meta.get("widths") or [7, 18]
 
         sheet_meta[category_name] = {
             "kind": "detail",
@@ -4023,12 +3838,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
     total_columns = summary_meta.get("total_columns", 3)
 
-    summary_widths = [16, 18]
+    summary_widths = [7, 24, 10]  # SNO | CATEGORY | ELEMENTS cover
 
-    for _category in summary_meta.get("present_categories", []):
-        summary_widths.extend([11, 11])
-
-    summary_widths.extend([11, 11])
 
     sheet_rows["Summary"] = summary_table
 
