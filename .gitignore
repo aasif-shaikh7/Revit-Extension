@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+
+# Local throwaway output of the regression harness
+_boq_writer_test.xlsx

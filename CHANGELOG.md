@@ -22,6 +22,36 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — v1.4.0 site-format export: manual site look + formwork (SHUTTERING) — P3 increment
+
+**New feature (unreleased; code `v1.4.0`, tag pending).** Reproduces the hand-made site BOQ that the
+owner supplied as screenshots (title blocks, light-blue two-tier headers, MM sizes,
+VOLUME + SHUTTERING columns, level-wise front Summary).
+
+- **Formwork engine (P3, first slice)** — `compute_shuttering_area`: Column `2(L+W)H`,
+  Beam `(W+2H)L`, Slab soffit = plan area, Foundation footing sides `2(L+W)H`. Dimensions resolve in
+  `resolve_element_dimensions` (parameters Width/Depth/Height/Thickness with bounding-box fallback);
+  element rows carry `Qty: Dim L/W/H (m)` and `Qty: Shuttering (m2)`.
+- **Site-format workbook writer** (`write_site_xlsx` + `build_xlsx_sheet_xml_site`): merged title
+  blocks per sheet, two-tier banded headers (SIZE MM / QTY groups, `mergeCells`), whole-millimetre
+  integer columns, VOLUME/SHUTTERING figures, bordered TOTAL rows with live SUMs, gridlines off,
+  panes frozen below the header band. Front `Summary` = LEVEL × category grid with live SUMIF
+  formulas against each detail sheet's hidden LEVEL column, closing with TOTAL m3/sqm pairs.
+- **Switch:** `site_format_flag = True` selects the site writer at export time; the classic
+  (v1.3.0-style) workbook remains available as rollback via `write_basic_xlsx(site_format=False)` —
+  which itself now honours the flag when called directly.
+- Version bumped to **1.4.0** (`__version__` + `SCRIPT_VERSION`).
+
+**Tested (harness).** `python test_xlsx_writer.py` passes every check end-to-end: shuttering rules
+per category, dimension fallbacks, natural level sort, detail/summary builders (`MERGE_V` markers,
+MM integers, `ITEM <mark> | W X L` descriptions), mergeCells part, live SUMIF/SUM wiring, site +
+classic workbook XML validity, styles. `script.py` also compiles clean under CPython 3.12.
+
+**Not yet released.** Live Revit confirmation on CP3123 still required before tagging; `v1.3.0`
+remains tag-pending as well.
+
+---
+
 ## [Unreleased] — Professional output: Summary cover + site naming convention (code v1.3.0, tag pending)
 
 **New feature (P13-direction, first increment).**

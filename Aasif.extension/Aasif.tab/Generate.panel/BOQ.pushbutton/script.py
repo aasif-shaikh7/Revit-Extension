@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.3.0'
+__version__ = '1.4.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,13 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.3.0'
+SCRIPT_VERSION = '1.4.0'
+
+# v1.4.0 site-format export switch. When True the export produces the
+# manual site-style workbook (title blocks, MM dimension columns,
+# VOLUME + SHUTTERING, level-wise front Summary). When False the legacy
+# classic workbook is produced (kept as a rollback path).
+site_format_flag = True
 
 selected_parameters = {
     "Beam": [],
@@ -945,6 +951,195 @@ def read_metric_parameter(element, name_hint):
         return ""
 
 
+def meters_to_millimeters(meter_value):
+    """
+    Convert a metre value (float or numeric string) to whole millimetres.
+
+    Returns an int, or "" when the input is empty/non-numeric so the
+    destination cell can stay blank instead of failing the export.
+    """
+    if meter_value in ("", None):
+        return ""
+
+    try:
+        return int(round(float(meter_value) * 1000.0))
+    except:
+        return ""
+
+
+def build_section_description(length_m, width_m):
+    """
+    Build the site-style cross-section description string from metric
+    dimensions, mirroring entries like "150 X 3130" in the manual BOQ.
+
+    Format is WIDTH X LENGTH in millimetres. Returns "" when either
+    dimension is missing so the cell stays blank.
+    """
+    length_mm = meters_to_millimeters(length_m)
+    width_mm = meters_to_millimeters(width_m)
+
+    if length_mm == "" or width_mm == "":
+        return ""
+
+    return "{0} X {1}".format(width_mm, length_mm)
+
+
+def resolve_element_dimensions(
+        category_name,
+        length_m="",
+        width_m="",
+        height_m="",
+        depth_m="",
+        thickness_m="",
+        bbox_length_m="",
+        bbox_width_m="",
+        bbox_height_m=""):
+    """
+    P3/site-format: resolve one element's Length / Width / Height in
+    metres from every available dimension source, deterministically.
+
+    Source priority per category:
+      Beam       : L = calculated length | bbox long side
+                   W = Width | bbox short side
+                   H = Depth | Height | bbox vertical side
+      Column     : H = Height | bbox vertical side
+                   section pair = (Width x Depth) | bbox pair, sorted so
+                   W <= L exactly like the manual sheet lists them
+      Slab /
+      Foundation : H = Thickness | bbox vertical side
+                   plan pair from bbox sides
+
+    Never throws; missing dimensions come back as "" and the matching
+    columns simply stay blank/pruned.
+    """
+    def first_available(*candidates):
+        for candidate in candidates:
+            if candidate not in ("", None):
+                try:
+                    return float(candidate)
+                except:
+                    return candidate
+        return ""
+
+    def sorted_pair(first_value, second_value):
+        if first_value in ("", None) or second_value in ("", None):
+            return ""
+        try:
+            low = min(float(first_value), float(second_value))
+            high = max(float(first_value), float(second_value))
+            return (low, high)
+        except:
+            return ""
+
+    result = {"length": "", "width": "", "height": ""}
+
+    if category_name == "Beam":
+
+        result["length"] = first_available(length_m, bbox_length_m)
+        result["width"] = first_available(width_m, bbox_width_m)
+        result["height"] = first_available(
+            depth_m, height_m, bbox_height_m
+        )
+
+    elif category_name == "Column":
+
+        result["height"] = first_available(height_m, bbox_height_m)
+
+        section_pair = sorted_pair(width_m, depth_m)
+
+        if section_pair != "":
+            result["width"] = round(section_pair[0], 4)
+            result["length"] = round(section_pair[1], 4)
+        else:
+            bbox_pair = sorted_pair(bbox_width_m, bbox_length_m)
+
+            if bbox_pair != "":
+                result["width"] = round(bbox_pair[0], 4)
+                result["length"] = round(bbox_pair[1], 4)
+
+    else:
+
+        # Slab / Foundation: vertical dimension is the thickness, the
+        # plan pair comes from the bounding box footprint.
+        result["height"] = first_available(thickness_m, bbox_height_m)
+
+        plan_pair = sorted_pair(bbox_width_m, bbox_length_m)
+
+        if plan_pair != "":
+            result["width"] = round(plan_pair[0], 4)
+            result["length"] = round(plan_pair[1], 4)
+
+    for key in ("length", "width", "height"):
+        try:
+            result[key] = round(float(result[key]), 4)
+        except:
+            result[key] = ""
+
+    return result
+
+
+def compute_shuttering_area(
+        category_name,
+        length_m="",
+        width_m="",
+        height_m="",
+        area_m2=""):
+    """
+    P3/site-format formwork (SHUTTERING) rules, deterministic and pure.
+
+      Column     : perimeter of the four sides x height
+                   = 2 * (L + W) * H
+      Beam       : soffit width plus two side faces along the length
+                   = (W + 2 * H) * L
+      Slab       : soffit contact area = plan area
+      Foundation : footing side faces = 2 * (L + W) * H
+
+    Returns the area rounded to 2 decimals, or "" when the dimensions
+    required by the rule are unavailable so the cell stays blank.
+    """
+    def to_float(value):
+        try:
+            return float(value)
+        except:
+            return None
+
+    if category_name == "Slab":
+
+        area_value = to_float(area_m2)
+
+        if area_value is not None and area_value > 0:
+            return round(area_value, 2)
+
+        return ""
+
+    length_value = to_float(length_m)
+    width_value = to_float(width_m)
+    height_value = to_float(height_m)
+
+    if height_value is None:
+        return ""
+
+    if length_value is None or width_value is None:
+        return ""
+
+    if category_name == "Column":
+        shuttering = 2.0 * (length_value + width_value) * height_value
+
+    elif category_name == "Beam":
+        shuttering = (width_value + 2.0 * height_value) * length_value
+
+    elif category_name == "Foundation":
+        shuttering = 2.0 * (length_value + width_value) * height_value
+
+    else:
+        return ""
+
+    if shuttering <= 0:
+        return ""
+
+    return round(shuttering, 2)
+
+
 def get_element_quantities(element, element_name=""):
     """
     Collect quantity takeoff values for one element, category-aware.
@@ -1026,21 +1221,88 @@ def get_element_quantities(element, element_name=""):
             )
         )
 
-    # P1: per-category parameter dimension (pruned automatically when "")
+    # P3/site-format: collect the raw dimension sources once, resolve them
+    # into L/W/H metres, then derive the SHUTTERING formwork area. The
+    # pure decision logic lives in resolve_element_dimensions /
+    # compute_shuttering_area so the harness can test it without Revit.
+    param_width = read_metric_parameter(element, "Width")
+    param_depth = read_metric_parameter(element, "Depth")
+
+    param_height = ""
+    param_thickness = ""
+
     if element_name == "Column":
-        results.append(
-            (
-                "Qty: Height (m)",
-                read_metric_parameter(element, "Height")
-            )
-        )
+
+        param_height = read_metric_parameter(element, "Height")
+        results.append(("Qty: Height (m)", param_height))
+
     elif element_name in ("Slab", "Foundation"):
-        results.append(
-            (
-                "Qty: Thickness (m)",
-                read_metric_parameter(element, "Thickness")
+
+        param_thickness = read_metric_parameter(element, "Thickness")
+        results.append(("Qty: Thickness (m)", param_thickness))
+
+    bbox_long = bbox_short = bbox_vertical = ""
+
+    try:
+        bbox = element.get_BoundingBox(None)
+
+        if bbox is not None:
+            delta_x = abs(bbox.Max.X - bbox.Min.X)
+            delta_y = abs(bbox.Max.Y - bbox.Min.Y)
+
+            bbox_long = convert_quantity_value(
+                max(delta_x, delta_y),
+                "length"
             )
-        )
+            bbox_short = convert_quantity_value(
+                min(delta_x, delta_y),
+                "length"
+            )
+            bbox_vertical = convert_quantity_value(
+                abs(bbox.Max.Z - bbox.Min.Z),
+                "length"
+            )
+    except:
+        bbox_long = bbox_short = bbox_vertical = ""
+
+    calculated_length = ""
+    calculated_area = ""
+
+    for label, stored_value in results:
+
+        if label == "Qty: Length (m)":
+            calculated_length = stored_value
+        elif label == "Qty: Area (m2)":
+            calculated_area = stored_value
+
+    element_dims = resolve_element_dimensions(
+        element_name,
+        length_m=calculated_length,
+        width_m=param_width,
+        height_m=param_height,
+        depth_m=param_depth,
+        thickness_m=param_thickness,
+        bbox_length_m=bbox_long,
+        bbox_width_m=bbox_short,
+        bbox_height_m=bbox_vertical
+    )
+
+    shuttering_area = compute_shuttering_area(
+        element_name,
+        length_m=element_dims.get("length", ""),
+        width_m=element_dims.get("width", ""),
+        height_m=element_dims.get("height", ""),
+        area_m2=calculated_area
+    )
+
+    results.extend(
+        [
+            ("Qty: Dim L (m)", element_dims.get("length", "")),
+            ("Qty: Dim W (m)", element_dims.get("width", "")),
+            ("Qty: Dim H (m)", element_dims.get("height", "")),
+            ("Qty: Shuttering (m2)", shuttering_area)
+        ]
+    )
 
     # P1: every element row counts once; TOTAL row sums to element count
     results.append(
@@ -1442,6 +1704,17 @@ STYLE_NUMBER = 2
 STYLE_TOTAL_TEXT = 3
 STYLE_TOTAL_NUMBER = 4
 
+# Site-format (v1.4.0) style indexes appended in the same cellXfs list.
+STYLE_SITE_TITLE = 5
+STYLE_SITE_META = 6
+STYLE_SITE_SUBTITLE = 7
+STYLE_SITE_BAND = 8
+STYLE_SITE_SUBBAND = 9
+STYLE_SITE_NUM = 10
+STYLE_SITE_MM = 11
+STYLE_SITE_TOTAL_NUM = 12
+STYLE_SITE_TOTAL_TEXT = 13
+
 
 def xlsx_formula_cell(cell_ref, expression, style_index=None):
     """
@@ -1712,6 +1985,315 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
     )
 
 
+def build_xlsx_sheet_xml_site(rows, widths=None):
+    """
+    Render one worksheet in the v1.4.0 site format.
+
+    Differences from the classic writer:
+      - Rows 1-3 form the merged title block (project / workbook /
+        section caption) and receive the dedicated site styles.
+      - Rows 5-6 are the two-tier header band. Cells carrying a
+        ("MERGE_V", label) tuple are vertically merged onto the band
+        pair; plain labels followed by empty cells are horizontally
+        merged across their group width. Both tiers get the light-blue
+        band styles and thin borders.
+      - Element rows: integers render through the right-aligned MM
+        style (no thousand separators, mirroring manual millimetre
+        lists), floats use the #,##0.00 style; the trailing TOTAL row
+        reuses the bold grey totals styles. ("FORMULA", ...) and
+        ("REF", ...) tuples become live formulas.
+      - A mergeCells part collects every span; panes freeze below the
+        header band and no auto-filter is emitted (merges would fight
+        it).
+
+    widths: optional per-column width overrides (list, 1-based order).
+    """
+    total_row_index = len(rows)
+
+    merged_spans = []
+
+    # Fixed layout contract shared by detail and Summary builders.
+    title_rows = (1, 2, 3)
+    band_rows = SITE_DETAIL_BAND_ROWS
+
+    max_columns = max(
+        [len(values) for values in rows] + [1]
+    )
+
+    row_xml = []
+
+    for row_number, values in enumerate(rows, 1):
+
+        cells = []
+
+        is_title = row_number in title_rows
+        is_band = row_number == band_rows[0]
+        is_subband = row_number == band_rows[1]
+
+        last_has_formula_marker = False
+
+        if row_number == total_row_index:
+
+            for candidate in values:
+                if isinstance(candidate, tuple):
+                    last_has_formula_marker = True
+                    break
+
+        first_is_total_label = False
+
+        try:
+            first_is_total_label = (
+                not isinstance(values[0], tuple)
+                and str(values[0])[:5] == "TOTAL"
+            )
+        except:
+            first_is_total_label = False
+
+        is_total = (
+            row_number > band_rows[1] + 1
+            and (
+                first_is_total_label or last_has_formula_marker
+            )
+        )
+
+        for column_number, value in enumerate(values, 1):
+
+            cell_ref = "{0}{1}".format(
+                xlsx_column_name(column_number),
+                row_number
+            )
+
+            style_index = None
+
+            if is_title:
+                style_index = (
+                    STYLE_SITE_TITLE if row_number == 1
+                    else STYLE_SITE_META if row_number == 2
+                    else STYLE_SITE_SUBTITLE
+                )
+            elif is_band:
+                style_index = STYLE_SITE_BAND
+            elif is_subband:
+                style_index = STYLE_SITE_SUBBAND
+            elif is_total:
+                style_index = (
+                    STYLE_SITE_TOTAL_NUM
+                    if try_export_as_number(value)
+                    else STYLE_SITE_TOTAL_TEXT
+                )
+
+            if (
+                isinstance(value, tuple)
+                and len(value) == 2
+                and value[0] in ("FORMULA", "REF")
+            ):
+
+                if style_index is None:
+                    style_index = STYLE_SITE_NUM
+
+                cells.append(
+                    xlsx_formula_cell(
+                        cell_ref,
+                        value[1],
+                        style_index
+                    )
+                )
+                continue
+
+            if (
+                isinstance(value, tuple)
+                and len(value) == 2
+                and value[0] == "MERGE_V"
+            ):
+
+                merged_spans.append((row_number, column_number))
+
+                cells.append(
+                    xlsx_cell(cell_ref, value[1], style_index)
+                )
+                continue
+
+            if style_index is None:
+
+                if isinstance(value, bool):
+                    style_index = None
+                elif isinstance(value, int):
+                    style_index = STYLE_SITE_MM
+                elif isinstance(value, float):
+                    style_index = STYLE_SITE_NUM
+
+            cells.append(
+                xlsx_cell(cell_ref, value, style_index)
+            )
+
+        row_xml.append(
+            '<row r="{0}">{1}</row>'.format(row_number, "".join(cells))
+        )
+
+    return _finish_site_sheet(
+        rows,
+        row_xml,
+        merged_spans,
+        band_rows,
+        title_rows,
+        total_row_index,
+        max_columns,
+        widths
+    )
+
+
+def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
+                       title_rows, total_row_index, max_columns,
+                       widths):
+    """
+    Finish the site worksheet: collect merge spans and emit the final
+    worksheet XML. Kept separate so the cell loop stays readable.
+    """
+    unused = (total_row_index,)
+
+    # Title block rows merge across every produced column.
+    for title_row in title_rows:
+        if title_row <= len(rows) and max_columns > 1:
+            merged_spans.append(
+                (title_row, 1, title_row, max_columns)
+            )
+
+    # Band row horizontal groups plus vertical continuations.
+    band_values = (
+        rows[band_rows[0] - 1]
+        if band_rows[0] - 1 < len(rows)
+        else []
+    )
+
+    column_cursor = 1
+
+    while column_cursor <= len(band_values):
+
+        band_value = band_values[column_cursor - 1]
+
+        if band_value in ("", None):
+            column_cursor += 1
+            continue
+
+        group_start = column_cursor
+        group_end = column_cursor
+
+        while (
+            group_end + 1 <= len(band_values)
+            and band_values[group_end] in ("", None)
+        ):
+            group_end += 1
+
+        if group_end > group_start:
+            merged_spans.append(
+                (band_rows[0], group_start,
+                 band_rows[0], group_end)
+            )
+
+        if isinstance(band_value, tuple):
+            merged_spans.append(
+                (band_rows[0], group_start,
+                 band_rows[1], group_start)
+            )
+
+        column_cursor = group_end + 1
+
+    unique_spans = []
+    seen_spans = set()
+
+    for span in merged_spans:
+
+        if len(span) == 2:
+            span = (span[0], span[1], span[0], span[1])
+
+        if span in seen_spans:
+            continue
+
+        seen_spans.add(span)
+        unique_spans.append(span)
+
+    merge_xml = ""
+
+    if unique_spans:
+
+        merge_parts = []
+
+        for span in unique_spans:
+
+            start_ref = "{0}{1}".format(
+                xlsx_column_name(span[1]),
+                span[0]
+            )
+            end_ref = "{0}{1}".format(
+                xlsx_column_name(span[3]),
+                span[2]
+            )
+
+            merge_parts.append(
+                '<mergeCell ref="{0}:{1}"/>'.format(
+                    start_ref,
+                    end_ref
+                )
+            )
+
+        merge_xml = '<mergeCells count="{0}">{1}</mergeCells>'.format(
+            len(unique_spans),
+            "".join(merge_parts)
+        )
+
+    column_xml_parts = []
+
+    for column_number in range(1, max_columns + 1):
+
+        width_value = 14
+
+        try:
+            if widths and column_number <= len(widths):
+                width_value = widths[column_number - 1]
+        except:
+            width_value = 14
+
+        if width_value < 6:
+            width_value = 6
+        if width_value > 60:
+            width_value = 60
+
+        column_xml_parts.append(
+            '<col min="{0}" max="{0}" width="{1}" customWidth="1"/>'.format(
+                column_number,
+                width_value
+            )
+        )
+
+    dimension = "A1:{0}{1}".format(
+        xlsx_column_name(max_columns),
+        len(rows) or 1
+    )
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/'
+        'spreadsheetml/2006/main">'
+        '<dimension ref="{0}"/>'
+        '<sheetViews>'
+        '<sheetView workbookViewId="0" showGridLines="0">'
+        '<pane ySplit="{1}" topLeftCell="A{2}" '
+        'activePane="bottomLeft" state="frozen"/>'
+        '</sheetView>'
+        '</sheetViews>'
+        '<sheetFormatPr defaultRowHeight="15"/>'
+        '<cols>{3}</cols>'
+        '<sheetData>{4}</sheetData>'
+        '{5}'
+        '</worksheet>'
+    ).format(
+        dimension,
+        band_rows[1],
+        band_rows[1] + 1,
+        "".join(column_xml_parts),
+        "".join(row_xml),
+        merge_xml
+    )
 def build_xlsx_styles_xml():
     """
     Workbook styles used by the export engine:
@@ -1731,25 +2313,37 @@ def build_xlsx_styles_xml():
         '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
         '<font><b/><sz val="11"/><name val="Calibri"/></font>'
         '</fonts>'
-        '<fills count="4">'
+        '<fills count="6">'
         '<fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FF305496"/><bgColor indexed="64"/></patternFill></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFBDD7EE"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/><bgColor indexed="64"/></patternFill></fill>'
         '</fills>'
-        '<borders count="2">'
+        '<borders count="3">'
         '<border><left/><right/><top/><bottom/><diagonal/></border>'
         '<border><left/><right/><top><style>thin</style></top><bottom/><diagonal/></border>'
+        '<border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border>'
         '</borders>'
         '<cellStyleXfs count="1">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'
         '</cellStyleXfs>'
-        '<cellXfs count="5">'
+        '<cellXfs count="14">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
         '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
         '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
         '<xf numFmtId="4" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="5" borderId="2" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+        '<xf numFmtId="4" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+        '<xf numFmtId="4" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
         '</cellXfs>'
         '<cellStyles count="1">'
         '<cellStyle name="Normal" xfId="0" builtinId="0"/>'
@@ -2457,18 +3051,37 @@ def build_summary_cover_rows(
     return rows
 
 
+# ============================================================
+# SITE FORMAT (v1.4.0) - PURE BUILDERS
+# ============================================================
+
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
-                     project_name="", tool_version="", generated_stamp=""):
+                     project_name="", tool_version="", generated_stamp="",
+                     site_format=False):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
     inside the pyRevit IronPython environment.
 
-    The workbook contains one sheet per populated category (Beam, Column,
-    Slab, Foundation - empty categories are skipped), a BOQ Summary sheet
-    with live SUM formulas and a per-element Costing sheet when rate data
-    is available.
+    With site_format=True the workbook takes the v1.4.0 site format: a
+    front level-wise Summary plus one manual-site-style detail sheet per
+    populated category (merged title blocks, MM size columns,
+    VOLUME / SHUTTERING). When site_format=False the legacy classic
+    layout (one sheet per category, BOQ Summary, BOQ by Level, Costing)
+    is produced instead.
     """
+    # v1.4.0: honour the format switch here too so both the export
+    # dispatch and any direct callers share one behaviour.
+    if site_format:
+
+        return write_site_xlsx(
+            file_path,
+            data_result,
+            project_name=project_name,
+            tool_version=tool_version,
+            generated_stamp=generated_stamp
+        )
+
     # Only categories that actually contain at least one element produce a
     # sheet. Entirely empty tabs (e.g. an unused Slab category) are omitted
     # so the exported workbook stays free of blank worksheet tabs.
@@ -2810,6 +3423,596 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 
     os.rename(temp_path, file_path)
 
+    return sheet_rows
+
+
+# ============================================================
+# SITE FORMAT (v1.4.0) - PURE BUILDERS
+#
+# Reproduces the hand-made site BOQ look: merged title block rows,
+# a light-blue two-tier header grid, millimetre dimension columns,
+# VOLUME + SHUTTERING figures per element and a level-wise front
+# Summary. Pure and Revit-free so test_xlsx_writer.py exercises
+# the layout rules directly.
+# ============================================================
+
+# Manual category order drives sheet sequence everywhere below.
+SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")
+
+SITE_DETAIL_BAND_ROWS = (5, 6)
+SITE_DETAIL_DATA_START_ROW = 7
+
+
+def _site_sort_key(level_name):
+    """Natural sort: Level 2 sorts after Level 1."""
+
+    try:
+        level_text = str(level_name)
+    except:
+        level_text = ""
+
+    match = re.search(r"(\d+)", level_text)
+
+    number_part = int(match.group(1)) if match else 10 ** 9
+
+    return (number_part, level_text.lower())
+
+
+def _site_cell_value(row, key):
+    """Return a stripped string value from an element row, never None."""
+    try:
+        return str(row.get(key, "") or "").strip()
+    except:
+        return ""
+
+
+def _site_numeric(row, key):
+    """Return a rounded float or "" from one element-row column."""
+    try:
+        value = row.get(key, "")
+    except:
+        value = ""
+
+    if value in ("", None):
+        return ""
+
+    try:
+        return round(float(value), 2)
+    except:
+        return ""
+
+
+def _site_dim_value(row, key):
+    """
+    Return the UNROUNDED float of one dimension column, or "".
+
+    Dimensions must not be pre-rounded before millimetre conversion
+    (round(6.096, 2) -> 6.1 would shift the SIZE column to 6100 mm);
+    only the displayed VOLUME / SHUTTERING figures use 2 decimals.
+    """
+    try:
+        value = row.get(key, "")
+    except:
+        value = ""
+
+    if value in ("", None):
+        return ""
+
+    try:
+        return float(value)
+    except:
+        return ""
+
+
+def build_site_detail_sheet(category_name, rows, project_name):
+    """
+    Build one site-format detail table.
+
+    Layout (Excel rows are 1-based here):
+      Row 1 : project title                (writer merges A1:H1)
+      Row 2 : RCC - CONCRETE FINISHING BOQ (writer merges A2:H2)
+      Row 3 : <CATEGORY> DETAILS           (writer merges A3:H3)
+      Row 4 : blank spacer row
+      Row 5 : SNO | DESCRIPTION | SIZE (MM) | QTY | LEVEL  <- tier-1
+      Row 6 :             |  L |  B |   D  | VOLUME (m3) |
+              SHUTTERING (SQM)                             <- tier-2
+              (SNO / DESCRIPTION / LEVEL carry MERGE_V markers so the
+               writer vertically merges them onto rows 5:6)
+      Rows 7+: one row per element with MM integers plus VOLUME and
+               SHUTTERING numbers, closing with a bold bordered TOTAL
+               row holding live SUM formulas.
+
+    Column map: A=SNO B=DESCRIPTION C=L(mm) D=B(mm) E=D(mm) F=VOLUME(m3)
+    G=SHUTTERING(m2) H=LEVEL (feeds the Summary SUMIF formulas).
+
+    Returns (table, meta); meta carries the TOTAL-row bookkeeping the
+    Summary sheet needs (columns, total_row, data_end, elements).
+    """
+    data_rows = rows or []
+
+    table = [
+        [str(project_name or "")],
+        ["RCC - CONCRETE FINISHING BOQ"],
+        ["{0} DETAILS".format(category_name.upper())],
+        ["", "", "", "", "", "", "", ""],
+        [
+            ("MERGE_V", "SNO"),
+            ("MERGE_V", "DESCRIPTION"),
+            "SIZE (MM)",
+            "",
+            "",
+            "QTY",
+            "",
+            ("MERGE_V", "LEVEL")
+        ],
+        [
+            "", "",
+            "L", "B", "D",
+            "VOLUME (m3)",
+            "SHUTTERING (SQM)",
+            ""
+        ]
+    ]
+
+    item_number = 1
+
+    for row in data_rows:
+
+        # Rows arrive with engine-resolved dimensions (Qty: Dim *), so
+        # read them UNROUNDED here - rounding happens only on the shown
+        # VOLUME / SHUTTERING figures, never on the millimetre sizes.
+        length_value = _site_dim_value(row, "Qty: Dim L (m)")
+        width_value = _site_dim_value(row, "Qty: Dim W (m)")
+        height_value = _site_dim_value(row, "Qty: Dim H (m)")
+
+        length_mm = meters_to_millimeters(length_value)
+        width_mm = meters_to_millimeters(width_value)
+        height_mm = meters_to_millimeters(height_value)
+
+        description_parts = []
+
+        mark_text = ""
+
+        for mark_key in ("Mark", "Type Mark"):
+            candidate = _site_cell_value(row, mark_key)
+            if candidate:
+                mark_text = candidate
+                break
+
+        if mark_text:
+            description_parts.append("ITEM {0}".format(mark_text))
+
+        section_text = build_section_description(
+            length_value,
+            width_value
+        )
+
+        if section_text:
+            description_parts.append(section_text)
+
+        table.append(
+            [
+                item_number,
+                " | ".join(description_parts),
+                length_mm,
+                width_mm,
+                height_mm,
+                _site_numeric(row, "Qty: Volume (m3)"),
+                _site_numeric(row, "Qty: Shuttering (m2)"),
+                _site_cell_value(row, "Level")
+            ]
+        )
+
+        item_number += 1
+
+    last_data_row = len(table)
+
+    table.append(
+        [
+            "TOTAL",
+            "",
+            "", "", "",
+            ("FORMULA", "SUM(F7:F{0})".format(last_data_row)),
+            ("FORMULA", "SUM(G7:G{0})".format(last_data_row)),
+            ""
+        ]
+    )
+
+    meta = {
+        "columns": {
+            "Volume (m3)": "F",
+            "Shuttering (m2)": "G"
+        },
+        "level_col": "H",
+        "total_row": len(table),
+        "data_end": last_data_row,
+        "data_start": SITE_DETAIL_DATA_START_ROW,
+        "elements": len(data_rows)
+    }
+
+    return (table, meta)
+
+
+def build_site_summary_sheet(data_result, site_detail_meta, project_name):
+    """
+    Build the front Summary in the site format.
+
+    Layout (1-based Excel rows):
+      Row 1 : project                     (writer merges across width)
+      Row 2 : RCC - CONCRETE FINISHING BOQ
+      Row 3 : ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING
+      Row 4 : blank spacer row
+      Row 5 : LEVEL | ITEM | <category groups> | TOTAL m3 | TOTAL sqm
+              (band one; category names span their two columns)
+      Row 6 :                  | VOL (m3) | SHUT (sqm) | ...
+              (band two; LEVEL and ITEM are vertical merges)
+
+    Every exported category contributes one VOL / SHUT column pair.
+    Data rows hold live SUMIF formulas against each detail sheet's
+    hidden LEVEL column (H), restricted to that sheet's real data
+    rows, so Excel reconciles every figure against the model on load.
+    The trailing TOTAL pair sums the category columns horizontally.
+
+    Returns (summary_table, meta) where meta documents the produced
+    grid for the regression harness.
+    """
+    present_categories = [
+        category_name
+        for category_name in SITE_CATEGORY_ORDER
+        if category_name in site_detail_meta
+    ]
+
+    if not present_categories:
+        return ([], {})
+
+    header_label_map = {
+        "Beam": "BEAM",
+        "Column": "COLUMN",
+        "Slab": "SLAB",
+        "Foundation": "FOUNDATION"
+    }
+
+    # Column plan: A=LEVEL B=ITEM, then two columns per category,
+    # then the trailing TOTAL pair.
+    category_columns = {}
+
+    next_column = 3
+
+    for category_name in present_categories:
+
+        category_columns[category_name] = {
+            "volume": next_column,
+            "shuttering": next_column + 1
+        }
+
+        next_column += 2
+
+    total_volume_column = next_column
+    total_shuttering_column = next_column + 1
+    total_columns = total_shuttering_column
+
+    out_rows = [
+        [str(project_name or "")],
+        ["RCC - CONCRETE FINISHING BOQ"],
+        ["ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING"],
+        [],
+    ]
+
+    band_one = [("MERGE_V", "LEVEL"), ("MERGE_V", "ITEM")]
+    band_two = ["", ""]
+
+    for category_name in present_categories:
+
+        band_one.extend([header_label_map[category_name], ""])
+        band_two.extend(["VOL (m3)", "SHUT (sqm)"])
+
+    band_one.extend(["TOTAL (m3)", "TOTAL (sqm)"])
+    band_two.extend(["", ""])
+
+    out_rows.append(band_one[:total_columns])
+    out_rows.append(band_two[:total_columns])
+
+    # Consolidate levels preserving export order, then natural-sort.
+    ordered_levels = {}
+    level_order = []
+
+    for category_name in present_categories:
+
+        for row in (data_result.get(category_name) or []):
+
+            level_key = _site_cell_value(row, "Level") or \
+                "(UNSET LEVEL)"
+
+            if level_key not in ordered_levels:
+                ordered_levels[level_key] = True
+                level_order.append(level_key)
+
+    level_order.sort(key=_site_sort_key)
+
+    for level_key in level_order:
+
+        criteria = '"{0}"'.format(level_key)
+
+        volume_letters = []
+        shuttering_letters = []
+
+        row_cells = []
+
+        for category_name in present_categories:
+
+            category_meta = site_detail_meta.get(category_name, {})
+
+            data_start = category_meta.get("data_start", 7)
+            data_end = category_meta.get("data_end", 7)
+
+            level_letter = category_meta.get("level_col", "H")
+            volume_letter = category_meta.get(
+                "columns", {}
+            ).get("Volume (m3)", "F")
+            shuttering_letter = category_meta.get(
+                "columns", {}
+            ).get("Shuttering (m2)", "G")
+
+            level_range = "{0}!${1}${2}:${1}${3}".format(
+                category_name,
+                level_letter,
+                data_start,
+                data_end
+            )
+
+            value_range_template = "{0}!${1}${2}:${1}${3}"
+
+            row_cells.append(
+                (
+                    "FORMULA",
+                    "SUMIF({0},{1},{2})".format(
+                        level_range,
+                        criteria,
+                        value_range_template.format(
+                            category_name,
+                            volume_letter,
+                            data_start,
+                            data_end
+                        )
+                    )
+                )
+            )
+
+            row_cells.append(
+                (
+                    "FORMULA",
+                    "SUMIF({0},{1},{2})".format(
+                        level_range,
+                        criteria,
+                        value_range_template.format(
+                            category_name,
+                            shuttering_letter,
+                            data_start,
+                            data_end
+                        )
+                    )
+                )
+            )
+
+            volume_letters.append(
+                xlsx_column_name(
+                    category_columns[category_name]["volume"]
+                )
+            )
+            shuttering_letters.append(
+                xlsx_column_name(
+                    category_columns[category_name]["shuttering"]
+                )
+            )
+
+        output_row_number = len(out_rows) + 1
+
+        volume_reference = ",".join(
+            "{0}{1}".format(letter, output_row_number)
+            for letter in volume_letters
+        )
+
+        shuttering_reference = ",".join(
+            "{0}{1}".format(letter, output_row_number)
+            for letter in shuttering_letters
+        )
+
+        row_cells.append(("FORMULA", "SUM({0})".format(volume_reference)))
+        row_cells.append(("FORMULA", "SUM({0})".format(shuttering_reference)))
+
+        display_level = "" if level_key == "(UNSET LEVEL)" \
+            else level_key
+
+        out_rows.append([display_level, ""] + row_cells)
+
+    meta = {
+        "present_categories": present_categories,
+        "columns": dict(category_columns),
+        "total_volume_column": total_volume_column,
+        "total_shuttering_column": total_shuttering_column,
+        "total_columns": total_columns,
+        "bands": (5, 6),
+        "grid_start": 7,
+        "levels": level_order
+    }
+
+    return (out_rows, meta)
+
+
+SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
+
+
+def write_site_xlsx(file_path, data_result, project_name="",
+                    tool_version="", generated_stamp=""):
+    """
+    Write the v1.4.0 site-format workbook.
+
+    Sheet plan mirrors the manual site BOQ:
+      Summary                - level-wise CONCRETE / SHUTTERING grid
+      Beam / Column / Slab /
+      Foundation             - one detail sheet per populated category
+                               with title blocks, SIZE (MM) columns,
+                               VOLUME + SHUTTERING figures and a live
+                               TOTAL row; the LEVEL column stays as a
+                               plain rightmost feed for the SUMIFs.
+
+    Returns a plain {sheet_name: table} mapping (identical contract to
+    write_basic_xlsx) covering Summary plus every populated category.
+    """
+    produced = {}
+
+    site_detail_meta = {}
+
+    sheet_names = ["Summary"]
+
+    sheet_rows = {}
+
+    sheet_widths = {}
+
+    sheet_meta = {}
+
+    for category_name in SITE_CATEGORY_ORDER:
+
+        rows = data_result.get(category_name) or []
+
+        if not rows:
+            continue
+
+        table, meta = build_site_detail_sheet(
+            category_name,
+            rows,
+            project_name
+        )
+
+        sheet_names.append(category_name)
+
+        sheet_rows[category_name] = table
+
+        sheet_widths[category_name] = list(SITE_DETAIL_COLUMN_WIDTHS)
+
+        sheet_meta[category_name] = {
+            "kind": "detail",
+            "band_rows": SITE_DETAIL_BAND_ROWS,
+            "data_start": meta["data_start"],
+            "total_row": meta["total_row"]
+        }
+
+        site_detail_meta[category_name] = meta
+
+    summary_table, summary_meta = build_site_summary_sheet(
+        data_result,
+        site_detail_meta,
+        project_name
+    )
+
+    if not summary_table:
+        # Nothing exported at all - keep the workbook honest with an
+        # empty shell rather than writing a broken file.
+        summary_table = [
+            [project_name],
+            ["RCC - CONCRETE FINISHING BOQ"],
+            ["NO DATA EXPORTED - SELECT ELEMENTS AND RETRY"],
+            [],
+        ]
+
+        summary_meta = {"empty": True}
+
+    total_columns = summary_meta.get("total_columns", 3)
+
+    summary_widths = [16, 18]
+
+    for _category in summary_meta.get("present_categories", []):
+        summary_widths.extend([11, 11])
+
+    summary_widths.extend([11, 11])
+
+    sheet_rows["Summary"] = summary_table
+
+    sheet_widths["Summary"] = summary_widths
+
+    sheet_meta["Summary"] = {
+        "kind": "summary",
+        "band_rows": summary_meta.get(
+            "bands",
+            SITE_DETAIL_BAND_ROWS
+        ),
+        "grid_start": summary_meta.get("grid_start", 7),
+        "columns": summary_meta.get("columns", {}),
+        "levels": summary_meta.get("levels", []),
+        "bands_cells": len(summary_table[4]) if len(summary_table) > 4 else 0
+    }
+
+    parent_dir = os.path.dirname(file_path)
+
+    if parent_dir and not os.path.exists(parent_dir):
+        os.makedirs(parent_dir)
+
+    temp_path = file_path + ".tmp"
+
+    if os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+
+    with zipfile.ZipFile(
+        temp_path,
+        "w",
+        zipfile.ZIP_DEFLATED
+    ) as archive:
+
+        archive.writestr(
+            "[Content_Types].xml",
+            build_xlsx_content_types_xml(
+                len(sheet_names)
+            ).encode("utf-8")
+        )
+
+        archive.writestr(
+            "_rels/.rels",
+            build_xlsx_root_rels_xml().encode("utf-8")
+        )
+
+        archive.writestr(
+            "xl/workbook.xml",
+            build_xlsx_workbook_xml(sheet_names).encode("utf-8")
+        )
+
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            build_xlsx_workbook_rels_xml(
+                len(sheet_names)
+            ).encode("utf-8")
+        )
+
+        archive.writestr(
+            "xl/styles.xml",
+            build_xlsx_styles_xml().encode("utf-8")
+        )
+
+        for index, sheet_name in enumerate(sheet_names, 1):
+
+            sheet_xml = build_xlsx_sheet_xml_site(
+                sheet_rows[sheet_name],
+                sheet_widths.get(sheet_name)
+            )
+
+            archive.writestr(
+                "xl/worksheets/sheet{0}.xml".format(index),
+                sheet_xml.encode("utf-8")
+            )
+
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except:
+            pass
+
+    os.rename(temp_path, file_path)
+
+    # Plain {sheet_name: table} mapping - same contract as
+    # write_basic_xlsx, so the export dialog code can treat both
+    # writers uniformly.
     return sheet_rows
 
 
@@ -4596,20 +5799,41 @@ try:
                     if not output_path.lower().endswith(".xlsx"):
                         output_path += ".xlsx"
 
-                    sheet_rows = write_basic_xlsx(
-                        output_path,
-                        element_data,
-                        parameter_metadata,
-                        project_name=(
-                            safe_text(doc.Title, "Revit Project")
-                        ),
-                        tool_version=(
-                            "RCC BOQ Parameter Manager v{0}".format(
-                                SCRIPT_VERSION
-                            )
-                        ),
-                        generated_stamp=time.strftime("%Y-%m-%d %H:%M")
-                    )
+                    # v1.4.0 site-format export. The classic workbook
+                    # engine stays available as a rollback path behind
+                    # site_format_flag.
+                    if site_format_flag:
+
+                        sheet_rows = write_site_xlsx(
+                            output_path,
+                            element_data,
+                            project_name=(
+                                safe_text(doc.Title, "Revit Project")
+                            ),
+                            tool_version=(
+                                "RCC BOQ Parameter Manager v{0}".format(
+                                    SCRIPT_VERSION
+                                )
+                            ),
+                            generated_stamp=time.strftime("%Y-%m-%d %H:%M")
+                        )
+
+                    else:
+
+                        sheet_rows = write_basic_xlsx(
+                            output_path,
+                            element_data,
+                            parameter_metadata,
+                            project_name=(
+                                safe_text(doc.Title, "Revit Project")
+                            ),
+                            tool_version=(
+                                "RCC BOQ Parameter Manager v{0}".format(
+                                    SCRIPT_VERSION
+                                )
+                            ),
+                            generated_stamp=time.strftime("%Y-%m-%d %H:%M")
+                        )
 
                     non_empty_sheets = 0
 

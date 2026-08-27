@@ -149,6 +149,38 @@ Phase 2) is still open.
 
 ---
 
+### BOQ-8 — v1.4.0 site-format export + P3 formwork (first slice) — **done** (engine side)
+
+**Asked for.** Owner's screenshots of the hand-made site BOQ: title blocks, MM size columns,
+VOLUME + SHUTTERING per member, front Summary grouped by level.
+
+**Built.**
+- Pure helpers: `meters_to_millimeters`, `build_section_description`
+  ("`W X L`" mm strings), `_site_dim_value` (unrounded dims for MM), `resolve_element_dimensions`
+  (param-first with bbox fallback; Column pair sorted W<=L), `compute_shuttering_area`
+  (Column `2(L+W)H`, Beam `(W+2H)L`, Slab soffit, Foundation sides).
+- Quantity engine emits `Qty: Dim L/W/H (m)` + `Qty: Shuttering (m2)` per element row.
+- Site writers: `build_site_detail_sheet` (8-column layout A=SNO…H=LEVEL feed, banded header rows
+  5–6 with MERGE_V markers, MM integer cells, TOTAL row with SUM(F/G)), `build_site_summary_sheet`
+  (LEVEL × category VOL/SHUT pairs + TOTAL pair, live SUMIF against each sheet's H column),
+  `build_xlsx_sheet_xml_site` (merged title blocks, mergeCells, frozen panes below band, gridlines
+  off, site style indexes 5–13 incl. light-blue fills `FFBDD7EE`/`FFDDEBF7` and full borders),
+  `write_site_xlsx` (Summary + populated categories).
+- Export dispatch honours `site_format_flag = True` (site writer default); classic path intact via
+  `write_basic_xlsx(site_format=False)`. Versions bumped to 1.4.0 everywhere.
+
+**How it is known.** **Tested (harness)** — full suite green: shuttering rules per category, dim
+fallbacks, natural level ordering, description format `ITEM B1 | 230 X 6096`, meta contract F/G/H,
+SUMIF criteria per level, horizontal TOTAL sums, both workbooks' XML parts valid, mergeCell spans
+match the manual layout. `script.py` compiles clean (CPython 3.12).
+
+**Cost / limits.** Slab shuttering uses plan area only (no drop/bulkhead deduction yet); beam
+shuttering excludes soffit-overlap overlaps at intersections; dims fall back to axis-aligned
+bounding boxes, skewed geometry still needs param-backed dimensions. Live-Revit confirmation
+pending; `v1.3.0`/`v1.4.0` tags withheld until then.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

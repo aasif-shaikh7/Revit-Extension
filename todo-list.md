@@ -117,6 +117,27 @@ the owner opts in. Exact column styling from
 
 ---
 
+## Site-format export — manual site BOQ look (started)
+
+### SF-01 — Site workbook + P3 shuttering (first slice) — `engine done` (code v1.4.0)
+**Built:** pure helpers — `meters_to_millimeters`, `build_section_description`
+("`W X L`" mm strings), `_site_dim_value` (unrounded dims), `resolve_element_dimensions`
+(param-first with bbox fallback; Column pair sorted W<=L) and `compute_shuttering_area`
+(Column `2(L+W)H`, Beam `(W+2H)L`, Slab soffit, Foundation footing sides). Quantity rows
+carry `Qty: Dim L/W/H (m)` + `Qty: Shuttering (m2)`; `write_site_xlsx` +
+`build_xlsx_sheet_xml_site` render merged title blocks, two-tier light-blue header bands,
+MM integer columns, VOLUME/SHUTTERING figures, bordered TOTAL rows and a front level-wise
+Summary with live SUMIF formulas against each detail sheet's LEVEL feed column.
+Dispatch sits behind `site_format_flag = True`; classic workbook stays as rollback
+(`write_basic_xlsx(site_format=False)`).
+**Tested (harness):** full suite green — 33 functions extracted, shuttering rules, dim
+fallbacks, level ordering, description format, SUMIF criteria, merge spans and XML parts
+all pass; `script.py` compiles clean under CPython 3.12.
+**Remaining:** live Revit confirmation on CP3123 (parameter-backed dims vs bbox fallback;
+shuttering overlap handling at frame intersections), then tag `v1.4.0`.
+
+---
+
 ## P1 — Structural Quantity Engine (next phase)
 
 ### P1-01 — Extend quantity engine per category — **done** (`v1.1.0`)

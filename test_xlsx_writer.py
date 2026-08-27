@@ -45,7 +45,20 @@ FUNCTION_NAMES = [
     "sanitize_file_name",
     "build_default_output_name",
     "build_summary_cover_rows",
-    "write_basic_xlsx"
+    "write_basic_xlsx",
+    "_site_sort_key",
+    "_site_cell_value",
+    "_site_numeric",
+    "_site_dim_value",
+    "meters_to_millimeters",
+    "build_section_description",
+    "resolve_element_dimensions",
+    "compute_shuttering_area",
+    "build_site_detail_sheet",
+    "build_site_summary_sheet",
+    "build_xlsx_sheet_xml_site",
+    "_finish_site_sheet",
+    "write_site_xlsx"
 ]
 
 
@@ -96,6 +109,33 @@ def main():
             extract_function_source(source, name),
             namespace
         )
+
+    # Site-format module constants (v1.4.0): simple single-line
+    # assignments pulled straight from the production source so the
+    # extracted builders always see the real layout contract.
+    for constant_name in (
+        "SITE_CATEGORY_ORDER",
+        "SITE_DETAIL_BAND_ROWS",
+        "SITE_DETAIL_DATA_START_ROW",
+        "SITE_DETAIL_COLUMN_WIDTHS"
+    ):
+        constant_pattern = re.compile(
+            r"^{0} = .*$".format(constant_name),
+            re.M
+        )
+
+        match = constant_pattern.search(source)
+
+        assert match is not None, \
+            "Could not extract constant: {}".format(constant_name)
+
+        exec(match.group(0), namespace)
+
+    for style_match in re.finditer(
+            r"^STYLE_[A-Z_]+ = \d+$",
+            source,
+            re.M):
+        exec(style_match.group(0), namespace)
 
     print("Extracted {} functions.".format(len(FUNCTION_NAMES)))
 
@@ -170,7 +210,7 @@ def main():
         data_result,
         parameter_metadata,
         project_name="CHHANYADO HOSPITAL SURAT",
-        tool_version="RCC BOQ Parameter Manager v1.3.0",
+        tool_version="RCC BOQ Parameter Manager v1.4.0",
         generated_stamp="2026-08-26 10:00"
     )
 
@@ -326,7 +366,7 @@ def main():
         check(
             cover_pairs.get("Project") == "CHHANYADO HOSPITAL SURAT"
             and cover_pairs.get("Generated") == "2026-08-26 10:00"
-            and "v1.3.0" in str(cover_pairs.get("Tool")),
+            and "v1.4.0" in str(cover_pairs.get("Tool")),
             "Summary cover carries project, stamp and tool version"
         )
 
@@ -368,6 +408,254 @@ def main():
             name_pattern.match(default_name) is not None,
             "Default output name follows YYYYMMDD-Project-BOQ convention "
             "(got {})".format(default_name)
+        )
+
+        # ====================================================
+        # v1.4.0 SITE FORMAT: formwork engine (pure logic)
+        # ====================================================
+
+        meters_to_millimeters = namespace["meters_to_millimeters"]
+
+        check(
+            meters_to_millimeters(3.048) == 3048
+            and meters_to_millimeters("0.15") == 150
+            and meters_to_millimeters("") == ""
+            and meters_to_millimeters(None) == "",
+            "MM conversion rounds metres to whole millimetres"
+        )
+
+        check(
+            namespace["build_section_description"](3.13, 0.15)
+            == "150 X 3130",
+            "Section description renders WIDTH X LENGTH in millimetres"
+        )
+
+        check(
+            namespace["build_section_description"](3.13, "")
+            == "",
+            "Section description stays blank when a dimension is missing"
+        )
+
+        beam_dims = namespace["resolve_element_dimensions"](
+            "Beam",
+            length_m=6.096,
+            width_m=0.23,
+            height_m=0.6
+        )
+
+        check(
+            beam_dims == {"length": 6.096, "width": 0.23, "height": 0.6},
+            "Beam dimension resolution keeps L/W/H as given"
+        )
+
+        column_dims = namespace["resolve_element_dimensions"](
+            "Column",
+            width_m=0.45,
+            height_m=3.5,
+            depth_m=0.3
+        )
+
+        check(
+            column_dims["width"] == 0.3
+            and column_dims["length"] == 0.45
+            and column_dims["height"] == 3.5,
+            "Column section pair sorted W <= L like the manual sheet"
+        )
+
+        bbox_column = namespace["resolve_element_dimensions"](
+            "Column",
+            bbox_length_m=9.2,
+            bbox_width_m=1.6,
+            bbox_height_m=5.2
+        )
+
+        check(
+            bbox_column["width"] == 1.6
+            and bbox_column["length"] == 9.2
+            and bbox_column["height"] == 5.2,
+            "Column dimensions fall back to the bounding box pair"
+        )
+
+        compute_shuttering_area = namespace["compute_shuttering_area"]
+
+        check(
+            compute_shuttering_area(
+                "Column", length_m=0.45, width_m=0.3, height_m=3.5
+            ) == 5.25,
+            "Column shuttering = 2(L+W)H (four faces)"
+        )
+
+        check(
+            compute_shuttering_area(
+                "Beam", length_m=6.096, width_m=0.23, height_m=0.6
+            ) == 8.72,
+            "Beam shuttering = (W+2H)L (soffit plus two sides)"
+        )
+
+        check(
+            compute_shuttering_area("Slab", area_m2=9.3) == 9.3,
+            "Slab shuttering = soffit contact area passthrough"
+        )
+
+        check(
+            compute_shuttering_area(
+                "Foundation", length_m=1.8, width_m=1.2, height_m=0.3
+            ) == 1.8,
+            "Foundation shuttering = footing side faces 2(L+W)H"
+        )
+
+        check(
+            compute_shuttering_area("Beam") == ""
+            and compute_shuttering_area("Slab") == ""
+            and compute_shuttering_area("Slab", area_m2=-1) == "",
+            "Shuttering stays blank when dimensions are missing or bad"
+        )
+
+        ordered_levels_check = sorted(
+            ["Level 10", "Level 2"],
+            key=namespace["_site_sort_key"]
+        )
+
+        check(
+            ordered_levels_check == ["Level 2", "Level 10"],
+            "Natural sort orders levels numerically (2 before 10)"
+        )
+
+        # ====================================================
+        # v1.4.0 SITE FORMAT: table builders
+        # ====================================================
+
+        site_rows_fixture = [
+            {
+                "Element ID": "100",
+                "Level": "Level 1",
+                "Mark": "B1",
+                "Qty: Volume (m3)": 0.8356,
+                "Qty: Dim L (m)": 6.096,
+                "Qty: Dim W (m)": 0.23,
+                "Qty: Dim H (m)": 0.6,
+                "Qty: Shuttering (m2)": 8.72
+            },
+            {
+                "Element ID": "101",
+                "Level": "Level 2",
+                "Mark": "B2",
+                "Qty: Volume (m3)": 1.2437,
+                "Qty: Dim L (m)": 7.3152,
+                "Qty: Dim W (m)": 0.3,
+                "Qty: Dim H (m)": 0.6,
+                "Qty: Shuttering (m2)": 10.49
+            }
+        ]
+
+        detail_table, detail_meta = \
+            namespace["build_site_detail_sheet"](
+                "Beam",
+                site_rows_fixture,
+                "CHHANYADO HOSPITAL SURAT"
+            )
+
+        check(
+            detail_table[1][0] == "RCC - CONCRETE FINISHING BOQ"
+            and detail_table[2][0] == "BEAM DETAILS",
+            "Detail sheet title block carries workbook and category rows"
+        )
+
+        check(
+            detail_table[4][0] == ("MERGE_V", "SNO")
+            and detail_table[4][1] == ("MERGE_V", "DESCRIPTION")
+            and detail_table[4][7] == ("MERGE_V", "LEVEL")
+            and detail_table[5][5] == "VOLUME (m3)"
+            and detail_table[5][6] == "SHUTTERING (SQM)",
+            "Two-tier header band uses MERGE_V markers on rows 5:6"
+        )
+
+        first_site_row = detail_table[6]
+
+        check(
+            first_site_row[0] == 1
+            and first_site_row[2] == 6096
+            and first_site_row[3] == 230
+            and first_site_row[4] == 600,
+            "Element rows render whole-millimetre SIZE integers"
+        )
+
+        check(
+            first_site_row[5] == 0.84 and first_site_row[6] == 8.72,
+            "Element rows carry VOLUME and SHUTTERING figures rounded"
+        )
+
+        check(
+            first_site_row[1] == "ITEM B1 | 230 X 6096",
+            "DESCRIPTION shows the ITEM mark plus cross-section in MM"
+        )
+
+        site_total_row = detail_table[-1]
+
+        check(
+            site_total_row[0] == "TOTAL"
+            and isinstance(site_total_row[5], tuple)
+            and site_total_row[5][1] == "SUM(F7:F8)"
+            and isinstance(site_total_row[6], tuple)
+            and site_total_row[6][1] == "SUM(G7:G8)",
+            "Detail TOTAL row holds live SUM formulas for both metrics"
+        )
+
+        check(
+            detail_meta["total_row"] == len(detail_table)
+            and detail_meta["data_start"] == 7
+            and detail_meta["columns"]["Volume (m3)"] == "F"
+            and detail_meta["columns"]["Shuttering (m2)"] == "G"
+            and detail_meta["level_col"] == "H",
+            "Detail meta exposes the F/G/H contract for SUMIF feeds"
+        )
+
+        summary_table_s, summary_meta_s = \
+            namespace["build_site_summary_sheet"](
+                {"Beam": site_rows_fixture},
+                {"Beam": detail_meta},
+                "CHHANYADO HOSPITAL SURAT"
+            )
+
+        check(
+            summary_table_s[1][0] == "RCC - CONCRETE FINISHING BOQ"
+            and summary_table_s[2][0]
+            == "ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING",
+            "Summary title block matches the manual front page"
+        )
+
+        check(
+            summary_table_s[4][:2]
+            == [("MERGE_V", "LEVEL"), ("MERGE_V", "ITEM")]
+            and summary_table_s[4][2] == "BEAM"
+            and summary_table_s[5][2] == "VOL (m3)"
+            and summary_table_s[5][3] == "SHUT (sqm)"
+            and summary_table_s[4][4] == "TOTAL (m3)"
+            and summary_table_s[4][5] == "TOTAL (sqm)",
+            "Summary bands pair each category with VOL/SHUT sub-columns"
+        )
+
+        grid_row = summary_table_s[6]
+
+        volume_formula = grid_row[2]
+
+        check(
+            isinstance(volume_formula, tuple)
+            and volume_formula[1].startswith("SUMIF(Beam!$H$7:$H$8,")
+            and '"Level 1"' in volume_formula[1],
+            "Summary level row holds a live SUMIF per metric column"
+        )
+
+        check(
+            grid_row[4][0] == "FORMULA" and grid_row[5][0] == "FORMULA"
+            and "C7" in grid_row[4][1] and "D7" in grid_row[5][1],
+            "Summary TOTAL columns sum the category pairs horizontally"
+        )
+
+        check(
+            summary_meta_s["levels"] == ["Level 1", "Level 2"]
+            and summary_meta_s["total_columns"] == 6,
+            "Summary meta records sorted levels and the column plan"
         )
 
     finally:
@@ -515,6 +803,153 @@ def main():
 
         try:
             os.remove(output_path)
+        except:
+            pass
+
+    # ============================================================
+    # v1.4.0 SITE FORMAT workbook validation (zip-level)
+    # ============================================================
+
+    site_output_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "_boq_site_test.xlsx"
+    )
+
+    site_data = {
+        "Beam": [
+            {
+                "Element ID": "100",
+                "Level": "Level 1",
+                "Mark": "B1",
+                "Qty: Volume (m3)": 0.8356,
+                "Qty: Dim L (m)": 6.096,
+                "Qty: Dim W (m)": 0.23,
+                "Qty: Dim H (m)": 0.6,
+                "Qty: Shuttering (m2)": 8.72
+            },
+            {
+                "Element ID": "101",
+                "Level": "Level 2",
+                "Mark": "B2",
+                "Qty: Volume (m3)": 1.2437,
+                "Qty: Dim L (m)": 7.3152,
+                "Qty: Dim W (m)": 0.3,
+                "Qty: Dim H (m)": 0.6,
+                "Qty: Shuttering (m2)": 10.49
+            }
+        ],
+        "Column": [],
+        "Slab": [],
+        "Foundation": []
+    }
+
+    namespace["write_site_xlsx"](
+        site_output_path,
+        site_data,
+        project_name="CHHANYADO HOSPITAL SURAT",
+        tool_version="RCC BOQ Parameter Manager v1.4.0",
+        generated_stamp="2026-08-27 10:00"
+    )
+
+    site_archive = zipfile.ZipFile(site_output_path, "r")
+
+    try:
+
+        for part_name in site_archive.namelist():
+
+            if not part_name.endswith(".xml") \
+                    and not part_name.endswith(".rels"):
+                continue
+
+            payload = site_archive.read(part_name)
+
+            try:
+                minidom.parseString(payload)
+                print("XML OK : {}".format(part_name))
+            except Exception as parse_error:
+                failures.append(
+                    "{} malformed: {}".format(part_name, parse_error)
+                )
+                print("FAIL   : {} ({})".format(part_name, parse_error))
+
+        site_workbook_xml = site_archive.read(
+            "xl/workbook.xml"
+        ).decode("utf-8")
+
+        sheet_order_site = re.findall(
+            r'<sheet name="([^"]+)"',
+            site_workbook_xml
+        )
+
+        check(
+            sheet_order_site == ["Summary", "Beam"],
+            "Site workbook order: Summary then populated categories "
+            "(got {})".format(sheet_order_site)
+        )
+
+        check(
+            'fullCalcOnLoad="1"' in site_workbook_xml,
+            "Site workbook enables fullCalcOnLoad for its live formulas"
+        )
+
+        site_summary_xml = site_archive.read(
+            "xl/worksheets/sheet1.xml"
+        ).decode("utf-8")
+
+        merge_counts = re.findall(
+            r'<mergeCells count="(\d+)"',
+            site_summary_xml
+        )
+
+        check(
+            bool(merge_counts) and int(merge_counts[0]) >= 5,
+            "Summary title blocks and header band carry merged cells "
+            "(count={})".format(merge_counts)
+        )
+
+        check(
+            "<f>SUMIF(Beam!$H$7:$H$8," in site_summary_xml,
+            "Summary level rows use live SUMIF against the Beam detail"
+        )
+
+        check(
+            ">Level 1<" in site_summary_xml
+            and ">Level 2<" in site_summary_xml,
+            "Summary lists every exported level as SUMIF criteria"
+        )
+
+        site_beam_xml = site_archive.read(
+            "xl/worksheets/sheet2.xml"
+        ).decode("utf-8")
+
+        check(
+            '<mergeCell ref="A5:A6"/>' in site_beam_xml
+            and '<mergeCell ref="C5:E5"/>' in site_beam_xml
+            and '<mergeCell ref="F5:G5"/>' in site_beam_xml,
+            "Detail sheet merges SIZE/QTY groups and single-column "
+            "vertical headers exactly like the manual layout"
+        )
+
+        check(
+            "<f>SUM(F7:F8)</f>" in site_beam_xml,
+            "Detail TOTAL row sums the element VOLUME values"
+        )
+
+        site_styles_xml = site_archive.read(
+            "xl/styles.xml"
+        ).decode("utf-8")
+
+        check(
+            'rgb="FFBDD7EE"' in site_styles_xml,
+            "Site styles define the light blue band fill"
+        )
+
+    finally:
+
+        site_archive.close()
+
+        try:
+            os.remove(site_output_path)
         except:
             pass
 
