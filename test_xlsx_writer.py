@@ -803,8 +803,8 @@ def main():
         )
 
         check(
-            'rgb="FF305496"' in styles_xml,
-            "Styles define the dark blue header fill"
+            'rgb="FFF2994A"' in styles_xml,
+            "Styles define the Ember accent header fill"
         )
 
         cellxf_count = len(
@@ -959,8 +959,8 @@ def main():
         ).decode("utf-8")
 
         check(
-            'rgb="FFBDD7EE"' in site_styles_xml,
-            "Site styles define the light blue band fill"
+            'rgb="FFFCE8D5"' in site_styles_xml,
+            "Site styles define the Ember light band fill"
         )
 
         # ---- Merge-grid integrity (owner saw Excel's repair prompt) ----

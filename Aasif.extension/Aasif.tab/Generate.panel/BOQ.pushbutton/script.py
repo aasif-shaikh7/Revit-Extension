@@ -1719,6 +1719,22 @@ STYLE_SITE_TOTAL_TEXT = 13
 # LEVEL feed column) so the whole site sheet carries the thin grid.
 STYLE_SITE_PLAIN = 14
 
+# ------------------------------------------------------------
+# Brand palette (docs/reference/brand-guidelines.md) — Ember accent.
+# The exported workbook strips Revit's own blue (guidelines: "Don't use
+# Revit's own blue as an accent") and uses the Ember ramp instead. Keys
+# map to the fills baked into styles.xml.
+#   Ember 500  F2994A  primary accent / bold header fill (white text)
+#   Ember 100  FCE8D5  light band tint
+#   Ember 200  FFF0E3  lighter sub-band tint (keeps the band/sub-band
+#                      distinction of the blue ramp it replaces)
+#   Neutral    F2F2F2  totals shading (unchanged)
+# ------------------------------------------------------------
+EMBER_500 = "F2994A"
+EMBER_100 = "FCE8D5"
+EMBER_200 = "FFF0E3"
+GRAY_TOTALS_FILL = "F2F2F2"
+
 
 def xlsx_formula_cell(cell_ref, expression, style_index=None):
     """
@@ -2327,7 +2343,7 @@ def build_xlsx_styles_xml():
     Workbook styles used by the export engine:
 
     xf 0 - default body text
-    xf 1 - header row: bold white on dark blue fill
+    xf 1 - header row: bold white on Ember accent fill
     xf 2 - numeric quantity cells with #,##0.00 formatting
     xf 3 - totals label cells: bold on light gray with top border
     xf 4 - totals number cells: bold #,##0.00 on light gray
@@ -2337,17 +2353,17 @@ def build_xlsx_styles_xml():
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
         '<numFmts count="0"/>'
         '<fonts count="3">'
-        '<font><sz val="11"/><name val="Calibri"/></font>'
-        '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
-        '<font><b/><sz val="11"/><name val="Calibri"/></font>'
+        '<font><sz val="11"/><name val="Segoe UI"/></font>'
+        '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/></font>'
+        '<font><b/><sz val="11"/><name val="Segoe UI"/></font>'
         '</fonts>'
         '<fills count="6">'
         '<fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FF305496"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFF2994A"/><bgColor indexed="64"/></patternFill></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFBDD7EE"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFFCE8D5"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF0E3"/><bgColor indexed="64"/></patternFill></fill>'
         '</fills>'
         '<borders count="3">'
         '<border><left/><right/><top/><bottom/><diagonal/></border>'
@@ -3999,7 +4015,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         summary_table = [
             [project_name],
             ["RCC - CONCRETE FINISHING BOQ"],
-            ["NO DATA EXPORTED - SELECT ELEMENTS AND RETRY"],
+            ["Nothing to export yet — pick the elements you need and run it again"],
             [],
         ]
 
@@ -6042,7 +6058,7 @@ try:
 
                     forms.alert(
                         "Version: {} · RCC BOQ\n\n"
-                        "Excel export successful.\n\n"
+                        "Everything's exported — here's your workbook.\n\n"
                         "File: {}\n"
                         "Selected parameters: {}\n"
                         "Element data rows: {}\n"

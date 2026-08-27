@@ -142,6 +142,34 @@ shuttering overlap handling at frame intersections), then tag `v1.4.0`.
 
 ---
 
+## Brand identity — `docs/reference/brand-guidelines.md` (applied 2026-08-27)
+
+**Reference read & applied** to the code surface the guidelines actually reach:
+
+- **Color — Ember accent replaces Revit blue.** The exported workbook's bold
+  header fill is now `F2994A` (Ember 500), light band `FCE8D5` (Ember 100),
+  sub-band `FFF0E3` — declared as `EMBER_500 / EMBER_100 / EMBER_200 /`
+  `GRAY_TOTALS_FILL` constants beside the site-format style indexes. This
+  follows the guideline literally: *"Don't use Revit's own blue as an accent."*
+- **Typography — Segoe UI.** styles.xml fonts switched Calibri → **Segoe UI**
+  (Windows-native, matches Revit exactly per §4.3).
+- **Voice — outcome-led, friendly, plain.** Export success alert now leads
+  with "Everything's exported — here's your workbook." (detail lines kept);
+  the empty-workbook summary cell is one friendly line plus the next step,
+  not an all-caps "NO DATA EXPORTED - ...".
+
+**Tested (harness):** style assertions updated to the Ember fills and the full
+suite is green (`RESULT: all checks passed`); `script.py` compiles clean.
+
+**Open decision — Toolkit naming (owner):** the guidelines §2 list candidate
+names (Forma / Anvil / Kitbash / Trueline / Nudge) and mark the working name
+*"to be finalized"*. Renaming the button/extension label is intentionally NOT
+applied here — it is a product decision with repo-wide blast radius (path
+`Aasif.extension/Aasif.tab/...`, dialog titles, docs). Pick a name and the
+label swap is a follow-up.
+
+---
+
 ## P1 — Structural Quantity Engine (next phase)
 
 ### P1-01 — Extend quantity engine per category — **done** (`v1.1.0`)

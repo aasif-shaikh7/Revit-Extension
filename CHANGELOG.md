@@ -47,6 +47,14 @@ VOLUME + SHUTTERING columns, level-wise front Summary).
   DESCRIPTION cell is gone; column widths adapt to the parameter count;
   dimension feeds switched to unrounded `_site_dim_value` so MM sizes can
   never drift (6.096 m must print 6096, not 6100).
+- **Brand pass `docs/reference/brand-guidelines.md` (2026-08-27):** the
+  exported workbook drops Revit's own blue and applies the **Ember** accent
+  ramp (header fill `F2994A`, band tint `FCE8D5`, sub-band `FFF0E3`) declared
+  as `EMBER_*` constants at the top of the site-format section; UI fonts
+  switch from Calibri to Windows-native **Segoe UI**. Voice pass: the export
+  success alert now leads with outcome copy ("Everything's exported — here's
+  your workbook.") and the empty workbook states with one friendly line plus
+  the next step, instead of terse all-caps messages.
 - **Switch:** `site_format_flag = True` selects the site writer at export time; the classic
   (v1.3.0-style) workbook remains available as rollback via `write_basic_xlsx(site_format=False)` —
   which itself now honours the flag when called directly.
