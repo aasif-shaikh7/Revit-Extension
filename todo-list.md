@@ -119,7 +119,7 @@ the owner opts in. Exact column styling from
 
 ## Site-format export — manual site BOQ look (started)
 
-### SF-01 — Site workbook + P3 shuttering (first slice) — `engine done` (code v1.4.0)
+### SF-01 — Site workbook + P3 shuttering (first slice) — `engine done` (code v1.4.1)
 **Built:** pure helpers — `meters_to_millimeters`, `build_section_description`
 ("`W X L`" mm strings), `_site_dim_value` (unrounded dims), `resolve_element_dimensions`
 (param-first with bbox fallback; Column pair sorted W<=L) and `compute_shuttering_area`
@@ -132,7 +132,7 @@ Dispatch sits behind `site_format_flag = True`; classic workbook stays as rollba
 (`write_basic_xlsx(site_format=False)`).
 **Fixed (owner feedback):** export no longer triggers Excel's repair dialog — the merge grid is
 mechanically validated free of degenerate/duplicate/overlapping spans; DESCRIPTION now follows
-exactly the parameters selected per category (UI selection order kept) before the `W X L` suffix;
+exactly the parameters selected per category (UI selection order kept) with one column per selected parameter plus adaptive widths;
 full thin-border box applied to band, data and TOTAL cells.
 **Tested (harness):** full suite green — shuttering rules, dim fallbacks, level ordering,
 param-driven description format, SUMIF criteria, merge-span integrity (zero bad spans),

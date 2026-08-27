@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.4.0'
+__version__ = '1.4.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.4.0'
+SCRIPT_VERSION = '1.4.1'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -3432,7 +3432,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 
         archive.writestr(
             "xl/styles.xml",
-            build_xlsx_styles_xml().encode("utf-8")
+            enforce_uniform_grid_borders(
+                build_xlsx_styles_xml()).encode("utf-8")
         )
 
         for index, sheet_name in enumerate(sheet_names, 1):
@@ -3562,141 +3563,159 @@ def _site_desc_text(value):
 
 def build_site_detail_sheet(category_name, rows, project_name):
     """
-    Build one site-format detail table.
+    Site detail sheet, selection-driven columns (v1.4.1).
 
-    Layout (Excel rows are 1-based here):
-      Row 1 : project title                (writer merges A1:H1)
-      Row 2 : RCC - CONCRETE FINISHING BOQ (writer merges A2:H2)
-      Row 3 : <CATEGORY> DETAILS           (writer merges A3:H3)
-      Row 4 : blank spacer row
-      Row 5 : SNO | DESCRIPTION | SIZE (MM) | QTY | LEVEL  <- tier-1
-      Row 6 :             |  L |  B |   D  | VOLUME (m3) |
-              SHUTTERING (SQM)                             <- tier-2
-              (SNO / DESCRIPTION / LEVEL carry MERGE_V markers so the
-               writer vertically merges them onto rows 5:6)
-      Rows 7+: one row per element with MM integers plus VOLUME and
-               SHUTTERING numbers, closing with a bold bordered TOTAL
-               row holding live SUM formulas.
+    Every user-selected parameter gets its OWN column between SNO and
+    the SIZE (MM) group; the old pipe-joined DESCRIPTION column is
+    gone. Parameters and their order come straight from the exported
+    row keys, so the sheet always mirrors the checkbox UI.
 
-    Column map: A=SNO B=DESCRIPTION C=L(mm) D=B(mm) E=D(mm) F=VOLUME(m3)
-    G=SHUTTERING(m2) H=LEVEL (feeds the Summary SUMIF formulas).
+    Layout: rows 1-3 merged title block, row 4 spacer,
+    rows 5/6 two-tier band, row 7+ one row per element, closing with a
+    bold TOTAL row holding live SUM formulas over VOLUME / SHUTTERING.
 
-    Returns (table, meta); meta carries the TOTAL-row bookkeeping the
-    Summary sheet needs (columns, total_row, data_end, elements).
+    meta carries the dynamic column letters + widths so the front
+    Summary SUMIF formulas and the sheet writer stay aligned for any
+    number of parameters.
     """
     data_rows = rows or []
+
+    skip_names = ("Element ID", "Level")
+
+    param_names = []
+
+    for probe in data_rows[:1]:
+        for key in probe.keys():
+            try:
+                key_text = str(key)
+            except:
+                continue
+            if key_text in skip_names:
+                continue
+            if key_text[:4] == "Qty:":
+                continue
+            param_names.append(key_text)
+
+    size_l_col = 2 + len(param_names)
+    size_b_col = size_l_col + 1
+    size_d_col = size_b_col + 1
+    vol_col = size_d_col + 1
+    shut_col = vol_col + 1
+    level_col = shut_col + 1
+    total_cols = level_col
+
+    vol_letter = xlsx_column_name(vol_col)
+    shut_letter = xlsx_column_name(shut_col)
+    level_letter = xlsx_column_name(level_col)
+
+    def merge_vertical(label):
+        return ("MERGE_V", label)
+
+    band_one = [merge_vertical("SNO")]
+
+    for param_name in param_names:
+        band_one.append(merge_vertical(str(param_name).upper()))
+
+    band_one.extend(["SIZE (MM)", "", "", "QTY", "",
+                     merge_vertical("LEVEL")])
+
+    band_two = [""]
+
+    for _unused in param_names:
+        band_two.append("")
+
+    band_two.extend(["L", "B", "D", "VOLUME (m3)",
+                     "SHUTTERING (SQM)", ""])
 
     table = [
         [str(project_name or "")],
         ["RCC - CONCRETE FINISHING BOQ"],
         ["{0} DETAILS".format(category_name.upper())],
-        ["", "", "", "", "", "", "", ""],
-        [
-            ("MERGE_V", "SNO"),
-            ("MERGE_V", "DESCRIPTION"),
-            "SIZE (MM)",
-            "",
-            "",
-            "QTY",
-            "",
-            ("MERGE_V", "LEVEL")
-        ],
-        [
-            "", "",
-            "L", "B", "D",
-            "VOLUME (m3)",
-            "SHUTTERING (SQM)",
-            ""
-        ]
+        [""],
+        band_one,
+        band_two,
     ]
 
     item_number = 1
 
     for row in data_rows:
 
-        # Rows arrive with engine-resolved dimensions (Qty: Dim *), so
-        # read them UNROUNDED here - rounding happens only on the shown
-        # VOLUME / SHUTTERING figures, never on the millimetre sizes.
-        length_value = _site_dim_value(row, "Qty: Dim L (m)")
-        width_value = _site_dim_value(row, "Qty: Dim W (m)")
-        height_value = _site_dim_value(row, "Qty: Dim H (m)")
-
-        length_mm = meters_to_millimeters(length_value)
-        width_mm = meters_to_millimeters(width_value)
-        height_mm = meters_to_millimeters(height_value)
-
-        description_parts = []
-
-        # Owner direction: DESCRIPTION must follow exactly the parameters
-        # picked in the UI, in the order they were selected. Row dicts
-        # carry the chosen names straight through, so every key that is
-        # neither internal bookkeeping nor a Qty:* metric is a user pick.
-        try:
-            row_keys = list(row.keys())
-        except:
-            row_keys = []
-
-        for row_key in row_keys:
-
-            key_text = str(row_key)
-
-            if key_text in ("Element ID", "Level"):
-                continue
-
-            if key_text[:4] == "Qty:":
-                continue
-
-            candidate = _site_desc_text(row.get(row_key))
-
-            if candidate:
-                description_parts.append(candidate)
-
-        section_text = build_section_description(
-            length_value,
-            width_value
+        dims = resolve_element_dimensions(
+            category_name,
+            length_m=_site_dim_value(row, "Qty: Dim L (m)") or "",
+            width_m=_site_dim_value(row, "Qty: Dim W (m)") or "",
+            height_m=_site_dim_value(row, "Qty: Dim H (m)") or ""
         )
 
-        if section_text:
-            description_parts.append(section_text)
+        out_values = [item_number]
 
-        table.append(
-            [
-                item_number,
-                " | ".join(description_parts),
-                length_mm,
-                width_mm,
-                height_mm,
-                _site_numeric(row, "Qty: Volume (m3)"),
-                _site_numeric(row, "Qty: Shuttering (m2)"),
-                _site_cell_value(row, "Level")
-            ]
-        )
+        for param_name in param_names:
 
+            try:
+                raw_value = row.get(param_name, "")
+            except:
+                raw_value = ""
+
+            display_value = ""
+
+            if raw_value not in ("", None):
+                try:
+                    numeric = float(raw_value)
+                    if numeric == int(numeric):
+                        display_value = str(int(numeric))
+                    else:
+                        display_value = str(raw_value)
+                except:
+                    display_value = str(raw_value)
+
+            out_values.append(display_value)
+
+        out_values.extend([
+            meters_to_millimeters(dims["length"]),
+            meters_to_millimeters(dims["width"]),
+            meters_to_millimeters(dims["height"]),
+            _site_numeric(row, "Qty: Volume (m3)"),
+            _site_numeric(row, "Qty: Shuttering (m2)"),
+            _site_cell_value(row, "Level")
+        ])
+
+        table.append(out_values)
         item_number += 1
 
     last_data_row = len(table)
 
-    table.append(
-        [
-            "TOTAL",
-            "",
-            "", "", "",
-            ("FORMULA", "SUM(F7:F{0})".format(last_data_row)),
-            ("FORMULA", "SUM(G7:G{0})".format(last_data_row)),
-            ""
-        ]
+    total_values = ["TOTAL"]
+
+    for _pad in range(total_cols - 1):
+        total_values.append("")
+
+    total_values[vol_col - 1] = (
+        "FORMULA",
+        "=SUM({0}{1}:{0}{2})".format(
+            vol_letter, SITE_DETAIL_DATA_START_ROW, last_data_row)
     )
+    total_values[shut_col - 1] = (
+        "FORMULA",
+        "=SUM({0}{1}:{0}{2})".format(
+            shut_letter, SITE_DETAIL_DATA_START_ROW, last_data_row)
+    )
+
+    table.append(total_values)
 
     meta = {
         "columns": {
-            "Volume (m3)": "F",
-            "Shuttering (m2)": "G"
+            "Volume (m3)": vol_letter,
+            "Shuttering (m2)": shut_letter
         },
-        "level_col": "H",
+        "level_col": level_letter,
         "total_row": len(table),
-        "data_end": last_data_row,
         "data_start": SITE_DETAIL_DATA_START_ROW,
-        "elements": len(data_rows)
+        "data_end": last_data_row,
+        "elements": len(data_rows),
+        "widths": ([7]
+                   + [18 for _name in param_names]
+                   + [9, 9, 9, 12, 15, 14]),
+        "param_columns": list(param_names)
     }
 
     return (table, meta)
@@ -3957,7 +3976,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
         sheet_rows[category_name] = table
 
-        sheet_widths[category_name] = list(SITE_DETAIL_COLUMN_WIDTHS)
+        sheet_widths[category_name] = meta.get("widths") or [7, 18, 9, 9, 9, 12, 15, 14]
 
         sheet_meta[category_name] = {
             "kind": "detail",
@@ -4056,7 +4075,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
         archive.writestr(
             "xl/styles.xml",
-            build_xlsx_styles_xml().encode("utf-8")
+            enforce_uniform_grid_borders(
+                build_xlsx_styles_xml()).encode("utf-8")
         )
 
         for index, sheet_name in enumerate(sheet_names, 1):
@@ -4083,6 +4103,43 @@ def write_site_xlsx(file_path, data_result, project_name="",
     # write_basic_xlsx, so the export dialog code can treat both
     # writers uniformly.
     return sheet_rows
+
+
+def enforce_uniform_grid_borders(styles_xml):
+    """Harden styles.xml: every cellXf gets the shared thin-box border
+    (borderId=2). Guarantees data-row borders render on every sheet
+    regardless of which style index a builder picked; fills, fonts and
+    number formats are untouched."""
+    try:
+        head, sep, tail = styles_xml.partition("<cellXfs")
+        if not sep:
+            return styles_xml
+        gt = tail.index(">")
+        open_tail = tail[:gt + 1]
+        rest = tail[gt + 1:]
+        close_idx = rest.rfind("</cellXfs>")
+        if close_idx < 0:
+            return styles_xml
+        body = rest[:close_idx]
+        parts = []
+        cursor = 0
+        for fm in re.finditer(r"<xf\b[^>]*>", body):
+            parts.append(body[cursor:fm.start()])
+            tag = fm.group(0)
+            tag = re.sub(r'\s*borderId="\d+"', "", tag)
+            tag = tag.replace("<xf ", '<xf borderId="2" ', 1)                if tag.startswith("<xf ") else                 tag.replace("<xf", '<xf borderId="2"', 1)
+            if "applyBorder=" not in tag:
+                tag = tag.rstrip()
+                if tag.endswith("/>"):
+                    tag = tag[:-2] + ' applyBorder="1"/>'
+                else:
+                    tag += ' applyBorder="1"'
+            parts.append(tag)
+            cursor = fm.end()
+        parts.append(body[cursor:])
+        return head + sep + open_tail + "".join(parts) + rest[close_idx:]
+    except:
+        return styles_xml
 
 
 def choose_excel_output_path():

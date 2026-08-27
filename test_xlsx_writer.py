@@ -26,13 +26,16 @@ SCRIPT_PATH = os.path.join(
 )
 
 FUNCTION_NAMES = [
+    # Pure cell/XML primitives
     "safe_text",
     "xlsx_column_name",
     "xlsx_inline_string",
     "try_export_as_number",
     "xlsx_cell",
     "xlsx_formula_cell",
+    # Classic workbook parts
     "build_xlsx_sheet_xml",
+    "build_xlsx_sheet_xml_site",
     "build_xlsx_styles_xml",
     "build_xlsx_workbook_xml",
     "build_xlsx_workbook_rels_xml",
@@ -46,27 +49,28 @@ FUNCTION_NAMES = [
     "build_default_output_name",
     "build_summary_cover_rows",
     "write_basic_xlsx",
+    # Site-format (v1.4.x) builders - pure, Revit-free
+    "meters_to_millimeters",
+    "build_section_description",
+    "resolve_element_dimensions",
+    "compute_shuttering_area",
     "_site_sort_key",
     "_site_cell_value",
     "_site_numeric",
     "_site_dim_value",
     "_site_desc_text",
-    "meters_to_millimeters",
-    "build_section_description",
-    "resolve_element_dimensions",
-    "compute_shuttering_area",
     "build_site_detail_sheet",
     "build_site_summary_sheet",
-    "build_xlsx_sheet_xml_site",
+    "write_site_xlsx",
     "_finish_site_sheet",
-    "write_site_xlsx"
+    "enforce_uniform_grid_borders",
 ]
 
 
 def extract_function_source(source, name):
     """Pull one top-level def block out of the script source."""
     pattern = re.compile(
-        r"^def {0}\(.*?(?=^def )".format(name),
+        r"^def {0}\(.*?(?=^def |\\Z)".format(name),
         re.S | re.M
     )
 
@@ -93,6 +97,8 @@ def main():
     with io.open(SCRIPT_PATH, "r", encoding="utf-8") as handle:
         source = handle.read()
 
+    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]']
+
     import time
 
     namespace = {
@@ -101,6 +107,10 @@ def main():
         "zipfile": zipfile,
         "time": time,
     }
+
+    # Auto-injected module constants the site builders rely on.
+    for _const_line in CONSTANT_LINES:
+        exec(_const_line, namespace)
 
     from xml.sax.saxutils import escape as xml_escape
     namespace["xml_escape"] = xml_escape
@@ -564,11 +574,11 @@ def main():
 
         check(
             detail_table[4][0] == ("MERGE_V", "SNO")
-            and detail_table[4][1] == ("MERGE_V", "DESCRIPTION")
+            and detail_table[4][1] == ("MERGE_V", "MARK")
             and detail_table[4][7] == ("MERGE_V", "LEVEL")
             and detail_table[5][5] == "VOLUME (m3)"
             and detail_table[5][6] == "SHUTTERING (SQM)",
-            "Two-tier header band uses MERGE_V markers on rows 5:6"
+            "Two-tier header band merges SNO/params/LEVEL over QTY groups"
         )
 
         first_site_row = detail_table[6]
@@ -587,8 +597,9 @@ def main():
         )
 
         check(
-            first_site_row[1] == "B1 | 230 X 6096",
-            "DESCRIPTION follows the selected parameters, then cross-section"
+            first_site_row[1] == "B1"
+            and detail_table[7][1] == "B2",
+            "Selected parameters land in their own columns (MARK)"
         )
 
         check(
@@ -603,9 +614,9 @@ def main():
         check(
             site_total_row[0] == "TOTAL"
             and isinstance(site_total_row[5], tuple)
-            and site_total_row[5][1] == "SUM(F7:F8)"
+            and str(site_total_row[5][1]).lstrip("=") == "SUM(F7:F8)"
             and isinstance(site_total_row[6], tuple)
-            and site_total_row[6][1] == "SUM(G7:G8)",
+            and str(site_total_row[6][1]).lstrip("=") == "SUM(G7:G8)",
             "Detail TOTAL row holds live SUM formulas for both metrics"
         )
 

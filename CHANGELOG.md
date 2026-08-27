@@ -24,7 +24,7 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ## [Unreleased] — v1.4.0 site-format export: manual site look + formwork (SHUTTERING) — P3 increment
 
-**New feature (unreleased; code `v1.4.0`, tag pending).** Reproduces the hand-made site BOQ that the
+**New feature (unreleased; code `v1.4.1`, tag pending).** Reproduces the hand-made site BOQ that the
 owner supplied as screenshots (title blocks, light-blue two-tier headers, MM sizes,
 VOLUME + SHUTTERING columns, level-wise front Summary).
 
@@ -42,14 +42,19 @@ VOLUME + SHUTTERING columns, level-wise front Summary).
   prompt); band, data and TOTAL cells now carry a full thin-border box grid; DESCRIPTION is
   built strictly from the parameters selected for that category in the UI (selection order
   preserved), closing with the `W X L` millimetre cross-section.
+- **Owner feedback round 2 (2026-08-27):** every selected parameter now
+  lands in its OWN sheet column between SNO and SIZE (MM) - the combined
+  DESCRIPTION cell is gone; column widths adapt to the parameter count;
+  dimension feeds switched to unrounded `_site_dim_value` so MM sizes can
+  never drift (6.096 m must print 6096, not 6100).
 - **Switch:** `site_format_flag = True` selects the site writer at export time; the classic
   (v1.3.0-style) workbook remains available as rollback via `write_basic_xlsx(site_format=False)` —
   which itself now honours the flag when called directly.
-- Version bumped to **1.4.0** (`__version__` + `SCRIPT_VERSION`).
+- Version bumped to **1.4.1** (`__version__` + `SCRIPT_VERSION`).
 
 **Tested (harness).** `python test_xlsx_writer.py` passes every check end-to-end: shuttering rules
 per category, dimension fallbacks, natural level sort, detail/summary builders (`MERGE_V` markers,
-MM integers, selection-driven descriptions closing with `W X L`), mergeCells part, live SUMIF/SUM
+MM integers, selection-driven parameter columns (one per selected parameter)), mergeCells part, live SUMIF/SUM
 wiring, site + classic workbook XML validity, styles, plus a merge-grid integrity pass asserting
 zero degenerate / duplicate / overlapping spans on every site sheet (Excel-repair regression
 guard) and a bordered-grid check over the first data row. `script.py` also compiles clean under
