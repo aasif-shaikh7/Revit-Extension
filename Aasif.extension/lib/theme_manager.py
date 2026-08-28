@@ -16,7 +16,9 @@ Usage (inside a pyRevit forms.WPFWindow subclass):
         def __init__(self, xaml_file):
             forms.WPFWindow.__init__(self, xaml_file)
             theme_manager.apply_theme(self)
-            theme_manager.watch_theme_changes(self)
+            self._watcher = theme_manager.watch_theme_changes(self)
+            self.Closed += lambda s, a: theme_manager.stop_watching(self._watcher)
+            theme_manager.keep_alive(self)  # REQUIRED for show(modal=False)
 """
 
 import os
@@ -109,11 +111,14 @@ def watch_theme_changes(window, callback=None):
     """
     Optional: auto re-apply the theme if the user flips Revit's own
     Light/Dark setting while the toolkit window is still open.
-    Only available on Revit 2024+ (where the event exists); silently
-    does nothing on older versions.
+    Only available where the Revit event exists; silently does nothing
+    on engines/versions without it.
+
+    Returns the subscribed .NET handler (or None) so the caller can
+    unsubscribe via stop_watching() when the window closes.
     """
     if not HAS_REVIT_THEME_API:
-        return
+        return None
 
     def _on_change(sender, args):
         new_theme = apply_theme(window)
@@ -122,5 +127,49 @@ def watch_theme_changes(window, callback=None):
 
     try:
         UIThemeManager.CurrentThemeChanged += _on_change
+        return _on_change
+    except Exception:
+        return None
+
+
+def stop_watching(handler):
+    """
+    Unsubscribe a watcher returned by watch_theme_changes(). Call it
+    from the window's Closed event so repeated open/close cycles don't
+    accumulate dead handlers. Silently ignores None / unsupported hosts.
+    """
+    if not HAS_REVIT_THEME_API or handler is None:
+        return
+    try:
+        UIThemeManager.CurrentThemeChanged -= handler
     except Exception:
         pass
+
+
+# ------------------------------------------------------------
+# Modeless-window lifetime (pyRevit quirk)
+# ------------------------------------------------------------
+# pyRevit tears a command's scope down once the script returns. A
+# modeless window (window.show(modal=False)) whose only references
+# live in that scope stays VISIBLE, but its Python-side event wiring
+# dies — buttons stop responding. Holding the window on this module
+# (which persists in the engine's sys.modules for the whole session)
+# keeps the window, its class and its bound handlers alive.
+_ACTIVE_WINDOWS = []
+
+
+def keep_alive(window):
+    """Keep a modeless window responsive after the command scope ends.
+
+    Call it before ``window.show(modal=False)``. Returns the window so
+    it can be assigned inline. Pair with :func:`release` on close.
+    """
+    if window not in _ACTIVE_WINDOWS:
+        _ACTIVE_WINDOWS.append(window)
+    return window
+
+
+def release(window):
+    """Drop a window kept alive by :func:`keep_alive` (call on close)."""
+    if window in _ACTIVE_WINDOWS:
+        _ACTIVE_WINDOWS.remove(window)

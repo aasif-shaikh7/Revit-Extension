@@ -22,6 +22,67 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Brand UI system: shared theme resources + Brand Showcase — live QA pending
+
+**New infrastructure (unreleased; commit `b1f3c38` + cleanup).** Turns
+`docs/reference/brand-guidelines.md` from a document into the toolkit's actual UI surface: one
+shared Light/Dark theme system for every WPF dialog.
+
+- **`Aasif.extension/lib/Resources/`** — four brand resource dictionaries:
+  `Brand.Colors.Light.xaml` / `Brand.Colors.Dark.xaml` (the Ember accent ramp
+  `F2994A` / `D97C2B` / `FCE8D5` / `7A3F14` plus Light/Dark surface, border and text neutrals and
+  the shared system success/warning/error/info colors), `Brand.Typography.xaml` (Sora with a
+  Segoe UI Variable → Segoe UI fallback; header 18 / subheader 14 / label 13 / body 12 /
+  caption 11, SemiBold labels, default TextBlock style) and `Brand.Controls.xaml` (Ember primary
+  button with hover/pressed trigger, outline secondary button, TextBox, CheckBox, ComboBox
+  chrome, status chips, dialog/ribbon containers).
+- **`Aasif.extension/lib/theme_manager.py`** — `get_current_theme()` (guarded `UIThemeManager`
+  lookup, falling back to the Windows `AppsUseLightTheme` registry value and then Light),
+  `apply_theme()` (merges the color + typography + controls dictionaries into any `Window` and
+  stashes the active theme on `window.Tag`), `toggle_theme()`, `watch_theme_changes()` (re-applies
+  when Revit's own theme flips; silent no-op where the event is absent) and `stop_watching()`
+  (unsubscribes the watcher from the window's Closed event so repeated open/close cycles don't
+  accumulate dead handlers). Host-independent apart from the guarded Revit call site —
+  pythonnet/.NET only, no pyRevit API dependency.
+- **`Aasif.tab ▶ Brand.panel ▶ BrandShowcase.pushbutton`** — a live preview of every brand style
+  that doubles as a Light/Dark visual QA tool (theme label + toggle; the window re-themes itself
+  if Revit's theme changes while it is open, and unsubscribes its listener on close). Click
+  handlers are wired explicitly in Python (`self.ToggleThemeBtn.Click += ...`) because XAML
+  `Click=` attributes do not bind on dynamically-loaded XAML in pyRevit.
+- **Debug scaffolding removed (cleanup).** The wiring investigation left a "DEBUG BUILD 3" canary
+  alert that popped on every open, a temporary TEST isolation button and a per-toggle modal
+  confirmation; all are gone. The toggle error path now follows guidelines §5 — a plain-language
+  headline with the traceback collapsed under the details toggle.
+- **Modeless-lifetime fix (owner feedback, 2026-08-28).** The Light/Dark toggle (and every other
+  handler) was dead in the open window. Root cause: pyRevit tears a command's scope down once the
+  script returns, and a `show(modal=False)` window outlives that scope — it stays visible but its
+  Python-side event wiring does not. `theme_manager` now carries an engine-persistent holder
+  (`keep_alive` / `release` — the module persists in the engine's `sys.modules` for the session);
+  the showcase registers itself before showing, releases its slot on close, keeps strong references
+  to all handlers on the instance, and reads `theme_manager` through the instance (`self._tm`) so
+  no handler depends on the command scope.
+- **Stray helper removed.** `_patch_summary2.py` — the one-shot patch that rewrote
+  `build_site_summary_sheet` for the per-category VOLUME + SHUTTERING aggregation (already
+  applied and committed in `b940f96`) — is deleted; the repo root keeps no throwaway helpers.
+- **Engine reality check (diagnosis byproduct — owner attention needed).** The showcase window can
+  only have opened via the **IronPython (`forms/_ipy.py`) backend**: the installed pyRevit build
+  (master clone, `6.5.3`) ships `pyrevit/forms/_cpy.py` as a **stub** that raises
+  `PyRevitCPythonNotSupported` for `WPFWindow` and `alert` on any CPython engine, and the machine
+  carries no other `pyrevit.forms` backend. Both UI buttons (Brand Showcase and the BOQ dialog,
+  which owner-confirmed working) therefore effectively run **IP27** today — the CP3123-only
+  decision (T-03) does not describe the runtime yet. Before any CP3123 switch, the installed build
+  needs a CPython-capable `pyrevit.forms` (or the dialogs move to raw WPF wiring without
+  `pyrevit.forms`).
+
+**Unverified (live).** This is WPF/pyRevit UI — the XLSX harness cannot execute it and the engine
+is untouched. Pending owner confirmation on Revit 2025 / CP3123: the showcase opens fully styled,
+the toggle flips Light/Dark instantly, and the theme follows Revit's own setting. The natural next
+step after that is applying the same dictionaries to the **BOQ Parameter Manager** dialog
+(`Generate.panel/BOQ.pushbutton/ui.xaml`), which currently applies the Ember palette only to the
+exported workbook.
+
+---
+
 ## [Unreleased] — v1.4.0 site-format export: manual site look + formwork (SHUTTERING) — P3 increment
 
 **New feature (unreleased; code `v1.4.1`, tag pending).** Reproduces the hand-made site BOQ that the

@@ -174,6 +174,34 @@ applied here — it is a product decision with repo-wide blast radius (path
 `Aasif.extension/Aasif.tab/...`, dialog titles, docs). Pick a name and the
 label swap is a follow-up.
 
+### Brand UI system — shared theme resources + Brand Showcase — `testing` (2026-08-28)
+**Built:** the guidelines became the actual UI surface — `lib/Resources/` carries
+`Brand.Colors.Light/Dark.xaml` (Ember accent + Light/Dark surface neutrals + system colors),
+`Brand.Typography.xaml` (Sora → Segoe UI fallback type scale) and `Brand.Controls.xaml` (buttons,
+inputs, chips, containers); `lib/theme_manager.py` detects Revit's active Light/Dark theme
+(guarded `UIThemeManager` → Windows app-theme registry → Light), merges the dictionaries into any
+`forms.WPFWindow`, and supports force/toggle/auto-reapply with a `stop_watching` unsubscribe hook.
+The new `Brand.panel ▶ BrandShowcase.pushbutton` previews every style and doubles as a Light/Dark
+QA tool; handlers are wired explicitly in Python because XAML `Click=` does not bind on
+dynamically-loaded XAML in pyRevit. Debug scaffolding (canary alert, TEST button, per-toggle
+popup) removed.
+**Unverified:** WPF UI cannot be executed by the XLSX harness. Owner to confirm live on
+Revit 2025: showcase opens styled, the toggle flips themes, the theme follows Revit.
+**Fixed (owner feedback, 2026-08-28):** the toggle was dead in the opened window — pyRevit tears
+the command scope down after the script returns, and a `show(modal=False)` window outlives it
+(visible chrome, dead Python-side event wiring). `theme_manager` now provides an engine-persistent
+holder (`keep_alive` / `release`); the showcase registers before showing, releases on close, keeps
+strong references to all handlers, and reads `theme_manager` via `self._tm` so no handler depends
+on the command scope.
+**Engine reality check:** the window can only have opened via the IronPython `forms/_ipy.py`
+backend — the installed pyRevit (master `6.5.3`) stubs `pyrevit.forms` for CPython
+(`_cpy.py` → `PyRevitCPythonNotSupported`), so both UI buttons effectively run IP27 today. The
+CP3123-only decision (T-03) needs a CPython-capable `pyrevit.forms` on the installed build before
+it can become real.
+**Next step (after live QA):** apply the same dictionaries to the BOQ Parameter Manager dialog
+(`Generate.panel/BOQ.pushbutton/ui.xaml`), which today applies the Ember palette only to the
+exported workbook.
+
 ---
 
 ## P1 — Structural Quantity Engine (next phase)

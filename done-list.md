@@ -181,6 +181,65 @@ pending; `v1.3.0`/`v1.4.0` tags withheld until then.
 
 ---
 
+### BOQ-9 — Brand UI system: shared theme resources + Brand Showcase — code in place (`b1f3c38` + cleanup)
+
+**Asked for.** Make `docs/reference/brand-guidelines.md` real: shared Light/Dark theme resources
+for the toolkit's WPF dialogs, plus a live visual QA surface for them.
+
+**Built.**
+- `Aasif.extension/lib/Resources/` — `Brand.Colors.Light.xaml` /
+  `Brand.Colors.Dark.xaml` (Ember 500/600/100/900 accent brushes + Light/Dark
+  surface-alt/border/text neutrals + system success/warning/error/info),
+  `Brand.Typography.xaml` (Sora with Segoe UI Variable → Segoe UI fallback;
+  header 18 / subheader 14 / label 13 / body 12 / caption 11, SemiBold labels,
+  default TextBlock style) and `Brand.Controls.xaml` (Ember primary button with
+  hover trigger, outline secondary button, TextBox/CheckBox/ComboBox chrome,
+  success/error chips, dialog + ribbon containers).
+- `Aasif.extension/lib/theme_manager.py` — `get_current_theme` (guarded
+  `UIThemeManager`, then the Windows `AppsUseLightTheme` registry value, then
+  Light), `apply_theme` (merges color + typography + controls dictionaries onto
+  any `Window` and stashes the theme on `window.Tag`), `toggle_theme`,
+  `watch_theme_changes` (re-applies on Revit's own theme flip; silent no-op
+  where the event is absent) and `stop_watching` (unsubscribes from the
+  window's Closed event so open/close cycles don't leak handlers).
+- `Aasif.tab ▶ Brand.panel ▶ BrandShowcase.pushbutton` (`script.py`, `ui.xaml`,
+  `bundle.yaml`, icons) — previews typography, buttons, inputs and status chips
+  with a theme label and a Toggle Light/Dark button; re-themes itself if
+  Revit's theme changes while open. Handlers are wired explicitly in Python
+  (XAML `Click=` does not bind on dynamically-loaded XAML in pyRevit).
+- Cleanup: the "DEBUG BUILD 3" canary alert, the TEST isolation button and the
+  per-toggle modal popup from the wiring investigation are removed; the toggle
+  error path follows guidelines §5 (plain-language headline, traceback
+  collapsed under the details toggle). The applied one-shot patch helper
+  `_patch_summary2.py` is deleted from the root.
+- Modeless-lifetime fix (owner feedback): the showcase now registers on an
+  engine-persistent holder in `theme_manager` (`keep_alive` / `release`)
+  because pyRevit tears the command scope down after the script returns —
+  a `show(modal=False)` window outlives the scope and used to keep its
+  visible chrome while its Python-side event wiring died (dead toggle).
+  Strong references to all handlers are kept on the instance, and handlers
+  read `theme_manager` via `self._tm` so none depends on the command scope.
+
+**How it is known.** Code review only — **no harness coverage is possible**
+(WPF resource loading and Revit theme detection cannot run outside Revit). The
+XLSX engine is untouched: `python test_xlsx_writer.py` still ends with
+`RESULT: all checks passed`, and every edited Python file passes
+`python -m py_compile`. Live confirmation on Revit 2025 / CP3123 is **pending**
+with the project owner: showcase opens fully styled, the toggle flips
+Light/Dark instantly, the theme auto-follows Revit's setting.
+
+**Cost / limits.** The BOQ Parameter Manager dialog does not consume these
+dictionaries yet — it keeps its own WPF styling and applies the Ember palette
+only to the exported workbook. Sora renders only where the font is installed;
+the fallback chain covers the rest. Toolkit naming remains an open owner
+decision (todo-list). Engine note: the installed pyRevit (master `6.5.3`)
+stubs `pyrevit.forms` for CPython (`_cpy.py` → `PyRevitCPythonNotSupported`);
+the only working backend on this machine is IronPython `_ipy.py`, so the
+showcase (and the BOQ dialog) effectively run IP27 today — the CP3123-only
+decision (T-03) is not yet reflected by the installed build.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

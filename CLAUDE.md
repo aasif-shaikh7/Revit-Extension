@@ -15,15 +15,19 @@ workbooks from Autodesk Revit.
 **Target env:** Revit **2025+**; pyRevit **6.10.0+** on the **CP3123** (CPython 3.12.3) engine — the
 single supported runtime. IP27 (IronPython 2.7) is best-effort/untested.
 
-**Current state: one working pushbutton.** `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton`
+**Current state: one working tool pushbutton plus brand infrastructure.**
+`Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton`
 contains `script.py` (the whole tool), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
 BOQ Parameter Manager for Beam/Column/Slab/Foundation, discovers real parameters, classifies slab/
 foundation subtypes, collects metric quantities, and writes a dependency-free XLSX workbook with a
-BOQ Summary and a Costing sheet.
+BOQ Summary and a Costing sheet. `Aasif.extension/lib/` adds the shared brand/theme system
+(`theme_manager.py` + `lib/Resources/*.xaml` resource dictionaries), previewed live by the
+`Aasif.tab/Brand.panel/BrandShowcase.pushbutton` QA window.
 
 What exists:
 
-- One extension, one pushbutton. No CI, no other modules.
+- One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
+  `lib/` (brand resource dictionaries + theme manager). No CI.
 - A pure-Python, dependency-free XLSX engine inside `script.py`, deliberately free of Revit symbols
   so it can be tested outside Revit.
 - A standalone regression harness, `test_xlsx_writer.py`, that extracts the engine's source from the

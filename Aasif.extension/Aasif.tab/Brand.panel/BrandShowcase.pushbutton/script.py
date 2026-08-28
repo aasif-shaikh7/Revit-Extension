@@ -10,7 +10,6 @@ button doubles as a visual QA tool for the style guide itself.
 import traceback
 import clr
 clr.AddReference('PresentationFramework')
-from System.Windows import MessageBox
 from pyrevit import forms, script
 
 logger = script.get_logger()
@@ -18,18 +17,37 @@ logger = script.get_logger()
 
 class BrandShowcaseWindow(forms.WPFWindow):
     def __init__(self, xaml_file):
-        forms.alert("DEBUG BUILD 3 — script.py loaded fresh.", title="Canary Check")
         forms.WPFWindow.__init__(self, xaml_file)
-        theme = theme_manager.apply_theme(self)
-        theme_manager.watch_theme_changes(self, callback=self._on_theme_changed)
+        # Handlers must not depend on the command scope — pyRevit tears
+        # the scope down once the script returns, and a modeless window
+        # outlives it. Keep the module on the instance instead.
+        self._tm = theme_manager
+        # Strong references to every handler — some engines collect
+        # delegate targets reachable only through the .NET event.
+        self._handlers = (
+            self._on_theme_changed,
+            self._on_closed,
+            self.toggle_theme_click,
+        )
+        theme = self._tm.apply_theme(self)
+        self._theme_watcher = self._tm.watch_theme_changes(
+            self, callback=self._on_theme_changed
+        )
+        # Drop the theme listener and the keep-alive slot on close so
+        # repeated open/close cycles don't accumulate anything.
+        self.Closed += self._on_closed
         self._set_theme_label(theme)
         # Explicit wiring — more reliable than XAML Click="..." on
         # dynamically-loaded (non-compiled) XAML in pyRevit.
         self.ToggleThemeBtn.Click += self.toggle_theme_click
-        self.TestPlainBtn.Click += self.test_plain_click
+        # Modeless: register on the engine-persistent holder, otherwise
+        # the window stays visible but its buttons stop responding once
+        # the command that opened it has ended.
+        self._tm.keep_alive(self)
 
-    def test_plain_click(self, sender, args):
-        MessageBox.Show(self, "Plain button click received.", "Isolation Test")
+    def _on_closed(self, sender, args):
+        self._tm.stop_watching(self._theme_watcher)
+        self._tm.release(self)
 
     def _set_theme_label(self, theme):
         self.ThemeLabel.Text = "Current theme: {0}".format(theme)
@@ -39,21 +57,25 @@ class BrandShowcaseWindow(forms.WPFWindow):
 
     def toggle_theme_click(self, sender, args):
         try:
-            new_theme = theme_manager.toggle_theme(self)
+            new_theme = self._tm.toggle_theme(self)
             self._set_theme_label(new_theme)
-            MessageBox.Show(self, "Toggled to: {0}".format(new_theme), "Toggle Theme")
-        except Exception as ex:
-            MessageBox.Show(
-                self,
-                "Toggle failed:\n\n{0}\n\n{1}".format(str(ex), traceback.format_exc()),
-                "Toggle Theme — Error"
+        except Exception:
+            # Guidelines §5: plain-language headline, technical detail
+            # collapsed under the details toggle — never a raw stack dump.
+            forms.alert(
+                "The theme didn't switch. Try again?",
+                title="Brand Showcase — Toggle Theme",
+                expanded=traceback.format_exc()
             )
 
 
 if __name__ == '__main__':
     try:
         import theme_manager
-        BrandShowcaseWindow('ui.xaml').show(modal=False)
+        # Local module-global reference as well — belt and braces
+        # against engines that collect unreferenced windows.
+        window = BrandShowcaseWindow('ui.xaml')
+        window.show(modal=False)
     except Exception as ex:
         # Guaranteed-visible error, regardless of output console state.
         forms.alert(

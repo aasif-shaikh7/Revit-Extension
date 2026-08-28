@@ -34,7 +34,7 @@ Revit-Extension/
 ├── done-list.md
 ├── todo-list.md
 ├── test_xlsx_writer.py         <- standalone regression harness (pure Python)
-└── _remove_null.py             <- stray local helper (see note below)
+└── __pycache__/                <- local bytecode cache (git-ignored, not tracked)
 ```
 
 ---
@@ -65,19 +65,40 @@ Revit.
 
 ```text
 Aasif.extension/
-└── Aasif.tab/
-    └── Generate.panel/
-        └── BOQ.pushbutton/
-            ├── script.py    <- the whole tool
-            ├── ui.xaml      <- WPF dialog definition
-            └── icon.png     <- button icon
+│
+├── Aasif.tab/
+│   ├── Generate.panel/
+│   │   └── BOQ.pushbutton/
+│   │       ├── script.py    <- the whole tool
+│   │       ├── ui.xaml      <- WPF dialog definition
+│   │       └── icon.png     <- button icon
+│   └── Brand.panel/
+│       └── BrandShowcase.pushbutton/
+│           ├── script.py    <- brand/theme live preview + Light/Dark QA
+│           ├── ui.xaml      <- showcase dialog definition
+│           ├── bundle.yaml  <- button title/tooltip
+│           └── icon.png     <- button icon
+│
+└── lib/
+    ├── theme_manager.py     <- Revit Light/Dark detection + resource merging
+    └── Resources/
+        ├── Brand.Colors.Light.xaml
+        ├── Brand.Colors.Dark.xaml
+        ├── Brand.Typography.xaml
+        └── Brand.Controls.xaml
 ```
 
 - **`Aasif.tab`** → the extension's top-level Revit tab named **Aasif**.
 - **`Generate.panel`** → a panel named **Generate** on that tab.
 - **`BOQ.pushbutton`** → the **BOQ** button in that panel.
+- **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
+  resources; Light/Dark visual QA.
+- **`lib/`** → shared, pushbutton-independent code and WPF resource
+  dictionaries. `theme_manager.py` is host-independent except for the guarded
+  `UIThemeManager` call site; the dictionaries are plain XAML data. Nothing in
+  `lib/` may import the XLSX engine or touch the workbook writer.
 
-Only one pushbutton exists today; there is intentionally no further nesting.
+Two pushbuttons exist today; nesting stays intentionally flat.
 
 ---
 

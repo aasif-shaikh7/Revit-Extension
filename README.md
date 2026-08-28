@@ -8,8 +8,9 @@
 This repository contains a **pyRevit extension** that runs inside Autodesk Revit and
 automates the generation of **RCC (Reinforced Cement Concrete) BOQ** workbooks.
 
-Right now it ships one working button — **BOQ** in the **Generate** panel of the **Aasif** tab —
-that opens the **RCC BOQ Parameter Manager**.
+Right now it ships two buttons — **BOQ** in the **Generate** panel of the **Aasif** tab, which
+opens the **RCC BOQ Parameter Manager**, and **Brand Showcase** in the **Brand** panel — a live
+preview of the toolkit's brand/theme system that doubles as a Light/Dark visual QA tool.
 
 **Target environment:**
 
@@ -129,12 +130,17 @@ one or more `*.pushbutton` folders:
 Revit-Extension/
 │
 ├── Aasif.extension/
-│   └── Aasif.tab/
-│       └── Generate.panel/
-│           └── BOQ.pushbutton/
-│               ├── script.py     <- the whole tool (entry, UI wiring, XLSX engine)
-│               ├── ui.xaml        <- WPF window definition
-│               └── icon.png       <- pushbutton icon
+│   ├── Aasif.tab/
+│   │   ├── Generate.panel/
+│   │   │   └── BOQ.pushbutton/
+│   │   │       ├── script.py     <- the whole tool (entry, UI wiring, XLSX engine)
+│   │   │       ├── ui.xaml        <- WPF window definition
+│   │   │       └── icon.png       <- pushbutton icon
+│   │   └── Brand.panel/
+│   │       └── BrandShowcase.pushbutton/   <- brand/theme live preview + Light/Dark QA
+│   └── lib/
+│       ├── theme_manager.py       <- Revit Light/Dark theme detection + dictionary merging
+│       └── Resources/             <- brand resource dictionaries (colors/typography/controls)
 │
 ├── docs/
 │   └── reference/                 <- older Kestrel docs, kept for study
