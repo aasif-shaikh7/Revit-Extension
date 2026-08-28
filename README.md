@@ -12,6 +12,7 @@ Right now it ships one working button — **BOQ** in the **Generate** panel of t
 that opens the **RCC BOQ Parameter Manager**.
 
 **Target environment:**
+
 - **Revit 2025 and above**
 - **pyRevit 6.10.0 and above** on the **CP3123 (CPython 3.12.3)** engine — the single supported
   runtime. The legacy **IP27 (IronPython 2.7)** engine is best-effort/untested (code stays
@@ -215,7 +216,7 @@ and the current status is tracked in [`todo-list.md`](todo-list.md).
 ## Versioning
 
 The extension follows **semantic versioning** (`MAJOR.MINOR.PATCH`) as recommended by GitHub
-(<https://semver.org/>). The current version is declared in `script.py` on the pushbutton — in the
+([https://semver.org/](https://semver.org/)). The current version is declared in `script.py` on the pushbutton — in the
 pyRevit docstring (`__version__`) and the runtime `SCRIPT_VERSION` constant — and is shown in the
 Excel export dialog.
 

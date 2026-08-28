@@ -1,0 +1,61 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Brand font: Sora (unique, geometric, distinct from Revit's native Segoe UI —
+        signals "this panel belongs to the toolkit"). Falls back cleanly to Segoe UI
+        Variable / Segoe UI if Sora isn't installed on the machine, so the UI never
+        breaks on a fresh install.
+
+        To ship Sora with the toolkit: place Sora-Regular.ttf and Sora-SemiBold.ttf
+        in a /Fonts folder next to this file and reference it as a pack font instead:
+            FontFamily="./Fonts/#Sora"
+        Until then, this fallback chain is safe to use as-is.
+    -->
+    <FontFamily x:Key="BrandFontFamily">Sora, Segoe UI Variable, Segoe UI</FontFamily>
+
+    <!-- ===== Type scale ===== -->
+    <Style x:Key="BrandHeaderText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+
+    <Style x:Key="BrandSubHeaderText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+
+    <Style x:Key="BrandLabelText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+
+    <Style x:Key="BrandBodyText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="Regular"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="BrandCaptionText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="Regular"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+
+    <!-- Default TextBlock style so plain <TextBlock> tags also inherit the brand font -->
+    <Style TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    </Style>
+
+</ResourceDictionary>

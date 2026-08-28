@@ -1,0 +1,61 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Brand Showcase"
+        Height="560" Width="460"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SurfaceBrush}">
+
+    <Border Style="{DynamicResource BrandDialogContainer}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+
+            <!-- Typography scale -->
+            <TextBlock Text="Brand Showcase" Style="{DynamicResource BrandHeaderText}"/>
+            <TextBlock Text="Live preview of every brand style in this kit." Style="{DynamicResource BrandBodyText}" Margin="0,4,0,16"/>
+
+            <TextBlock Text="Sub-header text" Style="{DynamicResource BrandSubHeaderText}" Margin="0,0,0,4"/>
+            <TextBlock Text="Label text" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,4"/>
+            <TextBlock Text="Body text — used for descriptions, help text, and dialog copy that needs to stay easy to scan." Style="{DynamicResource BrandBodyText}" Margin="0,0,0,4"/>
+            <TextBlock Text="Caption text — timestamps, hints, secondary detail" Style="{DynamicResource BrandCaptionText}" Margin="0,0,0,16"/>
+
+            <!-- Buttons -->
+            <TextBlock Text="Buttons" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,8"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button x:Name="PrimaryBtn" Content="Primary Action" Style="{DynamicResource BrandPrimaryButton}" Margin="0,0,8,0"/>
+                <Button x:Name="SecondaryBtn" Content="Secondary" Style="{DynamicResource BrandSecondaryButton}"/>
+            </StackPanel>
+
+            <!-- Inputs -->
+            <TextBlock Text="Inputs" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,8"/>
+            <TextBox x:Name="SampleTextBox" Text="" Style="{DynamicResource BrandTextBox}" Margin="0,0,0,8"/>
+            <ComboBox x:Name="SampleCombo" Style="{DynamicResource BrandComboBox}" Margin="0,0,0,8">
+                <ComboBoxItem Content="Option A" IsSelected="True"/>
+                <ComboBoxItem Content="Option B"/>
+            </ComboBox>
+            <CheckBox x:Name="SampleCheck" Content="Sample checkbox" Style="{DynamicResource BrandCheckBox}" Margin="0,0,0,16"/>
+
+            <!-- Status chips -->
+            <TextBlock Text="Status chips" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,8"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                <Border Style="{DynamicResource BrandSuccessChip}" Margin="0,0,8,0">
+                    <TextBlock Text="Success" Foreground="White" FontWeight="SemiBold" FontSize="11"/>
+                </Border>
+                <Border Style="{DynamicResource BrandErrorChip}">
+                    <TextBlock Text="Error" Foreground="White" FontWeight="SemiBold" FontSize="11"/>
+                </Border>
+            </StackPanel>
+
+            <!-- Theme control -->
+            <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="4" Padding="12">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="ThemeLabel" Text="Current theme: —" Style="{DynamicResource BrandCaptionText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <Button x:Name="ToggleThemeBtn" Content="Toggle Light / Dark" Style="{DynamicResource BrandSecondaryButton}"/>
+                    <Button x:Name="TestPlainBtn" Content="TEST" Margin="8,0,0,0" Padding="12,4"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+        </ScrollViewer>
+    </Border>
+
+</Window>
