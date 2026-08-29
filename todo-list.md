@@ -198,9 +198,14 @@ backend — the installed pyRevit (master `6.5.3`) stubs `pyrevit.forms` for CPy
 (`_cpy.py` → `PyRevitCPythonNotSupported`), so both UI buttons effectively run IP27 today. The
 CP3123-only decision (T-03) needs a CPython-capable `pyrevit.forms` on the installed build before
 it can become real.
-**Next step (after live QA):** apply the same dictionaries to the BOQ Parameter Manager dialog
-(`Generate.panel/BOQ.pushbutton/ui.xaml`), which today applies the Ember palette only to the
-exported workbook.
+**Next step — applied (2026-08-29, code v1.4.2, live QA pending):** the BOQ Parameter Manager
+dialog (`Generate.panel/BOQ.pushbutton/ui.xaml`) now consumes the same dictionaries — `ui.xaml`
+restyled via `DynamicResource` brand keys (surfaces, type scale, inputs, outline buttons + the
+Ember primary Export, brand list/footer brushes) and `script.py` calls
+`theme_manager.apply_theme(window)` right after building the window (guarded; the dialog is
+modal, so no `keep_alive` is needed) with a `watch_theme_changes` + `Closed` → `stop_watching`
+pair. **Unverified live** — owner confirms together with the showcase QA: dialog opens styled,
+both themes readable, export unchanged.
 
 ---
 

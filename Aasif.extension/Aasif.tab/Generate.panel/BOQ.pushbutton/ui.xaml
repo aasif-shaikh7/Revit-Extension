@@ -5,7 +5,8 @@
     Width="1200"
     Height="750"
     WindowStartupLocation="CenterScreen"
-    ResizeMode="CanResize">
+    ResizeMode="CanResize"
+    Background="{DynamicResource SurfaceBrush}">
 
     <Grid Margin="12">
 
@@ -26,13 +27,12 @@
 
             <TextBlock
                 Text="RCC BOQ Parameter Manager"
-                FontSize="24"
-                FontWeight="Bold"/>
+                Style="{DynamicResource BrandHeaderText}"/>
 
             <TextBlock
                 x:Name="ProjectName"
                 Text="Project:"
-                FontSize="13"
+                Style="{DynamicResource BrandBodyText}"
                 Margin="0,5,0,0"/>
 
         </StackPanel>
@@ -43,7 +43,8 @@
         <!-- ================================================= -->
 
         <TabControl
-            Grid.Row="1">
+            Grid.Row="1"
+            Background="{DynamicResource SurfaceBrush}">
 
 
             <!-- ================================================= -->
@@ -80,14 +81,18 @@
                             <TextBox
                                 x:Name="BeamSearch"
                                 Grid.Row="0"
-                                Margin="5"/>
+                                Margin="5"
+                                Style="{DynamicResource BrandTextBox}"/>
 
                             <ListBox
                                 x:Name="BeamAvailable"
                                 Grid.Row="1"
                                 Margin="5"
                                 SelectionMode="Extended"
-                                DisplayMemberPath="Name"/>
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                         </Grid>
 
@@ -105,13 +110,15 @@
                             x:Name="BeamAdd"
                             Content="Add →"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="BeamRemove"
                             Content="← Remove"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Separator
                             Margin="0,8"/>
@@ -120,25 +127,29 @@
                             x:Name="BeamUp"
                             Content="↑ Up"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="BeamDown"
                             Content="↓ Down"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="BeamTop"
                             Content="⇧ Top"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="BeamBottom"
                             Content="⇩ Bottom"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                     </StackPanel>
 
@@ -154,7 +165,10 @@
                             x:Name="BeamSelected"
                             Margin="5"
                             SelectionMode="Extended"
-                            DisplayMemberPath="Name"/>
+                            DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                     </GroupBox>
 
@@ -195,14 +209,18 @@
                             <TextBox
                                 x:Name="ColumnSearch"
                                 Grid.Row="0"
-                                Margin="5"/>
+                                Margin="5"
+                                Style="{DynamicResource BrandTextBox}"/>
 
                             <ListBox
                                 x:Name="ColumnAvailable"
                                 Grid.Row="1"
                                 Margin="5"
                                 SelectionMode="Extended"
-                                DisplayMemberPath="Name"/>
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                         </Grid>
 
@@ -218,13 +236,15 @@
                             x:Name="ColumnAdd"
                             Content="Add →"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="ColumnRemove"
                             Content="← Remove"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Separator
                             Margin="0,8"/>
@@ -233,25 +253,29 @@
                             x:Name="ColumnUp"
                             Content="↑ Up"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="ColumnDown"
                             Content="↓ Down"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="ColumnTop"
                             Content="⇧ Top"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="ColumnBottom"
                             Content="⇩ Bottom"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                     </StackPanel>
 
@@ -265,7 +289,10 @@
                             x:Name="ColumnSelected"
                             Margin="5"
                             SelectionMode="Extended"
-                            DisplayMemberPath="Name"/>
+                            DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                     </GroupBox>
 
@@ -307,12 +334,14 @@
                             <TextBox
                                 x:Name="SlabSearch"
                                 Grid.Row="0"
-                                Margin="5"/>
+                                Margin="5"
+                                Style="{DynamicResource BrandTextBox}"/>
 
                             <ComboBox
                                 x:Name="SlabFilter"
                                 Grid.Row="1"
                                 Margin="5"
+                                Style="{DynamicResource BrandComboBox}"
                                 ToolTip="Filter Slab / Fold Slab / Grade Slab"/>
 
                             <ListBox
@@ -320,7 +349,10 @@
                                 Grid.Row="2"
                                 Margin="5"
                                 SelectionMode="Extended"
-                                DisplayMemberPath="Name"/>
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                         </Grid>
 
@@ -336,13 +368,15 @@
                             x:Name="SlabAdd"
                             Content="Add →"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="SlabRemove"
                             Content="← Remove"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Separator
                             Margin="0,8"/>
@@ -351,25 +385,29 @@
                             x:Name="SlabUp"
                             Content="↑ Up"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="SlabDown"
                             Content="↓ Down"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="SlabTop"
                             Content="⇧ Top"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="SlabBottom"
                             Content="⇩ Bottom"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                     </StackPanel>
 
@@ -383,7 +421,10 @@
                             x:Name="SlabSelected"
                             Margin="5"
                             SelectionMode="Extended"
-                            DisplayMemberPath="Name"/>
+                            DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                     </GroupBox>
 
@@ -425,12 +466,14 @@
                             <TextBox
                                 x:Name="FoundationSearch"
                                 Grid.Row="0"
-                                Margin="5"/>
+                                Margin="5"
+                                Style="{DynamicResource BrandTextBox}"/>
 
                             <ComboBox
                                 x:Name="FoundationFilter"
                                 Grid.Row="1"
                                 Margin="5"
+                                Style="{DynamicResource BrandComboBox}"
                                 ToolTip="Filter Footing / Combined Footing / PCC / Raft / Combined Raft"/>
 
                             <ListBox
@@ -438,7 +481,10 @@
                                 Grid.Row="2"
                                 Margin="5"
                                 SelectionMode="Extended"
-                                DisplayMemberPath="Name"/>
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                         </Grid>
 
@@ -454,13 +500,15 @@
                             x:Name="FoundationAdd"
                             Content="Add →"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="FoundationRemove"
                             Content="← Remove"
                             Height="38"
-                            Margin="0,5"/>
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Separator
                             Margin="0,8"/>
@@ -469,25 +517,29 @@
                             x:Name="FoundationUp"
                             Content="↑ Up"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="FoundationDown"
                             Content="↓ Down"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="FoundationTop"
                             Content="⇧ Top"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                         <Button
                             x:Name="FoundationBottom"
                             Content="⇩ Bottom"
                             Height="38"
-                            Margin="0,4"/>
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
 
                     </StackPanel>
 
@@ -501,7 +553,10 @@
                             x:Name="FoundationSelected"
                             Margin="5"
                             SelectionMode="Extended"
-                            DisplayMemberPath="Name"/>
+                            DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
 
                     </GroupBox>
 
@@ -522,14 +577,15 @@
             Margin="0,10,0,0"
             Padding="8"
             BorderThickness="1"
-            BorderBrush="Gray">
+            BorderBrush="{DynamicResource BorderBrush2}"
+            Background="{DynamicResource SurfaceAltBrush}">
 
             <DockPanel>
 
                 <TextBlock
                     x:Name="StatusText"
                     VerticalAlignment="Center"
-                    FontSize="13"
+                    Style="{DynamicResource BrandBodyText}"
                     Text="Ready"/>
 
 
@@ -542,20 +598,23 @@
                         Content="OK / Apply"
                         Width="120"
                         Height="34"
-                        Margin="0,0,8,0"/>
+                        Margin="0,0,8,0"
+                        Style="{DynamicResource BrandSecondaryButton}"/>
 
                     <Button
                         x:Name="ExportButton"
                         Content="Export Excel"
                         Width="130"
                         Height="34"
-                        Margin="0,0,8,0"/>
+                        Margin="0,0,8,0"
+                        Style="{DynamicResource BrandPrimaryButton}"/>
 
                     <Button
                         x:Name="CloseButton"
                         Content="Close"
                         Width="100"
-                        Height="34"/>
+                        Height="34"
+                        Style="{DynamicResource BrandSecondaryButton}"/>
 
                 </StackPanel>
 
@@ -567,11 +626,13 @@
 
                     <TextBlock
                         Text="Options:"
+                        Style="{DynamicResource BrandLabelText}"
                         VerticalAlignment="Center"
                         Margin="0,0,6,0"/>
 
                     <CheckBox
                         x:Name="ExportOnlyCheck"
+                        Style="{DynamicResource BrandCheckBox}"
                         Content="Export selected only"
                         VerticalContentAlignment="Center"
                         Margin="0,0,16,0"
@@ -579,12 +640,14 @@
 
                     <CheckBox
                         x:Name="AutoOpenCheck"
+                        Style="{DynamicResource BrandCheckBox}"
                         Content="Open file after export"
                         VerticalContentAlignment="Center"
                         ToolTip="Automatically launch the generated Excel workbook."/>
 
                     <CheckBox
                         x:Name="QuantitiesCheck"
+                        Style="{DynamicResource BrandCheckBox}"
                         Content="Include quantities"
                         IsChecked="True"
                         VerticalContentAlignment="Center"

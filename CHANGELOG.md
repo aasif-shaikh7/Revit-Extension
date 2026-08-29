@@ -22,6 +22,45 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — BOQ Parameter Manager dialog consumes the brand theme — live QA pending
+
+**New UI (unreleased; code `v1.4.2`).** The written "next step" of the Brand UI system: the BOQ
+Parameter Manager dialog (`Generate.panel/BOQ.pushbutton/ui.xaml`) now consumes the shared
+Light/Dark resource dictionaries instead of default WPF chrome — until now the Ember palette
+reached only the exported workbook.
+
+- **`ui.xaml`** — restyled entirely through `DynamicResource` references to the brand keys (no
+  `StaticResource`, because the dictionaries are merged at runtime by `theme_manager.apply_theme`,
+  which replaces the window's merged dictionaries): window and TabControl surfaces
+  (`SurfaceBrush`), the brand type scale on the header/project/status text (`BrandHeaderText` /
+  `BrandBodyText` / `BrandLabelText`), `BrandTextBox` on the four search boxes, `BrandComboBox` on
+  the two filters, `BrandCheckBox` on the three options, `BrandSecondaryButton` on all
+  Add/Remove/Up/Down/Top/Bottom + OK/Close buttons and `BrandPrimaryButton` (Ember fill) on
+  Export Excel; the list boxes carry Surface/TextPrimary/Border brushes; the footer band uses
+  `SurfaceAltBrush` + `BorderBrush2`. Control names, layout, tooltips and all Python wiring are
+  untouched (46 `x:Name`s preserved; mechanical patch applied with per-pattern count assertions).
+- **`script.py`** — guarded block right after the window is built: `theme_manager.apply_theme(window)`
+  merges the dictionaries (theme auto-detected via guarded `UIThemeManager` → Windows app-theme
+  registry → Light), `watch_theme_changes` re-applies if Revit's theme flips while the dialog is
+  open, and the watcher is unsubscribed via `stop_watching` on the dialog's Closed event. The whole
+  block degrades to the stock look if `theme_manager` or the dictionaries are unavailable. The
+  dialog is modal (`ShowDialog`), so plain locals outlive the session — no `keep_alive` registration
+  (that fix is for modeless windows only).
+- Version bumped to **1.4.2** (`__version__` + `SCRIPT_VERSION`).
+
+**Unverified (UI).** WPF resource loading and theme detection cannot run outside Revit; live
+confirmation on Revit 2025 is pending with the project owner: dialog opens styled, both themes are
+readable, the theme follows Revit's setting, and tabs/selection/filters/reorder/export behave exactly
+as before. The XLSX engine is untouched: `python test_xlsx_writer.py` still ends with
+`RESULT: all checks passed`, and `script.py` compiles clean under CPython 3.12.
+
+**Known limits.** TabItem headers and GroupBox chrome keep their system-theme look (the brand kit
+ships no TabItem/GroupBox styles); Sora renders only where the font is installed (Segoe UI
+fallback); same engine reality as the showcase — the installed pyRevit (master `6.5.3`) stubs
+`pyrevit.forms` for CPython, so the dialog runs the IronPython backend on this machine today.
+
+---
+
 ## [Unreleased] — Brand UI system: shared theme resources + Brand Showcase — live QA pending
 
 **New infrastructure (unreleased; commit `b1f3c38` + cleanup).** Turns

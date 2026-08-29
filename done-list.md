@@ -240,6 +240,42 @@ decision (T-03) is not yet reflected by the installed build.
 
 ---
 
+### BOQ-10 — BOQ Parameter Manager dialog consumes the brand theme — code in place (`v1.4.2`)
+
+**Asked for.** The Brand UI system's written next step: "apply the same dictionaries to the BOQ
+Parameter Manager dialog (`Generate.panel/BOQ.pushbutton/ui.xaml`), which today applies the Ember
+palette only to the exported workbook."
+
+**Built.**
+- `ui.xaml` restyled entirely through `DynamicResource` brand keys (never `StaticResource` — the
+  dictionaries are merged at runtime by `theme_manager.apply_theme`, which replaces the window's
+  merged dictionaries): window + TabControl surfaces (`SurfaceBrush`), the brand type scale on
+  header/project/status text, `BrandTextBox` search boxes, `BrandComboBox` filters,
+  `BrandCheckBox` options, `BrandSecondaryButton` on Add/Remove/Up/Down/Top/Bottom and OK/Close,
+  `BrandPrimaryButton` (Ember fill) on Export Excel, Surface/TextPrimary/Border brushes on the
+  list boxes and the footer band. Control names (46 `x:Name`s), layout, tooltips and all Python
+  wiring are untouched — the mechanical patch asserted every substitution count.
+- `script.py` — guarded block right after window creation: `theme_manager.apply_theme(window)`
+  plus `watch_theme_changes` re-apply, unsubscribed via `stop_watching` from the dialog's Closed
+  event. The dialog is modal (`ShowDialog`), so plain locals outlive the session — no
+  `keep_alive` (that fix is for modeless windows only). Failure of the whole block degrades to
+  the stock look; it can never block the dialog.
+- Version bumped to **1.4.2** (`__version__` + `SCRIPT_VERSION`).
+
+**How it is known.** Code review + XML well-formedness check of the edited `ui.xaml` only — no
+harness coverage is possible (WPF resource loading and Revit theme detection cannot run outside
+Revit). Engine untouched: `python test_xlsx_writer.py` ends `RESULT: all checks passed` and
+`script.py` compiles clean under CPython 3.12. **Unverified live** — owner to confirm in
+Revit 2025: dialog opens styled, both themes readable, the theme follows Revit's setting, and
+tabs/selection/filters/reorder/export behave exactly as before.
+
+**Cost / limits.** TabItem headers and GroupBox chrome stay on the system theme (the brand kit
+ships no TabItem/GroupBox styles). Sora renders only where the font is installed (Segoe UI
+fallback). Same engine reality as BOQ-9: the installed pyRevit (master `6.5.3`) stubs
+`pyrevit.forms` for CPython, so the dialog runs the IronPython backend on this machine today.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

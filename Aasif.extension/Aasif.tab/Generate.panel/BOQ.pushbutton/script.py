@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.4.1'
+__version__ = '1.4.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.4.1'
+SCRIPT_VERSION = '1.4.2'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -4425,6 +4425,47 @@ try:
         window = forms.WPFWindow(
             xaml_path
         )
+
+
+        # ====================================================
+        # BRAND THEME
+        # Merge the shared Light/Dark brand dictionaries from
+        # lib/Resources onto this dialog (theme_manager detects
+        # Revit's active theme; ui.xaml consumes them through
+        # DynamicResource keys). Cosmetic only - if anything
+        # here fails (lib missing, dictionary load error), the
+        # dialog still opens with its default WPF look.
+        # ====================================================
+
+        try:
+
+            import theme_manager
+
+            theme_manager.apply_theme(window)
+
+            # Re-apply automatically if the user flips Revit's own
+            # Light/Dark setting while the dialog is open. The dialog
+            # is modal (ShowDialog below), so plain locals stay alive
+            # for the whole session - no keep_alive() needed here
+            # (that fix is for modeless windows only).
+            _boq_theme_watcher = theme_manager.watch_theme_changes(
+                window
+            )
+
+            def _on_boq_window_closed(sender, args):
+
+                theme_manager.stop_watching(
+                    _boq_theme_watcher
+                )
+
+            window.Closed += (
+                _on_boq_window_closed
+            )
+
+        except Exception:
+
+            # Theme is cosmetic - fall back to the stock look quietly.
+            pass
 
 
         # ====================================================
