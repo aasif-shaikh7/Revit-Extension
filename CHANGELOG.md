@@ -61,6 +61,34 @@ fallback); same engine reality as the showcase — the installed pyRevit (master
 
 ---
 
+## [Unreleased] — BOQ Parameter Manager: Level Sync-style header/footer composition — live QA pending
+
+**New UI (unreleased; code `v1.4.3`).** The BOQ dialog's header and footer are restyled to match the
+Level Sync Studio dialog's cleaner composition: primary action in the header, simplified footer.
+
+- **`ui.xaml` header** — rebuilt as a `DockPanel`: a `StackPanel` on the left carries the title
+  (`BrandHeaderText`), a new subtitle ("Structural Bill of Quantities — pick the parameters to export
+  for Beam, Column, Slab and Foundation."), and the project name (`BrandBodyText`); the **Export
+  Excel** button (`BrandPrimaryButton`) is docked **right** in the header so the primary action is
+  always visible without scrolling. The header sits above the tab strip exactly like the Level Sync
+  dialog.
+- **`ui.xaml` footer** — simplified: the redundant **OK / Apply** button is removed (its `Click`
+  handler in `script.py` is guarded by `if apply_button:`, so the missing name resolves to `None` and
+  degrades gracefully); **Close** stays docked right with the options panel. The footer now mirrors
+  Level Sync's minimal band.
+- **`ui.xaml` tabs** — `TabControl` gets `BorderThickness="0"` for a plain underline tab strip.
+- Version bumped to **1.4.3** (`__version__` + `SCRIPT_VERSION`).
+
+**Unverified (UI).** Live confirmation on Revit 2025 is pending with the project owner: dialog opens
+with the new header/footer, Export is reachable in the header, tabs/selection/filters/reorder/export
+behave exactly as before. The XLSX engine is untouched: `python test_xlsx_writer.py` ends with
+`RESULT: all checks passed`, `script.py` compiles clean, and the XAML parses as well-formed XML.
+
+**Cost / limits.** Same engine reality as v1.4.2 — the dialog runs the IronPython backend; ApplyButton
+wiring stays in `script.py` as dead code behind the `if apply_button:` guard.
+
+---
+
 ## [Unreleased] — Brand UI system: shared theme resources + Brand Showcase — live QA pending
 
 **New infrastructure (unreleased; commit `b1f3c38` + cleanup).** Turns

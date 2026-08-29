@@ -18,24 +18,43 @@
 
 
         <!-- ================================================= -->
-        <!-- HEADER -->
+        <!-- HEADER (Level Sync-style studio band: title +       -->
+        <!-- subtitle left, Ember primary Export right)          -->
         <!-- ================================================= -->
 
-        <StackPanel
+        <DockPanel
             Grid.Row="0"
             Margin="10,5,10,10">
 
-            <TextBlock
-                Text="RCC BOQ Parameter Manager"
-                Style="{DynamicResource BrandHeaderText}"/>
+            <Button
+                x:Name="ExportButton"
+                DockPanel.Dock="Right"
+                Content="Export Excel"
+                Height="36"
+                VerticalAlignment="Center"
+                Margin="10,0,0,0"
+                Style="{DynamicResource BrandPrimaryButton}"/>
 
-            <TextBlock
-                x:Name="ProjectName"
-                Text="Project:"
-                Style="{DynamicResource BrandBodyText}"
-                Margin="0,5,0,0"/>
+            <StackPanel>
 
-        </StackPanel>
+                <TextBlock
+                    Text="RCC BOQ Parameter Manager"
+                    Style="{DynamicResource BrandHeaderText}"/>
+
+                <TextBlock
+                    Text="Structural Bill of Quantities — pick the parameters to export for Beam, Column, Slab and Foundation."
+                    Style="{DynamicResource BrandBodyText}"
+                    Margin="0,5,0,0"/>
+
+                <TextBlock
+                    x:Name="ProjectName"
+                    Text="Project:"
+                    Style="{DynamicResource BrandBodyText}"
+                    Margin="0,5,0,0"/>
+
+            </StackPanel>
+
+        </DockPanel>
 
 
         <!-- ================================================= -->
@@ -44,7 +63,8 @@
 
         <TabControl
             Grid.Row="1"
-            Background="{DynamicResource SurfaceBrush}">
+            Background="{DynamicResource SurfaceBrush}"
+            BorderThickness="0">
 
 
             <!-- ================================================= -->
@@ -589,34 +609,14 @@
                     Text="Ready"/>
 
 
-                <StackPanel
-                    Orientation="Horizontal"
-                    DockPanel.Dock="Right">
-
-                    <Button
-                        x:Name="ApplyButton"
-                        Content="OK / Apply"
-                        Width="120"
-                        Height="34"
-                        Margin="0,0,8,0"
-                        Style="{DynamicResource BrandSecondaryButton}"/>
-
-                    <Button
-                        x:Name="ExportButton"
-                        Content="Export Excel"
-                        Width="130"
-                        Height="34"
-                        Margin="0,0,8,0"
-                        Style="{DynamicResource BrandPrimaryButton}"/>
-
-                    <Button
-                        x:Name="CloseButton"
-                        Content="Close"
-                        Width="100"
-                        Height="34"
-                        Style="{DynamicResource BrandSecondaryButton}"/>
-
-                </StackPanel>
+                <Button
+                    x:Name="CloseButton"
+                    DockPanel.Dock="Right"
+                    Content="Close"
+                    Width="100"
+                    Height="34"
+                    Margin="0,0,8,0"
+                    Style="{DynamicResource BrandSecondaryButton}"/>
 
                 <StackPanel
                     Orientation="Horizontal"

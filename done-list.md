@@ -276,6 +276,25 @@ fallback). Same engine reality as BOQ-9: the installed pyRevit (master `6.5.3`) 
 
 ---
 
+## BOQ Parameter Manager — Level Sync-style header/footer composition (v1.4.3)
+
+**What.** The BOQ dialog's header and footer are restyled to match the Level Sync Studio dialog's
+cleaner composition: primary action (Export Excel) moved into the header, footer simplified to just
+Close + options.
+
+**Files.**
+- `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton/ui.xaml` — header rebuilt as a DockPanel
+  (title + subtitle + project left, Export right); footer simplified (ApplyButton removed); TabControl
+  gets `BorderThickness="0"`.
+- `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton/script.py` — version bumped to 1.4.3.
+  ApplyButton handler stays behind the `if apply_button:` guard (resolves to None, degrades gracefully).
+
+**How it is known.** XAML parses as well-formed XML; `script.py` compiles clean under CPython 3.12;
+all control names (incl. ExportButton, CloseButton, 4× tab controls) intact; `python test_xlsx_writer.py`
+ends with `RESULT: all checks passed`. **Unverified (UI):** live Revit 2025 confirmation pending.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.
