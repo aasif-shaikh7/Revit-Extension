@@ -411,6 +411,32 @@ live-confirmed (2026-08-31).
 
 ---
 
+## Grade fix (case-insensitive) + classic column cleanup — code complete (`v1.6.2`)
+
+**Asked for.** Owner's live export showed the engine `Grade` column as `(No Grade)` even though
+the project's shared parameter `GRADE OF CONCRETE` (all-caps) carried `M40` — and asked how to
+customise/reorder classic-workbook columns.
+
+**Built.**
+- `find_grade_parameter` — case-insensitive grade lookup (element → Symbol → type), used by
+  `resolve_concrete_grade` instead of the exact-name `find_parameter_with_scope`. The root cause
+  was `find_parameter_on_element`'s case-sensitive `name == parameter_name` comparison: the
+  hints list holds title-case names while the project's shared parameter is upper-case.
+- Classic workbook cleanup: the `Qty: Dim L/W/H (m)` and `Qty: Shuttering (m2)` columns are now
+  site-format-only and no longer emitted in the classic workbook (Volume / Area / Length /
+  Height / Thickness / Count remain).
+- Version bumped to **1.6.2** (`__version__` + `SCRIPT_VERSION`).
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (the classic filter does not touch the harness expectations).
+**Unverified (live)** — owner to re-export and confirm the Grade column now shows `M40`
+(from `GRADE OF CONCRETE`) and the Dim/Shuttering columns are gone from the classic workbook.
+
+**Cost / limits.** Grade hints still match by name only (case-insensitive); a project using a
+completely different parameter name still falls through to Material/identity matching.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

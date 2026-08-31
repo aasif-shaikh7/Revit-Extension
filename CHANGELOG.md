@@ -22,6 +22,22 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Grade fix (case-insensitive) + classic column cleanup — code `v1.6.2`
+
+**Fix.** The engine `Grade` column showed `(No Grade)` on projects whose shared parameter is
+named in another casing (`GRADE OF CONCRETE`): the grade lookup was case-sensitive. Grade hints
+now resolve case-insensitively (element → Symbol → type), so `Grade of Concrete` matches
+`GRADE OF CONCRETE` and the column carries the real grade (`M40`).
+
+**Cleanup.** The classic workbook no longer emits the `Qty: Dim L/W/H (m)` and
+`Qty: Shuttering (m2)` columns — they exist to feed the site-format workbook. Volume / Area /
+Length / Height / Thickness / Count remain in the classic export.
+
+**Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed`. **Unverified (live)** — owner to re-export and confirm.
+
+---
+
 ## [Unreleased] — Concrete-grade BOQ grouping (P2 complete) — confirmed live (2026-08-31)
 
 **New engine (unreleased; code `v1.6.0`).** P2's remaining half: the classic workbook gains a

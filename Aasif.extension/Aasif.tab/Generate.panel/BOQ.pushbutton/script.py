@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.6.1'
+__version__ = '1.6.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.6.1'
+SCRIPT_VERSION = '1.6.2'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -1436,6 +1436,65 @@ def normalize_concrete_grade(text):
     return ""
 
 
+def find_grade_parameter(element, hint):
+    """
+    P2: case-insensitive grade parameter lookup.
+
+    Project parameter names arrive in any casing ("GRADE OF CONCRETE",
+    "Grade of Concrete", ...), while the regular UI-selected parameter
+    path matches exact names. Checks the element first, then its type
+    and symbol, mirroring find_parameter_with_scope's scope order.
+    """
+    if element is None:
+        return None
+
+    lowered = str(hint or "").lower()
+
+    candidates = [element]
+
+    try:
+        if element.Symbol is not None:
+            candidates.append(element.Symbol)
+    except:
+        pass
+
+    try:
+        type_id = element.GetTypeId()
+
+        if (
+            type_id is not None
+            and not type_id.Equals(DB.ElementId.InvalidElementId)
+        ):
+            type_element = doc.GetElement(type_id)
+
+            if type_element is not None:
+                candidates.append(type_element)
+    except:
+        pass
+
+    for candidate in candidates:
+
+        try:
+            for parameter in candidate.Parameters:
+
+                try:
+                    definition = parameter.Definition
+
+                    if not definition:
+                        continue
+
+                    if str(definition.Name).lower() == lowered:
+                        return parameter
+
+                except:
+                    continue
+
+        except:
+            pass
+
+    return None
+
+
 def resolve_concrete_grade(element):
     """
     P2: resolve one element's concrete grade for grade-wise grouping.
@@ -1453,12 +1512,7 @@ def resolve_concrete_grade(element):
     """
     for hint in CONCRETE_GRADE_PARAMETER_HINTS:
 
-        try:
-            parameter, _parameter_scope = (
-                find_parameter_with_scope(element, hint)
-            )
-        except:
-            parameter = None
+        parameter = find_grade_parameter(element, hint)
 
         if parameter is None:
             continue
@@ -3404,6 +3458,13 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         retained_headers = ["Element ID"]
 
         for key in headers[1:]:
+
+            # v1.6.2: the Dim / Shuttering quantity columns exist to feed
+            # the site-format workbook. The classic workbook stays clean
+            # without them (Volume / Area / Length / Height / Thickness /
+            # Count remain).
+            if key == "Qty: Shuttering (m2)" or key.startswith("Qty: Dim"):
+                continue
 
             has_value = False
 
