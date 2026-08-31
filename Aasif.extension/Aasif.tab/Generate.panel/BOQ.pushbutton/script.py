@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.7.0'
+__version__ = '1.7.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.7.0'
+SCRIPT_VERSION = '1.7.1'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -5119,6 +5119,25 @@ try:
                     []
                 )
 
+                # v1.7.1: parameters already in the Selected list are
+                # hidden from Available so the list only offers the
+                # remaining parameters.
+                selected_names = set()
+
+                selected_box = window.FindName(
+                    controls["selected"]
+                )
+
+                if selected_box is not None:
+                    try:
+                        for item in selected_box.Items:
+                            try:
+                                selected_names.add(item.Name)
+                            except:
+                                pass
+                    except:
+                        pass
+
                 available.Items.Clear()
 
                 for parameter in pool:
@@ -5133,6 +5152,9 @@ try:
 
                     if name is None:
                         name = ""
+
+                    if name in selected_names:
+                        continue
 
                     if (
                         not query
@@ -5520,6 +5542,14 @@ try:
             except:
                 pass
 
+        # v1.7.1: rebuild the Available lists so restored selections are
+        # hidden from what still remains available to add.
+        for element_name in control_map.keys():
+            try:
+                filter_available_by_search(element_name)
+            except:
+                pass
+
         # ====================================================
         # INTERNAL PARAMETER ORDER SYNC
         # ====================================================
@@ -5723,6 +5753,12 @@ try:
             # deselect
             available.UnselectAll()
 
+            # v1.7.1: hide the just-added parameters from Available.
+            try:
+                filter_available_by_search(element_name)
+            except:
+                pass
+
 
         # ====================================================
         # REMOVE PARAMETERS
@@ -5783,6 +5819,12 @@ try:
             )
 
             selected.UnselectAll()
+
+            # v1.7.1: bring the removed parameters back into Available.
+            try:
+                filter_available_by_search(element_name)
+            except:
+                pass
 
 
         # ====================================================
@@ -6144,6 +6186,46 @@ try:
                     args,
                     name=element_name:
                     move_bottom(name)
+                )
+
+            # v1.7.1: double-click moves a parameter across the lists.
+            available_box = window.FindName(
+                controls["available"]
+            )
+            selected_box = window.FindName(
+                controls["selected"]
+            )
+
+            if available_box:
+
+                def on_available_double_click(
+                    sender,
+                    args,
+                    _name=element_name
+                ):
+                    try:
+                        add_parameters(_name)
+                    except:
+                        pass
+
+                available_box.MouseDoubleClick += (
+                    on_available_double_click
+                )
+
+            if selected_box:
+
+                def on_selected_double_click(
+                    sender,
+                    args,
+                    _name=element_name
+                ):
+                    try:
+                        remove_parameters(_name)
+                    except:
+                        pass
+
+                selected_box.MouseDoubleClick += (
+                    on_selected_double_click
                 )
 
 

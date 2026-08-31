@@ -463,6 +463,34 @@ appear under the Foundation tab and the Slab tab no longer lists them.
 
 ---
 
+## Double-click list moves + selected hidden from Available — code complete (`v1.7.1`)
+
+**Asked for.**
+1. Double-click karo to parameters Available ↔ Selected me add/remove ho jayein.
+2. Jo parameters Selected me add hain, wo Available list se remove ho jayein (nahi dikhne chahiye).
+
+**Built.**
+- **Double-click:** `MouseDoubleClick` wired on every Available and Selected `ListBox`
+  (Beam/Column/Slab/Foundation, wired inside the same per-category loop as the buttons):
+  double-click on Available adds the item(s) to Selected, double-click on Selected removes
+  them back to Available. Existing Add/Remove buttons keep working unchanged.
+- **Available hides selected:** `filter_available_by_search` now collects the names currently
+  in the category's Selected list and skips them when rebuilding Available — so a parameter can
+  only appear in one list at a time. After Add, the moved parameter disappears from Available;
+  after Remove it reappears. Saved settings restore re-runs the filter so restored selections
+  are hidden too; searching and filter changes stay consistent.
+- Version bumped to **1.7.1** (`__version__` + `SCRIPT_VERSION`).
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched; the list behaviour is WPF/Revit-live-only).
+MouseDoubleClick wiring asserted present for both list kinds. **Unverified live** — owner to
+reload in Revit 2025: double-click moves items both ways; selected items vanish from Available;
+removing or restarting (restored settings) brings them back.
+
+**Cost / limits.** None — additive UX change; ordering, filters, export untouched.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

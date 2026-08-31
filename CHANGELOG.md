@@ -22,6 +22,22 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Double-click move + no duplicates between lists — code `v1.7.1`
+
+**New UI (unreleased; code `v1.7.1`).** The parameter picker now supports fast mouse-only
+selection:
+- **Double-click** on an Available parameter adds it to Selected; double-click on a Selected
+  parameter removes it back. Wired for all four categories on top of the existing buttons.
+- **Available hides anything already Selected** — `filter_available_by_search` excludes the
+  category's selected names while rebuilding the list, so a parameter appears in only one list
+  at a time. Add/Remove/search/filter/restore all stay consistent with the single-set rule.
+
+**Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload in
+Revit 2025 and confirm the double-click moves and the single-set rule.
+
+---
+
 ## [Unreleased] — PCC beds belong to the Foundation tab — code `v1.7.0`
 
 **New classification (unreleased; code `v1.7.0`).** PCC (plain cement concrete) beds under
