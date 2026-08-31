@@ -437,6 +437,32 @@ completely different parameter name still falls through to Material/identity mat
 
 ---
 
+## PCC beds moved into the Foundation tab — code complete (`v1.7.0`)
+
+**Asked for.** "'Footing (F1, F2), combined footing (CF1, CF2) ke PCC' — yeh sab elements Foundation me chahiye mujhe."
+
+**Built.**
+- `is_pcc_element` — word-boundary `pcc` token check against the element identity
+  (name / type / family / common labels), independent of how the element is modeled.
+- PCC detection is now the **first** check in `classify_foundation_subtype`, so any PCC bed
+  ("PCC F1", "PCC-CF2", "PCC Slab") classifies as the Foundation **PCC** subtype even when it
+  is modeled as a floor or its name also carries slab wording / a footing mark.
+- `category_elements` + `refresh_category_view`: floors whose identity carries a PCC token are
+  **removed from the Slab tab** and **added to the Foundation tab** (so filter changes don't
+  drift from the initial state). The Foundation **PCC** filter now shows them, and they flow
+  into the Foundation element sheet / BOQ by Level / BOQ by Grade / Costing.
+- Version bumped to **1.7.0** (`__version__` + `SCRIPT_VERSION`).
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched; classification is Revit-dependent so the harness
+cannot execute it). **Unverified live** — owner to reload in Revit 2025 and confirm the PCC beds
+appear under the Foundation tab and the Slab tab no longer lists them.
+
+**Cost / limits.** PCC matching is by identity token; a floor named in another way ("bed",
+"blinding" etc.) stays in Slab unless the name/type/family carries a PCC token.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

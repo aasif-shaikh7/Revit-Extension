@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.6.2'
+__version__ = '1.7.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.6.2'
+SCRIPT_VERSION = '1.7.0'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -4603,16 +4603,35 @@ def classify_slab_subtype(element):
     return 'Other'
 
 
+def is_pcc_element(element):
+    """
+    True when an element's identity carries a PCC token (plain cement
+    concrete). PCC beds under Footings / Combined Footings / rafts are
+    commonly modeled as floors in the model; they belong to the
+    Foundation tab, not the Slab tab.
+    """
+    try:
+        text = get_element_identity_text(element)
+    except:
+        return False
+
+    return re.search(r'\bpcc\b', text) is not None
+
+
 def classify_foundation_subtype(element):
     """Classify logical foundation subtypes from actual names/codes."""
     text = get_element_identity_text(element)
 
+    # PCC (plain cement concrete) beds under Footings / Combined
+    # Footings / rafts belong to Foundation as their own subtype, even
+    # when modeled as floors or when the rest of the name carries slab
+    # wording or a footing mark/code ("PCC F1", "PCC-CF2", "PCC Slab").
+    if re.search(r'\bpcc\b', text):
+        return 'PCC'
+
     # Explicit slab-like foundation elements stay in the Slab tab.
     if classify_slab_subtype(element) in ('Slab', 'Fold Slab', 'Grade Slab'):
-        # PCC is intentionally treated as foundation even when a type name
-        # contains both PCC and slab wording.
-        if 'pcc' not in text:
-            return 'Slab-like'
+        return 'Slab-like'
 
     if ('combined footing' in text or 'combine footing' in text or
             code_token_match(text, ('cf',))):
@@ -4620,9 +4639,6 @@ def classify_foundation_subtype(element):
 
     if 'footing' in text or code_token_match(text, ('f',)):
         return 'Footing'
-
-    if 'pcc' in text:
-        return 'PCC'
 
     if ('combined raft' in text or 'combine raft' in text):
         return 'Combined Raft'
@@ -4698,13 +4714,21 @@ all_foundation_elements = get_elements(CATEGORY_INFO['Foundation'])
 category_elements = {
     'Beam': list(all_beam_elements),
     'Column': list(all_column_elements),
-    'Slab': list(all_floor_elements) + [
+    'Slab': [
+        # PCC beds are floors in the model but belong to Foundation.
+        e for e in all_floor_elements
+        if not is_pcc_element(e)
+    ] + [
         e for e in all_foundation_elements
         if classify_slab_subtype(e) in ('Slab', 'Fold Slab', 'Grade Slab')
     ],
     'Foundation': [
         e for e in all_foundation_elements
         if classify_foundation_subtype(e) != 'Slab-like'
+    ] + [
+        # PCC beds modeled as floors join the Foundation tab too.
+        e for e in all_floor_elements
+        if is_pcc_element(e)
     ]
 }
 
@@ -5127,7 +5151,12 @@ try:
                     'Slab',
                     'All Slab Types'
                 )
-                base_elements = list(all_floor_elements)
+                # PCC beds are floors in the model but belong to
+                # Foundation, so they are excluded here.
+                base_elements = [
+                    e for e in all_floor_elements
+                    if not is_pcc_element(e)
+                ]
 
                 # Slab/Grade/Fold Slab can also be modeled as Structural
                 # Foundation, so those logical slab elements are added here.
@@ -5150,8 +5179,16 @@ try:
                     'All Foundation Types'
                 )
 
+                base_elements = list(all_foundation_elements)
+
+                # PCC beds modeled as floors join the Foundation tab too.
+                base_elements.extend([
+                    e for e in all_floor_elements
+                    if is_pcc_element(e)
+                ])
+
                 category_elements['Foundation'] = filter_elements(
-                    list(all_foundation_elements),
+                    base_elements,
                     'Foundation',
                     selected_filter
                 )

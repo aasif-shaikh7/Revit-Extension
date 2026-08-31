@@ -22,6 +22,27 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — PCC beds belong to the Foundation tab — code `v1.7.0`
+
+**New classification (unreleased; code `v1.7.0`).** PCC (plain cement concrete) beds under
+footings / combined footings, which are commonly modeled as **floors** in Revit, now appear in
+the **Foundation** tab instead of the Slab tab.
+
+- New `is_pcc_element` — word-boundary `pcc` token check on the element identity
+  (name / type / family / common labels).
+- `classify_foundation_subtype` checks PCC **first**, so "PCC F1", "PCC-CF2" or "PCC Slab"
+  classify as the Foundation **PCC** subtype regardless of modeling storage or other tokens.
+- `category_elements` / `refresh_category_view`: PCC floors move from Slab to Foundation in the
+  initial state and after every filter change. The Foundation **PCC** filter lists them, and
+  they flow into the element sheets, BOQ by Level, BOQ by Grade and Costing.
+- Version bumped to **1.7.0** (`__version__` + `SCRIPT_VERSION`).
+
+**Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload in
+Revit 2025 and confirm PCC beds show under Foundation (and no longer under Slab).
+
+---
+
 ## [Unreleased] — Grade fix (case-insensitive) + classic column cleanup — code `v1.6.2`
 
 **Fix.** The engine `Grade` column showed `(No Grade)` on projects whose shared parameter is
