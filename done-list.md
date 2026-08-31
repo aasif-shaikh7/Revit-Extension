@@ -491,6 +491,30 @@ removing or restarting (restored settings) brings them back.
 
 ---
 
+## Search-box text visibility fix — code complete (`v1.7.2`)
+
+**Asked for.** "Search box me search krne pr text visible nh ho rh fix kro."
+
+**Built.** `BrandTextBox` (used by all four search boxes) now pins the typed text to the theme's
+primary colour explicitly:
+- `CaretBrush` follows `TextPrimaryBrush` so the blinking caret is visible too.
+- The `PART_ContentHost` ScrollViewer carries `TextElement.Foreground="{TemplateBinding Foreground}"`
+  — the internal text view now explicitly inherits the control's foreground even after the brand
+  dictionaries are swapped at runtime (pyRevit / IronPython dynamic-resource quirk where the text
+  could otherwise lose its colour, leaving invisible input).
+- `SelectionBrush` / `SelectionTextBrush` set (Ember selection, white selected text) so the
+  selection is readable in both themes; disabled state also dims the caret.
+- Version bumped to **1.7.2** (`__version__` + `SCRIPT_VERSION`).
+
+**How it is known.** `Brand.Controls.xaml` parses as well-formed XML; `python -m py_compile`
+clean; `python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched).
+**Unverified live** — owner to reload in Revit 2025 and confirm typed search text is clearly
+visible in both Light and Dark, with a visible caret.
+
+**Cost / limits.** None — same template, same resources, explicit foreground inheritance.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

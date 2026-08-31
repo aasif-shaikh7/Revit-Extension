@@ -22,6 +22,21 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Search-box text visibility fix — code `v1.7.2`
+
+**Fix (unreleased; code `v1.7.2`).** Typed text in the four search boxes could be invisible
+after the runtime brand dictionaries are merged: the custom TextBox template's text view was
+not explicitly inheriting the control's foreground. `BrandTextBox` now sets
+`CaretBrush`/`SelectionBrush`/`SelectionTextBrush` and applies
+`TextElement.Foreground="{TemplateBinding Foreground}"` on `PART_ContentHost`, so the input and
+the caret always render in `TextPrimaryBrush`. Disabled text dims the caret too.
+
+**Tested (off-Revit).** `Brand.Controls.xaml` well-formed; `python -m py_compile` clean;
+`python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched).
+**Unverified live** — owner to reload and confirm visible text + caret in both themes.
+
+---
+
 ## [Unreleased] — Double-click move + no duplicates between lists — code `v1.7.1`
 
 **New UI (unreleased; code `v1.7.1`).** The parameter picker now supports fast mouse-only
