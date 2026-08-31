@@ -515,6 +515,31 @@ visible in both Light and Dark, with a visible caret.
 
 ---
 
+## Search-box text visibility fix (round 2) — code complete (`v1.7.3`)
+
+**Asked for.** "Image me dekho me search kr rh hu mgr text dikh nh rh hai search box pr." — the
+round-1 template change alone was not enough on the live dialog.
+
+**Root cause.** The list boxes show their text because they set `Foreground` **directly on the
+element** in `ui.xaml` (`Foreground="{DynamicResource TextPrimaryBrush}"`). The search TextBoxes
+relied on that property coming from `BrandTextBox`'s style setter, which does not reliably reach
+the internal text view after the theme dictionaries are merged at runtime (pyRevit / IronPython).
+
+**Built.** The four search boxes (`BeamSearch`, `ColumnSearch`, `SlabSearch`, `FoundationSearch`)
+now also set `Foreground` and `CaretBrush` **directly on the element** in `ui.xaml`, same pattern
+as the working list boxes — so the typed text and the caret always render in `TextPrimaryBrush`
+regardless of the theme swap. Version bumped to **1.7.3**.
+
+**How it is known.** `ui.xaml` parses as well-formed XML; `python -m py_compile` clean;
+`python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched); direct
+Foreground presence asserted on the search boxes. **Unverified live** — owner to reload and
+confirm typed search text is visible in both themes.
+
+**Cost / limits.** None — element-level properties mirror the list-box pattern that already
+renders correctly.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

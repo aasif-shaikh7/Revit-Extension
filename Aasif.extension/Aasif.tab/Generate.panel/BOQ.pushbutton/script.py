@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.7.2'
+__version__ = '1.7.3'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.7.2'
+SCRIPT_VERSION = '1.7.3'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,

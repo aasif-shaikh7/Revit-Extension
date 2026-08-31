@@ -102,6 +102,8 @@
                                 x:Name="BeamSearch"
                                 Grid.Row="0"
                                 Margin="5"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                CaretBrush="{DynamicResource TextPrimaryBrush}"
                                 Style="{DynamicResource BrandTextBox}"/>
 
                             <ListBox
@@ -230,6 +232,8 @@
                                 x:Name="ColumnSearch"
                                 Grid.Row="0"
                                 Margin="5"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                CaretBrush="{DynamicResource TextPrimaryBrush}"
                                 Style="{DynamicResource BrandTextBox}"/>
 
                             <ListBox
@@ -355,6 +359,8 @@
                                 x:Name="SlabSearch"
                                 Grid.Row="0"
                                 Margin="5"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                CaretBrush="{DynamicResource TextPrimaryBrush}"
                                 Style="{DynamicResource BrandTextBox}"/>
 
                             <ComboBox
@@ -487,6 +493,8 @@
                                 x:Name="FoundationSearch"
                                 Grid.Row="0"
                                 Margin="5"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                CaretBrush="{DynamicResource TextPrimaryBrush}"
                                 Style="{DynamicResource BrandTextBox}"/>
 
                             <ComboBox
