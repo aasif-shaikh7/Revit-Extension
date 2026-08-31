@@ -619,6 +619,21 @@ confirm the search boxes look proper in both themes (matching background/border/
 
 ---
 
+## Double-click add/remove with highlight — code complete (`v1.7.8`)
+
+**Asked for.** "Double click krne pr available parameters or selected parameters remove or add hona chahiye, aur jo remove or add ho wo highlighted ho jana chahiye." — double-clicking items in Available should add them to Selected, double-clicking items in Selected should remove them, and the moved items must be **highlighted** in their new list.
+
+**Built.** Modified `add_parameters()` and `remove_parameters()` in `script.py`:
+- `add_parameters()`: tracks newly added items in a `newly_added` list; after the move, calls `selected.UnselectAll()` then adds each new item to `selected.SelectedItems` so they appear highlighted.
+- `remove_parameters()`: tracks removed item names in a `removed_names` list; after `filter_available_by_search()` returns them to Available, calls `available.UnselectAll()` then selects every item whose name is in `removed_names`.
+- Both blocks are wrapped in `try/except` so a highlight failure never aborts the move. Version bumped to **1.7.8**.
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload in Revit 2025 and confirm: double-click on Available adds + highlights in Selected; double-click on Selected removes + highlights in Available.
+
+**Cost / limits.** None — pure selection-state change, no new controls or resources.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

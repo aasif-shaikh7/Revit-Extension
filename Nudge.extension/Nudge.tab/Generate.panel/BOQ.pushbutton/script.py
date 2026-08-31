@@ -5850,11 +5850,17 @@ try:
                     item.Name
                 )
 
+            # Track which items are actually added (new, not duplicates)
+            newly_added = []
+
             for item in selected_items:
 
                 if item.Name not in existing:
 
                     selected.Items.Add(
+                        item
+                    )
+                    newly_added.append(
                         item
                     )
 
@@ -5869,6 +5875,16 @@ try:
             # v1.7.1: hide the just-added parameters from Available.
             try:
                 filter_available_by_search(element_name)
+            except:
+                pass
+
+            # Highlight (select) the newly added items in Selected
+            try:
+                selected.UnselectAll()
+                for item in newly_added:
+                    selected.SelectedItems.Add(
+                        item
+                    )
             except:
                 pass
 
@@ -5889,6 +5905,10 @@ try:
                 controls["selected"]
             )
 
+            available = window.FindName(
+                controls["available"]
+            )
+
             if not selected:
                 return
 
@@ -5898,6 +5918,16 @@ try:
 
             if not selected_items:
                 return
+
+            # Track names of items being removed (for highlighting later)
+            removed_names = []
+            for item in selected_items:
+                try:
+                    removed_names.append(
+                        item.Name
+                    )
+                except:
+                    pass
 
             # remove from bottom to top
             indexes = []
@@ -5936,6 +5966,21 @@ try:
             # v1.7.1: bring the removed parameters back into Available.
             try:
                 filter_available_by_search(element_name)
+            except:
+                pass
+
+            # Highlight (select) the returned items in Available
+            try:
+                if available and removed_names:
+                    available.UnselectAll()
+                    for item in available.Items:
+                        try:
+                            if item.Name in removed_names:
+                                available.SelectedItems.Add(
+                                    item
+                                )
+                        except:
+                            pass
             except:
                 pass
 
