@@ -403,9 +403,9 @@ Version bumped to **1.6.1**.
 
 **How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
 `RESULT: all checks passed` (both writers untouched); `ui.xaml` parses as well-formed XML;
-wiring asserted in source. **Unverified (live, one toggle)** — owner to flip the checkbox once
-in Revit 2025 and confirm both workbooks export correctly; everything else in v1.6.0 is already
-live-confirmed (2026-08-31).
+wiring asserted in source. **Confirmed (live, 2026-08-31)** — owner flipped the checkbox and
+confirmed both workbooks export correctly; everything else in v1.6.0 is also live-confirmed
+(2026-08-31).
 
 **Cost / limits.** None — the checkbox only selects between the two already-verified writers.
 
@@ -429,8 +429,8 @@ customise/reorder classic-workbook columns.
 
 **How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
 `RESULT: all checks passed` (the classic filter does not touch the harness expectations).
-**Unverified (live)** — owner to re-export and confirm the Grade column now shows `M40`
-(from `GRADE OF CONCRETE`) and the Dim/Shuttering columns are gone from the classic workbook.
+**Confirmed live (2026-08-31)** — owner re-exported: the Grade column shows `M40` from
+`GRADE OF CONCRETE` and the Dim/Shuttering columns are gone from the classic workbook.
 
 **Cost / limits.** Grade hints still match by name only (case-insensitive); a project using a
 completely different parameter name still falls through to Material/identity matching.

@@ -34,7 +34,7 @@ now resolve case-insensitively (element → Symbol → type), so `Grade of Concr
 Length / Height / Thickness / Count remain in the classic export.
 
 **Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
-`RESULT: all checks passed`. **Unverified (live)** — owner to re-export and confirm.
+`RESULT: all checks passed`. **Confirmed (live, 2026-08-31).** Owner re-exported and confirmed.
 
 ---
 
@@ -78,8 +78,8 @@ default. Same guarded wiring pattern as the other three checkboxes.
 **Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
 `RESULT: all checks passed` (both writers unchanged); `ui.xaml` parses as well-formed XML.
 
-**Unverified (live, one toggle).** Owner to flip the checkbox once in Revit 2025 and confirm
-both workbooks export correctly; everything else in v1.6.0 is already live-confirmed (2026-08-31).
+**Confirmed (live, 2026-08-31).** Owner flipped the checkbox and confirmed both workbooks
+export correctly; everything else in v1.6.0 is also live-confirmed.
 
 ---
 
