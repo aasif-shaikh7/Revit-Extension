@@ -45,6 +45,8 @@ FUNCTION_NAMES = [
     "build_missing_values_summary",
     "build_costing_sheet",
     "build_level_summary_table",
+    "normalize_concrete_grade",
+    "build_grade_summary_table",
     "sanitize_file_name",
     "build_default_output_name",
     "build_summary_cover_rows",
@@ -128,7 +130,8 @@ def main():
         "SITE_CATEGORY_ORDER",
         "SITE_DETAIL_BAND_ROWS",
         "SITE_DETAIL_DATA_START_ROW",
-        "SITE_DETAIL_COLUMN_WIDTHS"
+        "SITE_DETAIL_COLUMN_WIDTHS",
+        "CONCRETE_GRADE_VALUES"
     ):
         constant_pattern = re.compile(
             r"^{0} = .*$".format(constant_name),
@@ -155,6 +158,7 @@ def main():
             {
                 "Element ID": "100",
                 "Level": "Ground Floor",
+                "Grade": "M25",
                 "Mark": "B1",
                 "Concrete Volume": "",
                 "Rate": 1200.0,
@@ -166,6 +170,7 @@ def main():
             {
                 "Element ID": "101",
                 "Level": "First Floor",
+                "Grade": "M30",
                 "Mark": "B2",
                 "Concrete Volume": "",
                 "Rate": 1200.0,
@@ -179,6 +184,7 @@ def main():
             {
                 "Element ID": "200",
                 "Level": "Ground Floor",
+                "Grade": "M30",
                 "Mark": "C1",
                 "Rate": 1500.0,
                 "Qty: Volume (m3)": 0.42,
@@ -193,6 +199,7 @@ def main():
             {
                 "Element ID": "300",
                 "Level": "(No Level)",
+                "Grade": "",
                 "Mark": "F1",
                 "Rate": 1800.0,
                 "Qty: Volume (m3)": 1.85,
@@ -361,6 +368,71 @@ def main():
             "P2 Elements count is a static number per grouped row"
         )
 
+        # P2: concrete-grade grouping
+        check(
+            beam_table[0][2] == "Grade",
+            "P2 Grade column sits directly after Level on element sheets"
+        )
+
+        grade_table = sheet_rows["BOQ by Grade"]
+
+        check(
+            grade_table[0] == [
+                "Grade",
+                "Category",
+                "Elements",
+                "Total Volume (m3)",
+                "Total Area (m2)",
+                "Total Length (m)"
+            ],
+            "P2 BOQ by Grade headers correct"
+        )
+
+        grade_keys = set(row[0] for row in grade_table[1:])
+
+        check(
+            grade_keys == set(["M25", "M30", "(No Grade)"]),
+            "P2 every collected grade produces a grouped row "
+            "(empty grades group under (No Grade))"
+        )
+
+        grade_sumif_count = sum(
+            1 for row in grade_table[1:]
+            for cell in row[3:]
+            if isinstance(cell, tuple)
+            and cell[0] == "FORMULA"
+            and "SUMIF(" in cell[1]
+        )
+
+        check(
+            grade_sumif_count == 9,
+            "P2 live SUMIF per Grade x Category x available-metric cell "
+            "(expected 9: M25/Beam 2 + M30/Beam 2 + M30/Column 3 + "
+            "(No Grade)/Foundation 2; got {})".format(grade_sumif_count)
+        )
+
+        check(
+            any(
+                isinstance(row[2], int) for row in grade_table[1:]
+            ),
+            "P2 Grade Elements count is a static number per grouped row"
+        )
+
+        normalize = namespace["normalize_concrete_grade"]
+
+        check(
+            normalize("M25") == "M25"
+            and normalize("m-30") == "M30"
+            and normalize("M 40") == "M40"
+            and normalize("Concrete - M25 grade") == "M25"
+            and normalize("MIX") == ""
+            and normalize("M150") == ""
+            and normalize("M60") in namespace["CONCRETE_GRADE_VALUES"]
+            and normalize("") == "",
+            "P2 grade token normalization accepts M25/m-30/M 40 forms "
+            "and rejects non-grades"
+        )
+
         # Professional output: front Summary cover + naming convention
         summary_cover = sheet_rows["Summary"]
 
@@ -385,7 +457,7 @@ def main():
             row[0] for row in summary_cover
             if row[0] in (
                 "Beam", "Column", "Foundation",
-                "BOQ Summary", "BOQ by Level", "Costing"
+                "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
             )
         )
 
@@ -393,7 +465,7 @@ def main():
             listed == set(
                 [
                     "Beam", "Column", "Foundation",
-                    "BOQ Summary", "BOQ by Level", "Costing"
+                    "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
                 ]
             ),
             "Summary cover lists every workbook sheet"
@@ -686,7 +758,7 @@ def main():
 
         expected_order = [
             "Summary", "Beam", "Column", "Foundation",
-            "BOQ Summary", "BOQ by Level", "Costing"
+            "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
         ]
 
         check(

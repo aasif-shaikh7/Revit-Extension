@@ -41,7 +41,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 |---|---|---|---|
 | P0 | Live-Revit confirmation of the current dialog | — | **done** (`v1.0.1`) |
 | P1 | Structural Quantity Engine (extend, don't duplicate) | 5/5/3/4 | **done** (`v1.1.0`) |
-| P2 | Structural BOQ Grouping (level done; material/grade pending) | 4/4/2/5 | `in progress` |
+| P2 | Structural BOQ Grouping (level + concrete grade done) | 4/4/2/5 | **done** (`v1.6.0`) |
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | `todo` |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | `todo` |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `todo` |
@@ -83,7 +83,7 @@ parity testing is promised or tracked here.
 
 ---
 
-## P2 — Structural BOQ Grouping (started)
+## P2 — Structural BOQ Grouping (code complete)
 
 ### P2-01 — Level-wise BOQ grouping — **done** (`v1.2.0`)
 **Built:** every element row carries an engine-added `Level` column (deterministic column B),
@@ -95,6 +95,24 @@ sheets; Elements is a static per-group count. Missing-values audit excludes the 
 Beam/Column/Foundation/BOQ Summary/BOQ by Level/Costing.
 **Confirmed live (`v1.2.0`).** Owner verified Level resolution, grouped totals and the full export
 in Revit 2025; tagged `v1.2.0`.
+
+### P2-02 — Concrete-grade BOQ grouping — **code complete** (`v1.6.0`, live QA pending)
+**Decision (owner):** grade of concrete — material-wise grouping collapses into grade grouping.
+**Built:** every element row now also carries an engine-added `Grade` column (deterministic
+column C, right after Level), resolved by `resolve_concrete_grade`: (1) recognized grade
+parameters (Concrete Grade / Grade of Concrete / Grade / Concrete Type / Concrete Mix / Mix /
+Mix Design) via the existing scope resolver, (2) the Material parameter's target material name,
+(3) a grade token (`M25` / `m-30` / `M 40`) in the element identity text — normalized against the
+IS 456 series (`CONCRETE_GRADE_VALUES`, M10–M80); falls back to `(No Grade)`. New `BOQ by Grade`
+sheet groups quantities per Grade x Category with live SUMIF formulas against each category
+sheet's Grade column, placed between BOQ by Level and Costing. Grouping columns (Level, Grade)
+are never pruned as fully-empty so the formulas always resolve; the missing-values audit excludes
+both; the site-format writer skips the Grade column like Level.
+**Tested (harness):** Grade placement after Level, headers, grouped rows incl. `(No Grade)`,
+9 live SUMIF cells, static counts, grade-token normalization (`M25`/`m-30`/`M 40` accepted;
+`MIX`/`M150`/empty rejected), sheet order with 8 sheets, Summary cover listing.
+**Confirmed live (`v1.6.0`, 2026-08-31).** Owner verified grade resolution, the `BOQ by Grade`
+sheet and the export on a real model in Revit 2025.
 
 ---
 
@@ -174,7 +192,7 @@ applied here — it is a product decision with repo-wide blast radius (path
 `Aasif.extension/Aasif.tab/...`, dialog titles, docs). Pick a name and the
 label swap is a follow-up.
 
-### Brand UI system — shared theme resources + Brand Showcase — `testing` (2026-08-28)
+### Brand UI system — shared theme resources + Brand Showcase — **confirmed live** (2026-08-28 code, 2026-08-31 owner QA)
 **Built:** the guidelines became the actual UI surface — `lib/Resources/` carries
 `Brand.Colors.Light/Dark.xaml` (Ember accent + Light/Dark surface neutrals + system colors),
 `Brand.Typography.xaml` (Sora → Segoe UI fallback type scale) and `Brand.Controls.xaml` (buttons,
@@ -185,8 +203,8 @@ The new `Brand.panel ▶ BrandShowcase.pushbutton` previews every style and doub
 QA tool; handlers are wired explicitly in Python because XAML `Click=` does not bind on
 dynamically-loaded XAML in pyRevit. Debug scaffolding (canary alert, TEST button, per-toggle
 popup) removed.
-**Unverified:** WPF UI cannot be executed by the XLSX harness. Owner to confirm live on
-Revit 2025: showcase opens styled, the toggle flips themes, the theme follows Revit.
+**Confirmed live (2026-08-31).** Owner verified the toolkit UI on Revit 2025: windows open
+styled, the toggle flips themes, the theme follows Revit.
 **Fixed (owner feedback, 2026-08-28):** the toggle was dead in the opened window — pyRevit tears
 the command scope down after the script returns, and a `show(modal=False)` window outlives it
 (visible chrome, dead Python-side event wiring). `theme_manager` now provides an engine-persistent
@@ -204,8 +222,8 @@ restyled via `DynamicResource` brand keys (surfaces, type scale, inputs, outline
 Ember primary Export, brand list/footer brushes) and `script.py` calls
 `theme_manager.apply_theme(window)` right after building the window (guarded; the dialog is
 modal, so no `keep_alive` is needed) with a `watch_theme_changes` + `Closed` → `stop_watching`
-pair. **Unverified live** — owner confirms together with the showcase QA: dialog opens styled,
-both themes readable, export unchanged.
+pair. **Confirmed live (2026-08-31):** dialog opens styled, both themes readable, export
+unchanged.
 
 ---
 

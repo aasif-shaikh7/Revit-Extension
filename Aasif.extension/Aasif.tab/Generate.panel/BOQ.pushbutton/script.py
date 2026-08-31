@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.4.3'
+__version__ = '1.6.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.4.3'
+SCRIPT_VERSION = '1.6.1'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -1384,6 +1384,121 @@ def get_element_level(element):
     return ""
 
 
+# ============================================================
+# P2: CONCRETE GRADE RESOLUTION
+# ============================================================
+
+# Recognized characteristic compressive-strength grades (IS 456 series).
+# Kept on one line so the regression harness can lift the constant.
+CONCRETE_GRADE_VALUES = ("M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60", "M65", "M70", "M75", "M80")
+
+# Parameter names commonly carrying the mix in Indian structural
+# models. Matched by exact name (case-insensitive) on the element
+# first, then its type, via the existing scope resolver.
+CONCRETE_GRADE_PARAMETER_HINTS = (
+    "Concrete Grade",
+    "Grade of Concrete",
+    "Concrete Grade (fck)",
+    "Grade",
+    "Concrete Type",
+    "Concrete Mix",
+    "Mix",
+    "Mix Design"
+)
+
+
+def normalize_concrete_grade(text):
+    """
+    P2: normalize a free-text fragment to a canonical concrete grade
+    token ("M25"). Accepts M25 / m-25 / M 25 spellings. Returns ""
+    when no recognizable grade token is present, so callers can fall
+    through to the next resolution source.
+    """
+    try:
+        candidate = str(text or "")
+    except:
+        return ""
+
+    match = re.search(
+        r"\bM\s*-?\s*(\d{2})\b",
+        candidate,
+        re.IGNORECASE
+    )
+
+    if not match:
+        return ""
+
+    normalized = "M" + match.group(1)
+
+    if normalized in CONCRETE_GRADE_VALUES:
+        return normalized
+
+    return ""
+
+
+def resolve_concrete_grade(element):
+    """
+    P2: resolve one element's concrete grade for grade-wise grouping.
+
+    Tries, in order:
+      1. A recognized grade parameter (see CONCRETE_GRADE_PARAMETER_HINTS)
+         on the element or its type, read with the existing scope helpers.
+      2. The Material parameter's target material name (Revit material
+         names often carry the mix, e.g. "Concrete - M25").
+      3. A grade token inside the element's identity text
+         (element name | type | family | common labels).
+
+    Returns the canonical token ("M25") or "(No Grade)" so every row
+    still groups deterministically. Never raises.
+    """
+    for hint in CONCRETE_GRADE_PARAMETER_HINTS:
+
+        try:
+            parameter, _parameter_scope = (
+                find_parameter_with_scope(element, hint)
+            )
+        except:
+            parameter = None
+
+        if parameter is None:
+            continue
+
+        grade = normalize_concrete_grade(
+            safe_parameter_value(parameter)
+        )
+
+        if grade:
+            return grade
+
+    try:
+        material_parameter = element.LookupParameter("Material")
+
+        material_id = material_parameter.AsElementId()
+
+        if material_id is not None:
+            material = doc.GetElement(material_id)
+
+            if material is not None:
+                grade = normalize_concrete_grade(material.Name)
+
+                if grade:
+                    return grade
+    except:
+        pass
+
+    try:
+        grade = normalize_concrete_grade(
+            get_element_identity_text(element)
+        )
+
+        if grade:
+            return grade
+    except:
+        pass
+
+    return "(No Grade)"
+
+
 def build_element_data():
     """
     Read actual values from the parameters currently selected in the UI.
@@ -1468,6 +1583,11 @@ def build_element_data():
             # P2: level grouping column, written directly after Element ID so
             # it sits in a deterministic column (B) on every element sheet.
             row["Level"] = get_element_level(element)
+
+            # P2: concrete grade grouping column, written right after Level
+            # so it sits in a deterministic column (C) on every element
+            # sheet and feeds the BOQ by Grade sheet.
+            row["Grade"] = resolve_concrete_grade(element)
 
             for parameter_name in selected_names:
 
@@ -2687,9 +2807,9 @@ def build_missing_values_summary(data_result):
                 if key == "Element ID":
                     continue
 
-                # P2: Level is an engine-added grouping column, not a
-                # selected parameter; it is not part of the audit.
-                if key == "Level":
+                # P2: Level and Grade are engine-added grouping columns,
+                # not selected parameters; they are not part of the audit.
+                if key in ("Level", "Grade"):
                     continue
 
                 # Quantity columns carry their own totals on the
@@ -3009,6 +3129,118 @@ def build_level_summary_table(data_result, summary_info):
     return (headers, rows_out)
 
 
+def build_grade_summary_table(data_result, summary_info):
+    """
+    P2: build the concrete-grade grouping table.
+
+    Returns (headers, rows). One row per (Grade x Category) pair present
+    in the collected data. Elements is a static count; every metric cell
+    is a live SUMIF formula against that category sheet's Grade column,
+    so the report stays in sync with the underlying element data.
+    """
+    category_order = ("Beam", "Column", "Slab", "Foundation")
+
+    grade_order = []
+    grade_counts = {}
+
+    for category_name in category_order:
+        rows = data_result.get(category_name, [])
+        for row in rows:
+            try:
+                grade_text = str(row.get("Grade", "") or "").strip()
+            except:
+                grade_text = ""
+
+            grade_key = grade_text if grade_text else "(No Grade)"
+
+            if grade_key not in grade_counts:
+                grade_counts[grade_key] = {}
+                grade_order.append(grade_key)
+
+            per_category = grade_counts[grade_key]
+            per_category[category_name] = (
+                per_category.get(category_name, 0) + 1
+            )
+
+    headers = [
+        "Grade",
+        "Category",
+        "Elements",
+        "Total Volume (m3)",
+        "Total Area (m2)",
+        "Total Length (m)"
+    ]
+
+    metric_keys = (
+        "Volume (m3)",
+        "Area (m2)",
+        "Length (m)"
+    )
+
+    rows_out = []
+
+    for grade_key in grade_order:
+
+        per_category = grade_counts[grade_key]
+
+        for category_name in category_order:
+
+            if category_name not in per_category:
+                continue
+
+            info = summary_info.get(category_name) or {}
+
+            try:
+                columns = info.get("columns") or {}
+            except:
+                columns = {}
+
+            try:
+                grade_col = info.get("grade_col") or ""
+            except:
+                grade_col = ""
+
+            try:
+                data_end = info.get("data_end") or 0
+            except:
+                data_end = 0
+
+            row = [
+                grade_key,
+                category_name,
+                per_category[category_name]
+            ]
+
+            for metric_key in metric_keys:
+
+                cell = ""
+
+                metric_letter = columns.get(metric_key)
+
+                if metric_letter and grade_col and data_end > 1:
+
+                    criteria = '"{0}"'.format(grade_key)
+
+                    formula = (
+                        "SUMIF({0}!${1}$2:${1}${4},{2},"
+                        "{0}!${3}$2:${3}${4})"
+                    ).format(
+                        category_name,
+                        grade_col,
+                        criteria,
+                        metric_letter,
+                        data_end
+                    )
+
+                    cell = ("FORMULA", formula)
+
+                row.append(cell)
+
+            rows_out.append(row)
+
+    return (headers, rows_out)
+
+
 def sanitize_file_name(value):
     """
     Return a filesystem-safe name fragment for output files.
@@ -3186,7 +3418,10 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                     has_value = True
                     break
 
-            if has_value or not rows:
+            # P2: Level and Grade are deterministic grouping columns; they
+            # are kept even when fully empty so the BOQ by Level / BOQ by
+            # Grade sheets can always reference them by formula.
+            if has_value or not rows or key in ("Level", "Grade"):
                 retained_headers.append(key)
 
         table = [retained_headers]
@@ -3246,6 +3481,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                 "total_row": total_row_number,
                 "columns": {},
                 "level_col": "",
+                "grade_col": "",
                 "data_end": 0
             }
 
@@ -3268,6 +3504,17 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                 summary_info[sheet_name]["level_col"] = (
                     xlsx_column_name(
                         retained_headers.index("Level") + 1
+                    )
+                )
+            except:
+                pass
+
+            # P2: same for the Grade column so the grade-wise grouping
+            # sheet can build its live SUMIF formulas.
+            try:
+                summary_info[sheet_name]["grade_col"] = (
+                    xlsx_column_name(
+                        retained_headers.index("Grade") + 1
                     )
                 )
             except:
@@ -3378,6 +3625,20 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append("BOQ by Level")
         sheet_rows["BOQ by Level"] = [level_headers] + level_rows
         quantity_column_map["BOQ by Level"] = [4, 5, 6]
+
+    # P2: concrete-grade grouping. One row per Grade x Category with live
+    # SUMIF formulas, placed directly after BOQ by Level so the grouped
+    # views stay together before Costing.
+    grade_headers, grade_rows = build_grade_summary_table(
+        data_result,
+        summary_info
+    )
+
+    if grade_rows:
+
+        sheet_names.append("BOQ by Grade")
+        sheet_rows["BOQ by Grade"] = [grade_headers] + grade_rows
+        quantity_column_map["BOQ by Grade"] = [4, 5, 6]
 
     # Per-element Costing sheet. Each element row carries its primary
     # quantity, its unit rate and a computed amount (quantity x rate).
@@ -3597,7 +3858,7 @@ def build_site_detail_sheet(category_name, rows, project_name):
     """
     data_rows = rows or []
 
-    skip_names = ("Element ID", "Level")
+    skip_names = ("Element ID", "Level", "Grade")
 
     param_names = []
 
@@ -4428,35 +4689,82 @@ try:
 
 
         # ====================================================
-        # BRAND THEME
+        # BRAND THEME + THEME SELECTOR (v1.5.0)
         # Merge the shared Light/Dark brand dictionaries from
-        # lib/Resources onto this dialog (theme_manager detects
-        # Revit's active theme; ui.xaml consumes them through
-        # DynamicResource keys). Cosmetic only - if anything
-        # here fails (lib missing, dictionary load error), the
-        # dialog still opens with its default WPF look.
+        # lib/Resources onto this dialog. The user can pick
+        # Auto (follow Revit's theme), Light or Dark from the
+        # footer ThemeSelector; the choice is saved to the
+        # existing .rcc_boq_settings.json immediately and
+        # restored on the next run (default: Auto).
+        # Cosmetic only - if anything here fails (lib missing,
+        # dictionary load error), the dialog still opens with
+        # its default WPF look.
         # ====================================================
+
+        # Mutable state holder (Python 2.7 has no nonlocal) so
+        # the watcher handler can be swapped from any closure.
+        _theme_watch_state = {"handler": None}
+
+        def _start_theme_watching():
+            """Subscribe to Revit's own Light/Dark flips (Auto mode)."""
+            try:
+                _theme_watch_state["handler"] = (
+                    theme_manager.watch_theme_changes(window)
+                )
+            except:
+                _theme_watch_state["handler"] = None
+
+        def _stop_theme_watching():
+            """Unsubscribe the Revit theme watcher (manual mode)."""
+            try:
+                theme_manager.stop_watching(
+                    _theme_watch_state.get("handler")
+                )
+            except:
+                pass
+            _theme_watch_state["handler"] = None
+
+        def _apply_theme_choice(choice):
+            """
+            Apply one canonical theme choice: 'Auto', 'Light' or
+            'Dark'. Auto re-follows Revit; Light/Dark force the
+            dictionaries and pause the watcher so Revit flips no
+            longer override the manual choice.
+            """
+            try:
+                if choice == "Light":
+                    _stop_theme_watching()
+                    theme_manager.apply_theme(window, "Light")
+                elif choice == "Dark":
+                    _stop_theme_watching()
+                    theme_manager.apply_theme(window, "Dark")
+                else:
+                    theme_manager.apply_theme(window)
+                    _start_theme_watching()
+            except:
+                pass
 
         try:
 
             import theme_manager
 
-            theme_manager.apply_theme(window)
+            saved_theme_choice = "Auto"
 
-            # Re-apply automatically if the user flips Revit's own
-            # Light/Dark setting while the dialog is open. The dialog
-            # is modal (ShowDialog below), so plain locals stay alive
-            # for the whole session - no keep_alive() needed here
-            # (that fix is for modeless windows only).
-            _boq_theme_watcher = theme_manager.watch_theme_changes(
-                window
-            )
+            try:
+                saved_theme_choice = str(
+                    load_app_settings().get("theme", "Auto") or "Auto"
+                )
+            except:
+                saved_theme_choice = "Auto"
+
+            if saved_theme_choice not in ("Auto", "Light", "Dark"):
+                saved_theme_choice = "Auto"
+
+            _apply_theme_choice(saved_theme_choice)
 
             def _on_boq_window_closed(sender, args):
 
-                theme_manager.stop_watching(
-                    _boq_theme_watcher
-                )
+                _stop_theme_watching()
 
             window.Closed += (
                 _on_boq_window_closed
@@ -4465,7 +4773,83 @@ try:
         except Exception:
 
             # Theme is cosmetic - fall back to the stock look quietly.
+            # The selector below still works (its apply calls degrade
+            # to no-ops when theme_manager is unavailable).
             pass
+
+        # ====================================================
+        # THEME SELECTOR (v1.5.0)
+        # Footer combo: Auto (Revit) / Light / Dark. Saves the
+        # canonical choice to the existing settings file on
+        # every change so it survives restarts.
+        # ====================================================
+
+        theme_selector = window.FindName("ThemeSelector")
+
+        if theme_selector:
+
+            try:
+                theme_selector.Items.Add("Auto (Revit)")
+                theme_selector.Items.Add("Light")
+                theme_selector.Items.Add("Dark")
+            except:
+                pass
+
+            def on_theme_selection_changed(sender, args):
+
+                try:
+                    raw_choice = str(sender.SelectedItem or "")
+                except:
+                    return
+
+                if raw_choice == "Light":
+                    theme_choice = "Light"
+                elif raw_choice == "Dark":
+                    theme_choice = "Dark"
+                elif raw_choice == "Auto (Revit)":
+                    theme_choice = "Auto"
+                else:
+                    return
+
+                _apply_theme_choice(theme_choice)
+
+                # Persist immediately through the existing settings
+                # system - never wait for an export to save it.
+                try:
+                    theme_settings = load_app_settings()
+                    theme_settings["theme"] = theme_choice
+                    save_app_settings(theme_settings)
+                except:
+                    pass
+
+            theme_selector.SelectionChanged += (
+                on_theme_selection_changed
+            )
+
+            # Reflect the saved choice. Setting SelectedIndex fires
+            # SelectionChanged once; the handler re-applies the same
+            # theme and re-saves the same value, which is harmless.
+            try:
+                active_theme = "Auto"
+
+                try:
+                    active_theme = str(
+                        load_app_settings().get("theme", "Auto") or "Auto"
+                    )
+                except:
+                    active_theme = "Auto"
+
+                if active_theme not in ("Auto", "Light", "Dark"):
+                    active_theme = "Auto"
+
+                if active_theme == "Light":
+                    theme_selector.SelectedIndex = 1
+                elif active_theme == "Dark":
+                    theme_selector.SelectedIndex = 2
+                else:
+                    theme_selector.SelectedIndex = 0
+            except:
+                pass
 
 
         # ====================================================
@@ -4505,9 +4889,51 @@ try:
             "StatusText"
         )
 
+        def set_status(message, kind="normal"):
+            """
+            Write a status message and tint it with the matching
+            semantic brand brush:
+
+                normal   -> primary text colour
+                info     -> InfoBrush
+                success  -> SuccessBrush
+                warning  -> WarningBrush
+                error    -> ErrorBrush
+
+            SetResourceReference keeps a DynamicResource link, so the
+            colour keeps following Light/Dark theme swaps while the
+            dialog stays open. Cosmetic only - any failure leaves the
+            plain brand text.
+            """
+            if not status:
+
+                return
+
+            try:
+                status.Text = message
+            except:
+                pass
+
+            brush_key = {
+                "info": "InfoBrush",
+                "success": "SuccessBrush",
+                "warning": "WarningBrush",
+                "error": "ErrorBrush"
+            }.get(kind, "TextPrimaryBrush")
+
+            try:
+                from System.Windows.Controls import TextBlock
+
+                status.SetResourceReference(
+                    TextBlock.ForegroundProperty,
+                    brush_key
+                )
+            except:
+                pass
+
         if status:
 
-            status.Text = (
+            set_status(
                 "Loading Revit parameters..."
             )
 
@@ -4680,12 +5106,13 @@ try:
 
             try:
                 if status:
-                    status.Text = (
+                    set_status(
                         '{} filter: {} | Elements: {}'.format(
                             element_name,
                             active_filters.get(element_name, 'All'),
                             len(category_elements.get(element_name, []))
-                        )
+                        ),
+                        "info"
                     )
             except:
                 pass
@@ -4908,6 +5335,24 @@ try:
         except:
             pass
 
+        # Restore the saved "Site format" default (site-style workbook
+        # on; the classic BOQ Summary / BOQ by Level / BOQ by Grade
+        # workbook when off).
+        try:
+            site_restore = window.FindName("SiteFormatCheck")
+            if site_restore:
+                try:
+                    site_restore.IsChecked = bool(
+                        saved_settings.get(
+                            "site_format",
+                            True
+                        )
+                    )
+                except:
+                    pass
+        except:
+            pass
+
         # Restore the previously selected parameters in saved order.
         saved_selected = {}
 
@@ -5057,6 +5502,21 @@ try:
                 active_filters
             )
 
+            # v1.5.0: carry the theme selector state forward so an
+            # export never wipes the theme preference saved on change.
+            try:
+                _theme_combo = window.FindName("ThemeSelector")
+
+                if _theme_combo is not None:
+                    if _theme_combo.SelectedIndex == 1:
+                        settings["theme"] = "Light"
+                    elif _theme_combo.SelectedIndex == 2:
+                        settings["theme"] = "Dark"
+                    else:
+                        settings["theme"] = "Auto"
+            except:
+                pass
+
             # Persist the checkbox states as the new defaults.
             try:
                 only_check = window.FindName("ExportOnlyCheck")
@@ -5089,6 +5549,19 @@ try:
                     try:
                         settings["include_quantities"] = bool(
                             qty_save.IsChecked
+                        )
+                    except:
+                        pass
+            except:
+                pass
+
+            # Persist the "Site format" choice as the new default.
+            try:
+                site_save = window.FindName("SiteFormatCheck")
+                if site_save:
+                    try:
+                        settings["site_format"] = bool(
+                            site_save.IsChecked
                         )
                     except:
                         pass
@@ -5619,11 +6092,12 @@ try:
 
                     if status:
 
-                        status.Text = (
+                        set_status(
                             "Metadata captured | "
                             "Parameters: {}".format(
                                 metadata_total
-                            )
+                            ),
+                            "success"
                         )
 
                     forms.alert(
@@ -5660,13 +6134,14 @@ try:
 
                     if status:
 
-                        status.Text = (
+                        set_status(
                             "Metadata error | {}".format(
                                 safe_text(
                                     metadata_error,
                                     "Unknown error"
                                 )
-                            )
+                            ),
+                            "error"
                         )
 
                     forms.alert(
@@ -5739,9 +6214,10 @@ try:
                 if total == 0:
 
                     if status:
-                        status.Text = (
+                        set_status(
                             "Excel export | "
-                            "No parameters selected"
+                            "No parameters selected",
+                            "warning"
                         )
 
                     forms.alert(
@@ -5815,8 +6291,9 @@ try:
                     if total_rows == 0:
 
                         if status:
-                            status.Text = (
-                                "Excel export | No element rows"
+                            set_status(
+                                "Excel export | No element rows",
+                                "warning"
                             )
 
                         forms.alert(
@@ -5832,8 +6309,9 @@ try:
                     if not output_path:
 
                         if status:
-                            status.Text = (
-                                "Excel export cancelled"
+                            set_status(
+                                "Excel export cancelled",
+                                "info"
                             )
 
                         return
@@ -5842,10 +6320,26 @@ try:
                     if not output_path.lower().endswith(".xlsx"):
                         output_path += ".xlsx"
 
-                    # v1.4.0 site-format export. The classic workbook
-                    # engine stays available as a rollback path behind
-                    # site_format_flag.
-                    if site_format_flag:
+                    # v1.4.0 site-format export, user-selectable since
+                    # v1.6.1 through the footer "Site format" checkbox.
+                    # The module flag stays as the fallback default and
+                    # the classic workbook engine remains available as
+                    # the off state.
+                    use_site_format = site_format_flag
+
+                    site_check = window.FindName(
+                        "SiteFormatCheck"
+                    )
+
+                    if site_check:
+                        try:
+                            use_site_format = bool(
+                                site_check.IsChecked
+                            )
+                        except:
+                            use_site_format = site_format_flag
+
+                    if use_site_format:
 
                         sheet_rows = write_site_xlsx(
                             output_path,
@@ -5897,11 +6391,12 @@ try:
 
                     if status:
 
-                        status.Text = (
+                        set_status(
                             "Excel exported | "
                             "Rows: {}".format(
                                 total_rows
-                            )
+                            ),
+                            "success"
                         )
 
                     # Optionally launch the workbook in Excel once written.
@@ -5981,13 +6476,14 @@ try:
 
                     if status:
 
-                        status.Text = (
+                        set_status(
                             "Excel export error | {}".format(
                                 safe_text(
                                     export_error,
                                     "Unknown error"
                                 )
-                            )
+                            ),
+                            "error"
                         )
 
                     forms.alert(
@@ -6028,7 +6524,7 @@ try:
 
         if status:
 
-            status.Text = (
+            set_status(
                 "Parameters loaded | "
                 "Beam: {} | "
                 "Column: {} | "

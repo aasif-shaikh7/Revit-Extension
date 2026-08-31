@@ -4,11 +4,13 @@
     <!-- ===== Accent (Ember) — same across Light/Dark for brand consistency ===== -->
     <Color x:Key="Ember500Color">#F2994A</Color>
     <Color x:Key="Ember600Color">#D97C2B</Color>
+    <Color x:Key="Ember700Color">#C06D20</Color>
     <Color x:Key="Ember100Color">#FCE8D5</Color>
     <Color x:Key="Ember900Color">#7A3F14</Color>
 
     <SolidColorBrush x:Key="EmberBrush"        Color="{StaticResource Ember500Color}"/>
     <SolidColorBrush x:Key="EmberHoverBrush"   Color="{StaticResource Ember600Color}"/>
+    <SolidColorBrush x:Key="EmberPressedBrush" Color="{StaticResource Ember700Color}"/>
     <SolidColorBrush x:Key="EmberTintBrush"    Color="{StaticResource Ember100Color}"/>
     <SolidColorBrush x:Key="EmberDeepBrush"    Color="{StaticResource Ember900Color}"/>
 
@@ -24,6 +26,27 @@
     <SolidColorBrush x:Key="BorderBrush2"        Color="{StaticResource BorderColor}"/>
     <SolidColorBrush x:Key="TextPrimaryBrush"    Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondaryColor}"/>
+
+    <!-- ===== Interactive states (Light) ===== -->
+    <Color x:Key="HoverColor">#E8E8E8</Color>
+    <Color x:Key="PressedColor">#DCDCDC</Color>
+    <Color x:Key="ItemHoverColor">#F0F0F0</Color>
+    <Color x:Key="SelectedColor">#FCE8D5</Color>
+    <Color x:Key="FocusColor">#F2994A</Color>
+    <Color x:Key="DisabledColor">#F5F5F5</Color>
+    <Color x:Key="ControlColor">#FFFFFF</Color>
+
+    <SolidColorBrush x:Key="HoverBrush"             Color="{StaticResource HoverColor}"/>
+    <SolidColorBrush x:Key="PressedBrush"           Color="{StaticResource PressedColor}"/>
+    <SolidColorBrush x:Key="ItemHoverBrush"         Color="{StaticResource ItemHoverColor}"/>
+    <SolidColorBrush x:Key="SelectedBrush"          Color="{StaticResource SelectedColor}"/>
+    <SolidColorBrush x:Key="SelectedTextBrush"      Color="#7A3F14"/>
+    <SolidColorBrush x:Key="FocusBrush"             Color="{StaticResource FocusColor}"/>
+    <SolidColorBrush x:Key="DisabledBrush"          Color="{StaticResource DisabledColor}"/>
+    <SolidColorBrush x:Key="DisabledTextBrush"      Color="#9E9E9E"/>
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{StaticResource ControlColor}"/>
+    <SolidColorBrush x:Key="HeadingBrush"           Color="{StaticResource TextPrimaryColor}"/>
+    <SolidColorBrush x:Key="LabelBrush"             Color="{StaticResource TextPrimaryColor}"/>
 
     <!-- ===== System colors ===== -->
     <SolidColorBrush x:Key="SuccessBrush" Color="#3FB68B"/>

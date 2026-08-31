@@ -625,6 +625,20 @@
                     Margin="0,0,20,0">
 
                     <TextBlock
+                        Text="Theme:"
+                        Style="{DynamicResource BrandLabelText}"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0"/>
+
+                    <ComboBox
+                        x:Name="ThemeSelector"
+                        Style="{DynamicResource BrandComboBox}"
+                        MinWidth="125"
+                        VerticalAlignment="Center"
+                        Margin="0,0,20,0"
+                        ToolTip="Choose Light or Dark, or follow Revit's own theme (Auto). The choice is saved automatically."/>
+
+                    <TextBlock
                         Text="Options:"
                         Style="{DynamicResource BrandLabelText}"
                         VerticalAlignment="Center"
@@ -653,6 +667,15 @@
                         VerticalContentAlignment="Center"
                         Margin="16,0,0,0"
                         ToolTip="Append metric quantity columns (volume, area, length), styled totals rows and a live-formula BOQ Summary sheet."/>
+
+                    <CheckBox
+                        x:Name="SiteFormatCheck"
+                        Style="{DynamicResource BrandCheckBox}"
+                        Content="Site format"
+                        IsChecked="True"
+                        VerticalContentAlignment="Center"
+                        Margin="16,0,0,0"
+                        ToolTip="Export the manual site-style workbook (title blocks, MM size columns, VOLUME + SHUTTERING). Uncheck for the classic workbook with BOQ Summary, BOQ by Level and BOQ by Grade sheets."/>
 
                 </StackPanel>
 

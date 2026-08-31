@@ -22,7 +22,117 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
-## [Unreleased] — BOQ Parameter Manager dialog consumes the brand theme — live QA pending
+## [Unreleased] — Concrete-grade BOQ grouping (P2 complete) — confirmed live (2026-08-31)
+
+**New engine (unreleased; code `v1.6.0`).** P2's remaining half: the classic workbook gains a
+**BOQ by Grade** sheet — quantities grouped per concrete grade (M20/M25/M30/…) x category with
+live SUMIF formulas, right after BOQ by Level.
+
+- Every element row carries an engine-added `Grade` column (column C, right after Level),
+  resolved by `resolve_concrete_grade`: recognized grade parameters (Concrete Grade / Grade of
+  Concrete / Grade / Concrete Type / Concrete Mix / Mix / Mix Design) → the Material parameter's
+  target material name → a grade token in the element identity text (`M25` / `m-30` / `M 40`
+  spellings normalize against the IS 456 M10–M80 series) → `(No Grade)`.
+- `BOQ by Grade` mirrors the level sheet's contract: one row per Grade x Category, static
+  Elements counts, live SUMIF per available metric, placed between BOQ by Level and Costing.
+  Level/Grade grouping columns are prune-protected so the formulas always resolve; the
+  missing-values audit and the site-format writer exclude the column like Level.
+- Version bumped to **1.6.0** (`__version__` + `SCRIPT_VERSION`).
+
+**Tested (harness).** `python test_xlsx_writer.py` ends `RESULT: all checks passed` — new
+assertions cover Grade placement, headers, grouped rows incl. `(No Grade)`, 9 live SUMIF cells,
+static counts, token normalization and the 8-sheet order; `script.py` compiles clean under
+CPython 3.12.
+
+**Confirmed (live, 2026-08-31).** Owner verified on a real model in Revit 2025: grades resolve
+sensibly, the BOQ by Grade sheet works, and the rest of the export is unchanged.
+
+---
+
+## [Unreleased] — Site format toggle in the dialog — code `v1.6.1`, quick re-test pending
+
+**New UI (unreleased; code `v1.6.1`).** The site-vs-classic writer choice moves out of the
+hard-coded `site_format_flag` into the dialog: a fourth footer checkbox, **"Site format"**
+(`SiteFormatCheck`), selects the writer at export time — checked (default) produces the manual
+site-style workbook, unchecked produces the classic workbook with BOQ Summary, BOQ by Level and
+the new BOQ by Grade sheets. The choice persists through the existing settings file
+(`"site_format"` key) and is restored on the next run; the module flag remains the fallback
+default. Same guarded wiring pattern as the other three checkboxes.
+
+**Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (both writers unchanged); `ui.xaml` parses as well-formed XML.
+
+**Unverified (live, one toggle).** Owner to flip the checkbox once in Revit 2025 and confirm
+both workbooks export correctly; everything else in v1.6.0 is already live-confirmed (2026-08-31).
+
+---
+
+## [Unreleased] — Theme selector + every control on the brand palette — confirmed live (2026-08-31)
+
+**New UI (unreleased; code `v1.5.0`).** The BOQ Parameter Manager dialog gains a manual
+**Theme selector** (Auto / Light / Dark) with persistence, and the brand kit itself now themes
+every control the dialog uses — closing the gaps the v1.4.2 pass left on system chrome
+(TabItem headers, GroupBox frames, ListBox selection, ComboBox dropdown, ScrollBars).
+
+- **`lib/Resources/Brand.Colors.Light.xaml` / `Brand.Colors.Dark.xaml`** — new semantic
+  interactive-state keys, identical in both files (verified 42-key parity): `HoverBrush`,
+  `PressedBrush`, `ItemHoverBrush`, `SelectedBrush` (Ember tint; Ember-deep text in Light,
+  Ember-500 text in Dark), `SelectedTextBrush`, `FocusBrush` (Ember 500), `DisabledBrush`,
+  `DisabledTextBrush`, `ControlBackgroundBrush` (inputs sit slightly lighter than the Dark
+  surface), `HeadingBrush`, `LabelBrush`, plus `Ember700Color` / `EmberPressedBrush` for the
+  primary button's pressed state.
+- **`lib/Resources/Brand.Controls.xaml`** — primary/secondary buttons gain pressed states;
+  `BrandTextBox` gains hover/focus (Ember border) and disabled states; `BrandCheckBox` gets a
+  full template (16 px Ember check box, white tick, disabled dimming); `BrandComboBox` gets a
+  complete template (brand toggle button, arrow, rounded bordered dropdown popup) and
+  `ComboBoxItem` implicit rows; new **implicit** styles for `TabItem` (folder-tab fill that
+  connects to the content pane + Ember underline on the selected tab; hover background only on
+  unselected tabs), `TabControl` (themed header strip band on `SurfaceAltBrush` so the tab row
+  reads as a deliberate header band instead of system chrome), `GroupBox` (bordered surface
+  panel with brand header text), `ListBoxItem` (Ember-tinted selection + neutral hover +
+  disabled state) and `Separator`; implicit slim `ScrollBar` (Track + thumb, horizontal trigger
+  variant). Implicit styles apply wherever the dictionaries are merged — the consuming
+  `ui.xaml` control declarations did not change.
+- **`Generate.panel/BOQ.pushbutton/ui.xaml`** — one addition only: `Theme:` label +
+  `ThemeSelector` combo (`Auto (Revit)` / `Light` / `Dark`) at the head of the footer options
+  row. No layout, dimension, tab, control-name or wiring changes.
+- **`Generate.panel/BOQ.pushbutton/script.py`** — the guarded brand-theme block now reads the
+  saved choice from the existing `.rcc_boq_settings.json` (`"theme"` key; default **Auto**)
+  and applies it; the footer combo re-applies on change, saves the choice **immediately**
+  through the same settings system (never waits for an export), and `capture_and_save_settings`
+  carries the combo state forward so exports cannot wipe the preference. Auto mode keeps the
+  pre-1.5 behavior — the dialog follows Revit's own Light/Dark setting and re-applies on
+  Revit's theme flip; choosing Light/Dark pauses that watcher until Auto is picked again.
+  Watcher state lives in a dict holder because Python 2.7 has no `nonlocal`. Everything stays
+  guarded: if `theme_manager` or the dictionaries are missing, the dialog opens on the stock
+  look and the selector degrades to a no-op. All ten status messages now route through a
+  `set_status(message, kind)` helper that tints the footer status line with the matching
+  semantic brush (success export green, export/metadata errors red, no-selection/no-rows
+  warnings amber, filter/cancelled info blue, loading/loaded primary text) via
+  `SetResourceReference`, keeping the DynamicResource link so the colour follows theme swaps.
+- Version bumped to **1.5.0** (`__version__` + `SCRIPT_VERSION`).
+
+**Tested (off-Revit).** A one-shot consistency check verified XML well-formedness of all five
+touched XAML files, resolved every `DynamicResource` reference in both windows against the
+merged dictionaries, resolved all intra-dictionary `StaticResource` references, confirmed
+identical Light/Dark key sets (42 keys), and confirmed the `ThemeSelector` XAML/Python wiring;
+the file was deleted after the run. `python -m py_compile` on `script.py` is clean, and
+`python test_xlsx_writer.py` still ends with `RESULT: all checks passed` (engine untouched).
+
+**Confirmed (UI, 2026-08-31).** Owner verified in Revit 2025 — dialog opens styled in both
+themes, every control (tab headers, group boxes, list selection, combo dropdowns, scrollbars,
+focus/disabled states) reads correctly, switching Auto → Light → Dark applies instantly without
+reopening, the choice survives close/reopen, and Auto still follows Revit's own theme flip.
+
+**Cost / limits.** `Auto` is the default theme (slight deviation from the original "Light
+default" ask — chosen to preserve the v1.4.2 follow-Revit behavior; strict Light default is a
+one-line change if wanted). Sora still renders only where installed. The installed pyRevit
+(master `6.5.3`) still runs the dialog on the IronPython backend; all new code is 2.7-safe
+(no `nonlocal`, no f-strings).
+
+---
+
+## [Unreleased] — BOQ Parameter Manager dialog consumes the brand theme — confirmed live (2026-08-31)
 
 **New UI (unreleased; code `v1.4.2`).** The written "next step" of the Brand UI system: the BOQ
 Parameter Manager dialog (`Generate.panel/BOQ.pushbutton/ui.xaml`) now consumes the shared
@@ -48,11 +158,10 @@ reached only the exported workbook.
   (that fix is for modeless windows only).
 - Version bumped to **1.4.2** (`__version__` + `SCRIPT_VERSION`).
 
-**Unverified (UI).** WPF resource loading and theme detection cannot run outside Revit; live
-confirmation on Revit 2025 is pending with the project owner: dialog opens styled, both themes are
-readable, the theme follows Revit's setting, and tabs/selection/filters/reorder/export behave exactly
-as before. The XLSX engine is untouched: `python test_xlsx_writer.py` still ends with
-`RESULT: all checks passed`, and `script.py` compiles clean under CPython 3.12.
+**Confirmed (UI, 2026-08-31).** Owner verified live on Revit 2025: dialog opens styled, both
+themes are readable, the theme follows Revit's setting, and tabs/selection/filters/reorder/export
+behave exactly as before. The XLSX engine is untouched: `python test_xlsx_writer.py` still ends
+with `RESULT: all checks passed`, and `script.py` compiles clean under CPython 3.12.
 
 **Known limits.** TabItem headers and GroupBox chrome keep their system-theme look (the brand kit
 ships no TabItem/GroupBox styles); Sora renders only where the font is installed (Segoe UI

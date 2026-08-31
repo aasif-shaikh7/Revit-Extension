@@ -224,8 +224,8 @@ for the toolkit's WPF dialogs, plus a live visual QA surface for them.
 (WPF resource loading and Revit theme detection cannot run outside Revit). The
 XLSX engine is untouched: `python test_xlsx_writer.py` still ends with
 `RESULT: all checks passed`, and every edited Python file passes
-`python -m py_compile`. Live confirmation on Revit 2025 / CP3123 is **pending**
-with the project owner: showcase opens fully styled, the toggle flips
+`python -m py_compile`. **Confirmed live (2026-08-31)** with the project
+owner: showcase opens fully styled, the toggle flips
 Light/Dark instantly, the theme auto-follows Revit's setting.
 
 **Cost / limits.** The BOQ Parameter Manager dialog does not consume these
@@ -265,8 +265,8 @@ palette only to the exported workbook."
 **How it is known.** Code review + XML well-formedness check of the edited `ui.xaml` only — no
 harness coverage is possible (WPF resource loading and Revit theme detection cannot run outside
 Revit). Engine untouched: `python test_xlsx_writer.py` ends `RESULT: all checks passed` and
-`script.py` compiles clean under CPython 3.12. **Unverified live** — owner to confirm in
-Revit 2025: dialog opens styled, both themes readable, the theme follows Revit's setting, and
+`script.py` compiles clean under CPython 3.12. **Confirmed live (2026-08-31)** by the owner:
+dialog opens styled, both themes readable, the theme follows Revit's setting, and
 tabs/selection/filters/reorder/export behave exactly as before.
 
 **Cost / limits.** TabItem headers and GroupBox chrome stay on the system theme (the brand kit
@@ -291,7 +291,123 @@ Close + options.
 
 **How it is known.** XAML parses as well-formed XML; `script.py` compiles clean under CPython 3.12;
 all control names (incl. ExportButton, CloseButton, 4× tab controls) intact; `python test_xlsx_writer.py`
-ends with `RESULT: all checks passed`. **Unverified (UI):** live Revit 2025 confirmation pending.
+ends with `RESULT: all checks passed`. **Confirmed (UI, 2026-08-31):** owner verified live in
+Revit 2025.
+
+---
+
+## Theme selector + full-control brand theming — code in place (`v1.5.0`)
+
+**Asked for.** A professional centralized Light/Dark theme with an in-dialog selector,
+persistence through the existing settings file, and every control (tabs, group boxes, parameter
+lists, combos, scrollbars, status states) on the active theme — built on top of the existing
+architecture, not a redesign.
+
+**Built.**
+- Semantic interactive-state brushes added to `Brand.Colors.Light.xaml` /
+  `Brand.Colors.Dark.xaml` with verified 42-key parity: Hover / Pressed / ItemHover / Selected /
+  SelectedText / Focus (Ember) / Disabled / DisabledText / ControlBackground / Heading / Label,
+  plus `Ember700` pressed accent. Light selection = Ember-100 tint with Ember-900 text; Dark
+  selection = warm Ember tint with Ember-500 text.
+- `Brand.Controls.xaml`: pressed states on both button styles; TextBox hover/focus/disabled
+  triggers; full CheckBox template (Ember box + white tick); complete ComboBox template
+  (toggle, arrow, bordered rounded dropdown) + ComboBoxItem rows; new **implicit** styles —
+  TabItem (folder-tab: selected tab fills with the surface colour and connects to the content
+  pane under an Ember underline; the hover fill now applies only to unselected tabs, removing
+  the stray block the owner spotted on the selected tab in Dark) and an implicit TabControl
+  that renders the tab row as a themed `SurfaceAltBrush` header band; GroupBox (bordered
+  surface + brand header), ListBoxItem (Ember-tinted selection, neutral hover, disabled text),
+  Separator, and a slim implicit ScrollBar with a horizontal variant. Implicit styles mean the
+  consuming `ui.xaml` control declarations were not touched.
+- `ui.xaml`: single addition — `Theme:` label + `ThemeSelector` combo (`Auto (Revit)` / `Light` /
+  `Dark`) heading the footer options row. All 46 `x:Name`s (45 original + ThemeSelector), layout
+  and tooltips intact.
+- `script.py`: the guarded brand-theme block now restores the saved choice (existing
+  `.rcc_boq_settings.json`, `"theme"` key, default `Auto`), the combo applies and **saves
+  immediately** on change, and `capture_and_save_settings` carries the selector state forward
+  so exports never wipe the preference. `Auto` preserves the v1.4.2 follow-Revit behavior and
+  its `CurrentThemeChanged` watcher; manual Light/Dark pause the watcher until Auto returns.
+  Watcher handle held in a dict (Python 2.7 has no `nonlocal`); every step degrades silently to
+  the stock look. All ten footer status messages route through a new `set_status(message,
+  kind)` helper — success green, error red, warning amber, info blue, normal primary text —
+  applied via `SetResourceReference` so the tint follows Light/Dark swaps. Version 1.5.0.
+
+**How it is known.** Off-Revit checks only (WPF resource loading cannot run outside Revit):
+one-shot consistency script verified XML well-formedness of all five XAML files, resolved every
+window `DynamicResource` reference, resolved all intra-dictionary `StaticResource` references,
+confirmed Light/Dark key parity and the ThemeSelector wiring, then was deleted;
+`python -m py_compile` clean; `python test_xlsx_writer.py` ends `RESULT: all checks passed`
+(engine untouched). **Confirmed live (2026-08-31)** by the owner in Revit 2025: both themes
+readable on every control, instant switching without reopen, choice persists across
+close/reopen, Auto follows Revit's theme flip, and no regression in
+tabs/selection/filters/reorder/export.
+
+**Cost / limits.** Default theme is `Auto` rather than strict Light (deliberate — preserves the
+existing follow-Revit behavior; one-line change if strict Light is wanted). Sora renders only
+where installed (Segoe UI fallback). Same engine reality as v1.4.2 — the installed pyRevit
+(master 6.5.3) runs the dialog on the IronPython backend; all new script code is 2.7-safe.
+
+---
+
+## P2-02 — Concrete-grade BOQ grouping — code complete (`v1.6.0`)
+
+**Asked for.** P2's remaining half: "grade of concrete" grouping (owner folded material-wise
+into grade-wise).
+
+**Built.**
+- `CONCRETE_GRADE_VALUES` (IS 456 series, M10–M80) + `CONCRETE_GRADE_PARAMETER_HINTS`
+  (Concrete Grade / Grade of Concrete / Concrete Grade (fck) / Grade / Concrete Type /
+  Concrete Mix / Mix / Mix Design).
+- `normalize_concrete_grade` — pure tokenizer: canonical `M25` from `M25` / `m-30` / `M 40`
+  spellings; rejects non-grades (`MIX`, `M150`, empty).
+- `resolve_concrete_grade` — per-element resolution order: grade parameter (element → type,
+  via the existing `find_parameter_with_scope` + `safe_parameter_value`) → Material parameter's
+  target material name → grade token inside the element identity text → `(No Grade)`. Never
+  raises.
+- `build_element_data` emits the `Grade` column right after `Level` (deterministic column C).
+- `write_basic_xlsx`: Level/Grade never pruned as fully-empty grouping columns;
+  `summary_info` carries `grade_col`; new `BOQ by Grade` sheet (`build_grade_summary_table`)
+  with one row per Grade x Category, static Elements counts and live SUMIF formulas against
+  each category sheet's Grade column — placed between BOQ by Level and Costing (8-sheet
+  workbook). Missing-values audit excludes Grade; site-format writer skips it like Level.
+- Version bumped to **1.6.0** (`__version__` + `SCRIPT_VERSION`).
+
+**How it is known.** **Tested (harness)** — `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` with new assertions: Grade column placement, BOQ by Grade headers,
+grouped rows including `(No Grade)`, 9 live SUMIF cells, static counts, token normalization,
+8-sheet order and Summary cover listing; `script.py` compiles clean under CPython 3.12. One
+real defect was caught and fixed during development: fully-empty grouping columns were being
+pruned from element sheets, which would have broken the SUMIF references — Level/Grade are now
+prune-protected.
+
+**Cost / limits.** Grade resolution trusts parameters literally named per the hints list;
+projects using other names fall through to Material/identity matching, and only IS 456 M-grades
+are recognized. Ungraded elements group under `(No Grade)`. **Confirmed live (2026-08-31)** by
+the owner: grades resolve sensibly on a real model, the BOQ by Grade sheet works, and the
+export stays otherwise unchanged.
+
+---
+
+## Site format toggle in the dialog — code complete (`v1.6.1`)
+
+**Asked for.** Discovered during the v1.6.0 live pass: the export dispatch ran on the
+hard-coded `site_format_flag = True`, so the site-style workbook shipped with no way to reach
+the classic workbook (BOQ Summary / BOQ by Level / BOQ by Grade) from the UI.
+
+**Built.** A fourth footer checkbox, **"Site format"** (`SiteFormatCheck`), wired exactly like
+the existing three: export dispatch reads it (module flag stays the fallback default), the
+choice persists as `"site_format"` in the existing `.rcc_boq_settings.json` via
+`capture_and_save_settings`, and it is restored on startup. Checked (default) = site-style
+workbook; unchecked = classic workbook with BOQ Summary, BOQ by Level and BOQ by Grade.
+Version bumped to **1.6.1**.
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (both writers untouched); `ui.xaml` parses as well-formed XML;
+wiring asserted in source. **Unverified (live, one toggle)** — owner to flip the checkbox once
+in Revit 2025 and confirm both workbooks export correctly; everything else in v1.6.0 is already
+live-confirmed (2026-08-31).
+
+**Cost / limits.** None — the checkbox only selects between the two already-verified writers.
 
 ---
 

@@ -19,7 +19,7 @@
         <Setter Property="FontFamily" Value="{StaticResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="18"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource HeadingBrush}"/>
     </Style>
 
     <Style x:Key="BrandSubHeaderText" TargetType="TextBlock">
