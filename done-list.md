@@ -586,6 +586,27 @@ text is now visible in both themes.
 
 ---
 
+## Search-box full visual paint (background + border too) — code complete (`v1.7.6`)
+
+**Asked for.** "Proper nhi dikh raha" — after round 4 made the typed text visible, the box
+itself could still render off-theme (background/border still dynamic-resource driven; same
+IronPython quirk could leave a white/internal default behind a Light or Dark surface).
+
+**Built.** `_apply_search_foregrounds()` (now `_apply_search_textboxes()`) paints **every**
+visual property of the four search boxes with concrete `SolidColorBrush` values via `SetValue`,
+re-applied on every theme switch (theme from `window.Tag`): `Foreground`/`CaretBrush` = theme
+primary (`#1F1F1F` Light / `#EDEDED` Dark), `Background` = theme surface (`#FFFFFF` /
+`#2B2B2B`), `BorderBrush` = theme border (`#D6D6D6` / `#3F3F3F`), `SelectionBrush` = Ember,
+`SelectionTextBrush` = white, plus `BorderThickness = 1`. Version bumped to **1.7.6**.
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload and
+confirm the search boxes look proper in both themes (matching background/border/text/caret).
+
+**Cost / limits.** None.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

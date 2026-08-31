@@ -22,6 +22,21 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Search-box full visual paint (background + border) — code `v1.7.6`
+
+**Fix (unreleased; code `v1.7.6`).** The four search boxes are now painted entirely with
+concrete theme brushes via `SetValue` — text, caret, **background and border** included —
+re-applied on every theme switch. No visual property is left dependent on runtime dynamic
+resources after the Brand dictionaries merge (the IronPython quirk can otherwise leave a box
+that looks "not proper"). Light: `#FFFFFF` surface / `#D6D6D6` border / `#1F1F1F` text; Dark:
+`#2B2B2B` surface / `#3F3F3F` border / `#EDEDED` text.
+
+**Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload and
+confirm the search boxes look proper in both themes.
+
+---
+
 ## [Unreleased] — Search-box text visibility fix (round 4, concrete brush) — code `v1.7.5`
 
 **Fix (unreleased; code `v1.7.5`).** Dynamic-resource `Foreground` does not reliably reach the
