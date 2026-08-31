@@ -71,7 +71,14 @@ still pending (T-03).
 
 ### T-02 — Quantity accuracy on real materials — `testing`
 **State:** Metric conversion logic is deterministic and harness-tested with sample data, but true
-`Qty: Volume/Area/Length` values on actual Revit elements are **Unverified**.
+`Qty: Volume/Area/Length` values on actual Revit elements are
+
+---
+
+### T-07 — Double-click add/remove with highlight — **done** (`v1.7.8`)
+**Asked for.** "Double click krne pr available parameters or selected parameters remove or add hona chahiye, aur jo remove or add ho wo highlighted ho jana chahiye."
+**Built.** `add_parameters()` and `remove_parameters()` now select/highlight moved items in their new list.
+**Confirmed live (2026-08-31):** owner verified double-click highlight works for both directions in Revit 2025.
 **Acceptance:** compare at least one beam/column/slab/foundation quantity against a known-correct
 value in Revit; record any engine adjustments.
 
