@@ -540,6 +540,35 @@ renders correctly.
 
 ---
 
+## Search-box text visibility fix (round 3, programmatic) — code complete (`v1.7.4`)
+
+**Asked for.** "Search box tikh kar do, show nahi ho raha hai text." — after template-level
+(v1.7.2) and element-level XAML (v1.7.3) foreground fixes, the live IronPython dialog still
+rendered the typed search text invisible.
+
+**Root cause.** The XAML `{DynamicResource TextPrimaryBrush}` attribute — whether on the
+`BrandTextBox` style/template or directly on the element — does not reliably reach the TextBox's
+internal text view after the brand dictionaries are merged at runtime. The status bar, by
+contrast, already used the exact `SetResourceReference` pattern and **is confirmed visible**, so
+that pattern is authoritative in this environment.
+
+**Built.** New `_apply_search_foregrounds()` in `script.py`: after theme apply (and on every
+theme switch via `_apply_theme_choice`, plus a first-paint safety net) it calls
+`SetResourceReference(TextBox.ForegroundProperty / CaretBrushProperty, "TextPrimaryBrush")` on
+all four search boxes (`BeamSearch` / `ColumnSearch` / `SlabSearch` / `FoundationSearch`).
+`SetResourceReference` sets a dynamic local reference that resolves after the dictionaries are
+in place — so the text and caret always render in the theme's primary colour, and keep following
+Light/Dark swaps. Version bumped to **1.7.4**.
+
+**How it is known.** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched); helper wired in three places (definition +
+first-paint + theme-switch). **Unverified live** — owner to reload and confirm the typed search
+text is now visible in both themes.
+
+**Cost / limits.** None — additive, guarded, degrades silently if any lookup fails.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

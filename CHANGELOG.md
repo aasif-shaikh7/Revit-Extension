@@ -22,6 +22,22 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Search-box text visibility fix (round 3, programmatic) — code `v1.7.4`
+
+**Fix (unreleased; code `v1.7.4`).** Template-only (v1.7.2) and element-XAML (v1.7.3)
+`DynamicResource` foreground fixes did not make the typed search text visible on the live
+IronPython dialog. `script.py` now applies the same **`SetResourceReference`** pattern the
+confirmed-visible status bar uses: `_apply_search_foregrounds()` pins
+`TextBox.ForegroundProperty` / `CaretBrushProperty` to `TextPrimaryBrush` on all four search
+boxes after every theme apply/switch (plus a first-paint safety net). The reference resolves
+after the brand dictionaries are merged, so text and caret render regardless of theme.
+
+**Tested (off-Revit).** `python -m py_compile` clean; `python test_xlsx_writer.py` ends
+`RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload and
+confirm visible search text / caret in both themes.
+
+---
+
 ## [Unreleased] — Search-box text visibility fix (round 2) — code `v1.7.3`
 
 **Fix (unreleased; code `v1.7.3`).** Round 1's template-only change was not enough on the live

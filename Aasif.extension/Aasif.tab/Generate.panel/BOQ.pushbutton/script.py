@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.7.3'
+__version__ = '1.7.4'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.7.3'
+SCRIPT_VERSION = '1.7.4'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -4809,6 +4809,54 @@ try:
                 pass
             _theme_watch_state["handler"] = None
 
+        def _apply_search_foregrounds():
+            """
+            v1.7.4: pin the four search boxes' text/caret to the theme's
+            primary brush via SetResourceReference.
+
+            The XAML attribute `{DynamicResource TextPrimaryBrush}` on the
+            TextBox style/template does not reliably reach the internal text
+            view after the brand dictionaries are merged at runtime under
+            pyRevit / IronPython. The status bar uses the same
+            SetResourceReference pattern and is confirmed visible, so this
+            helper applies it directly on each search box after the theme is
+            in place.
+            """
+            try:
+                from System.Windows.Controls import TextBox as _TextBox
+            except:
+                return
+
+            for _sbox_name in (
+                "BeamSearch",
+                "ColumnSearch",
+                "SlabSearch",
+                "FoundationSearch"
+            ):
+                try:
+                    _sbox = window.FindName(_sbox_name)
+                except:
+                    _sbox = None
+
+                if _sbox is None:
+                    continue
+
+                try:
+                    _sbox.SetResourceReference(
+                        _TextBox.ForegroundProperty,
+                        "TextPrimaryBrush"
+                    )
+                except:
+                    pass
+
+                try:
+                    _sbox.SetResourceReference(
+                        _TextBox.CaretBrushProperty,
+                        "TextPrimaryBrush"
+                    )
+                except:
+                    pass
+
         def _apply_theme_choice(choice):
             """
             Apply one canonical theme choice: 'Auto', 'Light' or
@@ -4829,6 +4877,9 @@ try:
             except:
                 pass
 
+            # Keep the search-box text readable after every theme swap.
+            _apply_search_foregrounds()
+
         try:
 
             import theme_manager
@@ -4846,6 +4897,14 @@ try:
                 saved_theme_choice = "Auto"
 
             _apply_theme_choice(saved_theme_choice)
+
+            # Ensure the search-box text is readable even on the very
+            # first paint (the theme block above already ran the helper
+            # through _apply_theme_choice; this is a harmless safety net).
+            try:
+                _apply_search_foregrounds()
+            except:
+                pass
 
             def _on_boq_window_closed(sender, args):
 
