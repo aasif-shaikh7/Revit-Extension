@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.7.4'
+__version__ = '1.7.5'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.7.4'
+SCRIPT_VERSION = '1.7.5'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -4811,19 +4811,52 @@ try:
 
         def _apply_search_foregrounds():
             """
-            v1.7.4: pin the four search boxes' text/caret to the theme's
-            primary brush via SetResourceReference.
+            v1.7.5: paint the four search boxes' text/caret/selection with
+            concrete brushes.
 
-            The XAML attribute `{DynamicResource TextPrimaryBrush}` on the
-            TextBox style/template does not reliably reach the internal text
-            view after the brand dictionaries are merged at runtime under
-            pyRevit / IronPython. The status bar uses the same
-            SetResourceReference pattern and is confirmed visible, so this
-            helper applies it directly on each search box after the theme is
-            in place.
+            DynamicResource-driven Foreground — whether set through the style,
+            the template or XAML attributes — does not reliably reach the
+            TextBox's internal text view under IronPython after the theme
+            dictionaries are re-merged. Assigning a real SolidColorBrush via
+            SetValue creates a local value with the highest precedence and no
+            resource lookup at all, so the typed text is always visible.
+            Re-applied on every theme switch (theme name read from window.Tag).
             """
             try:
                 from System.Windows.Controls import TextBox as _TextBox
+                from System.Windows.Media import SolidColorBrush, Color
+            except:
+                return
+
+            theme_name = "Light"
+
+            try:
+                _tag = str(getattr(window, "Tag", "") or "")
+
+                if "Dark" in _tag:
+                    theme_name = "Dark"
+            except:
+                pass
+
+            if theme_name == "Dark":
+                primary_hex = "EDEDED"
+            else:
+                primary_hex = "1F1F1F"
+
+            try:
+                text_brush = SolidColorBrush(
+                    Color.FromRgb(
+                        int(primary_hex[0:2], 16),
+                        int(primary_hex[2:4], 16),
+                        int(primary_hex[4:6], 16)
+                    )
+                )
+                ember_brush = SolidColorBrush(
+                    Color.FromRgb(0xF2, 0x99, 0x4A)
+                )
+                white_brush = SolidColorBrush(
+                    Color.FromRgb(0xFF, 0xFF, 0xFF)
+                )
             except:
                 return
 
@@ -4841,21 +4874,16 @@ try:
                 if _sbox is None:
                     continue
 
-                try:
-                    _sbox.SetResourceReference(
-                        _TextBox.ForegroundProperty,
-                        "TextPrimaryBrush"
-                    )
-                except:
-                    pass
-
-                try:
-                    _sbox.SetResourceReference(
-                        _TextBox.CaretBrushProperty,
-                        "TextPrimaryBrush"
-                    )
-                except:
-                    pass
+                for _prop, _brush in (
+                    (_TextBox.ForegroundProperty, text_brush),
+                    (_TextBox.CaretBrushProperty, text_brush),
+                    (_TextBox.SelectionBrushProperty, ember_brush),
+                    (_TextBox.SelectionTextBrushProperty, white_brush)
+                ):
+                    try:
+                        _sbox.SetValue(_prop, _brush)
+                    except:
+                        pass
 
         def _apply_theme_choice(choice):
             """

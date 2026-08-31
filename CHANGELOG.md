@@ -22,6 +22,24 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [Unreleased] — Search-box text visibility fix (round 4, concrete brush) — code `v1.7.5`
+
+**Fix (unreleased; code `v1.7.5`).** Dynamic-resource `Foreground` does not reliably reach the
+TextBox's internal text editor under IronPython after the theme dictionaries are re-merged —
+the typed text fell back to the system window-text colour and became invisible on Light.
+`BrandTextBox` now uses the **default WPF TextBox template** (text renders straight from
+`Foreground`), and `_apply_search_foregrounds()` assigns **concrete `SolidColorBrush` values via
+`SetValue`** on all four search boxes: `Foreground`/`CaretBrush` = theme primary (`#1F1F1F` /
+`#EDEDED` from `window.Tag`), `SelectionBrush` = Ember, `SelectionTextBrush` = white. Local
+`SetValue` needs no resource lookup, so the text and caret are always visible; re-applied on
+every theme switch.
+
+**Tested (off-Revit).** `Brand.Controls.xaml` well-formed; `python -m py_compile` clean;
+`python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched).
+**Unverified live** — owner to reload and confirm visible search text + caret in both themes.
+
+---
+
 ## [Unreleased] — Search-box text visibility fix (round 3, programmatic) — code `v1.7.4`
 
 **Fix (unreleased; code `v1.7.4`).** Template-only (v1.7.2) and element-XAML (v1.7.3)

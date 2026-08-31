@@ -569,6 +569,23 @@ text is now visible in both themes.
 
 ---
 
+## Search-box text visibility fix (round 4, concrete brush + default template) — code complete (`v1.7.5`)
+
+**Asked for.** "Nhi aa raha hai text likha hua" — rounds 1–3 (template `TextElement.Foreground`, XAML element attributes, `SetResourceReference`) did not make the typed search text visible on the live IronPython dialog.
+
+**Root cause.** Dynamic-resource-driven `Foreground` — whether via the style, the template's `PART_ContentHost`, or XAML attributes — does not reliably reach the TextBox's internal text editor after the theme dictionaries are re-merged under IronPython. The text editor then falls back to the system window-text colour (white on a dark OS), which is white-on-white on the Light theme surface.
+
+**Built.**
+- `BrandTextBox` no longer uses a custom `ControlTemplate` — it uses the **default WPF TextBox chrome** (which renders text straight from the control's `Foreground`) plus brand colour setters and `Style.Triggers` for focus/hover/disabled border states.
+- `_apply_search_foregrounds()` (definition + first-paint + every theme switch) now assigns **concrete `SolidColorBrush` values via `SetValue`** — `Foreground`/`CaretBrush` = theme primary (`#1F1F1F` Light / `#EDEDED` Dark, read from `window.Tag`), `SelectionBrush` = Ember, `SelectionTextBrush` = white. A local `SetValue` beats every lookup and cannot miss; re-applied on theme change.
+- Version bumped to **1.7.5**.
+
+**How it is known.** `Brand.Controls.xaml` well-formed; `python -m py_compile` clean; `python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched); helper wired at startup + on theme switch. **Unverified live** — owner to reload and confirm the typed search text (and caret) is visible in both themes.
+
+**Cost / limits.** The TextBox loses its custom 4px rounded corner (default chrome corners are fine); disabled foreground trigger is overridden by the local brush (search boxes are never disabled in this dialog).
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

@@ -87,7 +87,11 @@
         </Setter>
     </Style>
 
-    <!-- ===== TextBox ===== -->
+    <!-- ===== TextBox (default chrome + brand colours; no custom template) =====
+         NOTE: a custom template with PART_ContentHost can lose the typed-text
+         foreground under IronPython after the theme dictionaries are re-merged.
+         The default WPF template renders text through the control's Foreground
+         directly, and script.py also paints it with a concrete brush (v1.7.5). -->
     <Style x:Key="BrandTextBox" TargetType="TextBox">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="12"/>
@@ -99,39 +103,19 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush2}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="8,6"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="Bd"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4">
-                        <!-- TextElement.Foreground on PART_ContentHost makes the
-                             typed text explicitly inherit the control's Foreground
-                             even after the brand dictionaries are swapped at
-                             runtime (pyRevit/IronPython quirk where the internal
-                             text view can otherwise lose its colour). -->
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      TextElement.Foreground="{TemplateBinding Foreground}"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>
-                        </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource EmberHoverBrush}"/>
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DisabledBrush}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
-                            <Setter Property="CaretBrush" Value="{DynamicResource DisabledTextBrush}"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource EmberHoverBrush}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource DisabledBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
+                <Setter Property="CaretBrush" Value="{DynamicResource DisabledTextBrush}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===== CheckBox ===== -->
