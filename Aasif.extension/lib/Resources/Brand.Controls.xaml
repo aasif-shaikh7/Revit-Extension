@@ -93,8 +93,8 @@
          The default WPF template renders text through the control's Foreground
          directly, and script.py also paints it with a concrete brush (v1.7.5). -->
     <Style x:Key="BrandTextBox" TargetType="TextBox">
-        <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
-        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="14"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="SelectionBrush" Value="{DynamicResource EmberBrush}"/>
@@ -102,7 +102,7 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush2}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="Padding" Value="10,7"/>
         <Style.Triggers>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                 <Setter Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>

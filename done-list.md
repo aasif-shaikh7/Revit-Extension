@@ -607,6 +607,18 @@ confirm the search boxes look proper in both themes (matching background/border/
 
 ---
 
+## Search-box text size fix (explicit font + larger size) — code complete (`v1.7.7`)
+
+**Asked for.** Search-box text was visible but **very small / blurry** — the real problem was not color (5 previous color-only fixes) but **size and font resolution**: `FontSize="12"` was too small and `FontFamily="{DynamicResource BrandFontFamily}"` was not resolving under IronPython, falling back to a system default that rendered tiny/blurry.
+
+**Built.** `BrandTextBox` style updated: `FontFamily` explicitly `"Segoe UI"` (no resource dependency — guaranteed to resolve on every Windows machine), `FontSize` 12→**14**, `Padding` 8,6→**10,7** for comfortable touch/click target. Single shared style — all four search boxes (Beam/Column/Slab/Foundation) benefit. Version bumped to **1.7.7**.
+
+**How it is known.** `Brand.Controls.xaml` well-formed; `python -m py_compile` clean; `python test_xlsx_writer.py` ends `RESULT: all checks passed` (engine untouched). **Unverified live** — owner to reload and confirm the typed search text is now a clear, readable size in both themes.
+
+**Cost / limits.** None — default WPF TextBox chrome was already in use since v1.7.5.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

@@ -22,6 +22,13 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.7.7] - 2026-08-31
+
+### Fixed
+- **Search box text size**: `BrandTextBox` FontSize 12→14, Padding 8,6→10,7, FontFamily explicitly "Segoe UI" (was `BrandFontFamily` dynamic resource which may not resolve under IronPython, causing small/blurry text)
+
+---
+
 ## [Unreleased] — Search-box full visual paint (background + border) — code `v1.7.6`
 
 **Fix (unreleased; code `v1.7.6`).** The four search boxes are now painted entirely with
