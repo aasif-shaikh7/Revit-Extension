@@ -12,7 +12,7 @@ covered by test_xlsx_writer.py.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.7.7'
+__version__ = '1.8.3'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.7.7'
+SCRIPT_VERSION = '1.8.4'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -75,6 +75,31 @@ active_selection_ids = set()
 # columns (volume, area, length) to the element sheets and builds the
 # BOQ Summary sheet with live SUM formulas.
 quantities_flag = True
+quantities_flag = True
+
+# P3 slice 2: configurable formwork (shuttering) rules. The site-format
+# workbook's SHUTTERING column obeys these rules: "enabled" switches the
+# formwork takeoff off entirely, and the per-category "deduction_pct"
+# (0-100) applies a deterministic percentage deduction - e.g. a junction
+# allowance where beams frame into columns. Persisted in the settings
+# JSON under the "formwork" key; the IncludeFormworkCheck checkbox
+# controls "enabled" from the dialog footer.
+DEFAULT_FORMWORK_RULES = {
+    "enabled": True,
+    "deduction_pct": {
+        "Column": 0.0,
+        "Beam": 0.0,
+        "Slab": 0.0,
+        "Foundation": 0.0
+    }
+}
+
+# Runtime copy the dialog and export mutate; seeded from the defaults so
+# a missing/invalid settings entry still yields sane behaviour.
+formwork_rules = {
+    "enabled": DEFAULT_FORMWORK_RULES["enabled"],
+    "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])
+}
 
 
 def get_selection_ids():
@@ -1083,7 +1108,9 @@ def compute_shuttering_area(
         length_m="",
         width_m="",
         height_m="",
-        area_m2=""):
+        area_m2="",
+        factor=1.0,
+        enabled=True):
     """
     P3/site-format formwork (SHUTTERING) rules, deterministic and pure.
 
@@ -1094,9 +1121,19 @@ def compute_shuttering_area(
       Slab       : soffit contact area = plan area
       Foundation : footing side faces = 2 * (L + W) * H
 
+    factor (>= 0) scales the raw contact area - the caller converts the
+    configurable per-category deduction percentage (junction allowance)
+    into a multiplier, keeping this function geometry-only.
+
+    enabled=False short-circuits to "" so the SHUTTERING column goes
+    blank when the user turns formwork off.
+
     Returns the area rounded to 2 decimals, or "" when the dimensions
     required by the rule are unavailable so the cell stays blank.
     """
+    if not enabled:
+        return ""
+
     def to_float(value):
         try:
             return float(value)
@@ -1108,7 +1145,12 @@ def compute_shuttering_area(
         area_value = to_float(area_m2)
 
         if area_value is not None and area_value > 0:
-            return round(area_value, 2)
+            scaled_area = area_value * _safe_factor(factor)
+
+            if scaled_area <= 0:
+                return ""
+
+            return round(scaled_area, 2)
 
         return ""
 
@@ -1134,10 +1176,107 @@ def compute_shuttering_area(
     else:
         return ""
 
+    shuttering *= _safe_factor(factor)
+
     if shuttering <= 0:
         return ""
 
     return round(shuttering, 2)
+
+
+def _safe_factor(factor):
+    """
+    P3: clamp the configurable deduction multiplier to a sane range.
+    Negative factors are treated as 1.0 (no deduction); anything that
+    fails to parse also falls back to 1.0 so a bad settings value can
+    never zero out or invert the takeoff silently.
+    """
+    try:
+        multiplier = float(factor)
+    except:
+        return 1.0
+
+    if multiplier < 0.0:
+        return 1.0
+
+    return multiplier
+
+
+def normalize_formwork_rules(raw_rules):
+    """
+    P3: merge a raw settings-JSON fragment into clean formwork rules.
+
+    Anything missing or invalid falls back to the defaults, percentages
+    are clamped to 0-100, and unknown categories are ignored - so a
+    hand-edited or older settings file can never break the export.
+    """
+    clean = {
+        "enabled": DEFAULT_FORMWORK_RULES["enabled"],
+        "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])
+    }
+
+    if not isinstance(raw_rules, dict):
+        return clean
+
+    clean["enabled"] = bool(raw_rules.get("enabled", True))
+
+    raw_percentages = raw_rules.get("deduction_pct", {})
+
+    if isinstance(raw_percentages, dict):
+
+        for category in ("Column", "Beam", "Slab", "Foundation"):
+
+            try:
+                value = float(
+                    raw_percentages.get(category, 0.0)
+                )
+            except:
+                value = 0.0
+
+            if value < 0.0:
+                value = 0.0
+
+            if value > 100.0:
+                value = 100.0
+
+            clean["deduction_pct"][category] = value
+
+    return clean
+
+
+def get_formwork_factor(category_name):
+    """
+    P3: multiplier for one category from the runtime formwork rules:
+    1.0 with no deduction, 1 - pct/100 with a configured junction
+    allowance. Never throws; defaults to no deduction.
+    """
+    try:
+        percentage = float(
+            formwork_rules.get("deduction_pct", {}).get(
+                category_name, 0.0
+            )
+        )
+    except:
+        percentage = 0.0
+
+    if percentage < 0.0:
+        percentage = 0.0
+
+    if percentage > 100.0:
+        percentage = 100.0
+
+    return 1.0 - (percentage / 100.0)
+
+
+def is_formwork_enabled():
+    """
+    P3: whether the formwork takeoff is switched on. Reads the runtime
+    rules dict; defaults to True when the entry is missing/invalid.
+    """
+    try:
+        return bool(formwork_rules.get("enabled", True))
+    except:
+        return True
 
 
 def get_element_quantities(element, element_name=""):
@@ -1292,7 +1431,9 @@ def get_element_quantities(element, element_name=""):
         length_m=element_dims.get("length", ""),
         width_m=element_dims.get("width", ""),
         height_m=element_dims.get("height", ""),
-        area_m2=calculated_area
+        area_m2=calculated_area,
+        factor=get_formwork_factor(element_name),
+        enabled=is_formwork_enabled()
     )
 
     results.extend(
@@ -3899,23 +4040,27 @@ def _site_desc_text(value):
     return text
 
 
-def build_site_detail_sheet(category_name, rows, project_name):
+def build_site_detail_sheet(category_name, rows, project_name,
+                            include_formwork=True):
     """
-    Site detail sheet, selection-only columns.
+    Site detail sheet, selection-only columns plus the P3 automatic
+    SHUTTERING column.
 
-    Shows exactly the parameters the user ticked in the UI - nothing
-    else. Every selected parameter gets its OWN column after SNO; the
-    automatic SIZE (MM) / VOLUME / SHUTTERING / LEVEL columns and the
-    SUM totals row are gone, so the sheet mirrors the checkbox
-    selection cleanly.
+    Shows exactly the parameters the user ticked in the UI, then one
+    automatic "SHUTTERING (SQM)" column fed from the row's
+    "Qty: Shuttering (m2)" value - rendered only when include_formwork
+    is True (the footer "Include formwork" checkbox). The other old
+    automatic columns (SIZE / VOLUME / LEVEL) and the SUM totals row
+    stay removed.
 
     Layout: rows 1-3 merged title block, row 4 spacer, rows 5/6
     two-tier band (each header vertically merged), row 7+ one row per
-    element with SNO followed by the selected values in UI order.
+    element with SNO followed by the selected values in UI order and
+    the optional shuttering figure.
 
-    meta carries the dynamic widths (per parameter count); it no
-    longer exposes VOLUME/SHUTTERING column letters or a LEVEL feed,
-    so the front Summary stays a simple element-count cover.
+    meta carries the dynamic widths (per parameter count) and, when
+    formwork is shown, the SHUTTERING column letter so a future summary
+    can aggregate it.
     """
     data_rows = rows or []
 
@@ -3935,7 +4080,9 @@ def build_site_detail_sheet(category_name, rows, project_name):
                 continue
             param_names.append(key_text)
 
-    total_cols = 1 + len(param_names)
+    show_shuttering = bool(include_formwork)
+
+    total_cols = 1 + len(param_names) + (1 if show_shuttering else 0)
 
     def merge_vertical(label):
         return ("MERGE_V", label)
@@ -3946,6 +4093,10 @@ def build_site_detail_sheet(category_name, rows, project_name):
         band_one.append(merge_vertical(str(param_name).upper()))
 
     band_two = ["" for _band_cell in param_names]
+
+    if show_shuttering:
+        band_one.append(merge_vertical("SHUTTERING (SQM)"))
+        band_two.append("")
 
     table = [
         [str(project_name or "")],
@@ -3983,24 +4134,56 @@ def build_site_detail_sheet(category_name, rows, project_name):
 
             out_values.append(display_value)
 
+        if show_shuttering:
+
+            try:
+                shutter_value = row.get("Qty: Shuttering (m2)", "")
+            except:
+                shutter_value = ""
+
+            display_shutter = ""
+
+            if shutter_value not in ("", None):
+                try:
+                    display_shutter = "{0:.2f}".format(
+                        float(shutter_value)
+                    )
+                except:
+                    display_shutter = str(shutter_value)
+
+            out_values.append(display_shutter)
+
         table.append(out_values)
         item_number += 1
+
+    shuttering_col = ""
+
+    if show_shuttering:
+        shuttering_col = xlsx_column_name(
+            1 + len(param_names) + 1
+        )
 
     meta = {
         "columns": {},
         "level_col": "",
+        "shuttering_col": shuttering_col,
         "total_row": len(table),
         "data_start": SITE_DETAIL_DATA_START_ROW,
         "data_end": len(table),
         "elements": len(data_rows),
-        "widths": [7] + [18 for _name in param_names],
+        "widths": (
+            [7]
+            + [18 for _name in param_names]
+            + ([12] if show_shuttering else [])
+        ),
         "param_columns": list(param_names)
     }
 
     return (table, meta)
 
 
-def build_site_summary_sheet(data_result, site_detail_meta, project_name):
+def build_site_summary_sheet(data_result, site_detail_meta, project_name,
+                             include_formwork=True):
     """
     Build the front Summary in the site format.
 
@@ -4009,16 +4192,14 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
       Row 2 : RCC - CONCRETE FINISHING BOQ
       Row 3 : ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING
       Row 4 : blank spacer row
-      Row 5 : LEVEL | ITEM | <category groups> | TOTAL m3 | TOTAL sqm
-              (band one; category names span their two columns)
-      Row 6 :                  | VOL (m3) | SHUT (sqm) | ...
-              (band two; LEVEL and ITEM are vertical merges)
+      Row 5 : SNO | CATEGORY | ELEMENTS | VOLUME (m3) | SHUTTERING (m2)
+      Row 6 : band two (vertical merges / blanks)
 
-    Every exported category contributes one VOL / SHUT column pair.
-    Data rows hold live SUMIF formulas against each detail sheet's
-    hidden LEVEL column (H), restricted to that sheet's real data
-    rows, so Excel reconciles every figure against the model on load.
-    The trailing TOTAL pair sums the category columns horizontally.
+    SNO | CATEGORY | ELEMENTS are static; VOLUME aggregates the rows'
+    Qty: Volume (m3) values. The SHUTTERING (m2) column (aggregated
+    from Qty: Shuttering (m2), plus a live SUM in the TOTAL row) is
+    rendered only when include_formwork is True - the same footer
+    checkbox that drives the detail sheets' SHUTTERING (SQM) column.
 
     Returns (summary_table, meta) where meta documents the produced
     grid for the regression harness.
@@ -4053,19 +4234,24 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
             total += metric_value
         return round(total, 2) if total else ""
 
+    show_shuttering = bool(include_formwork)
+
     out_rows = [
         [str(project_name or "")],
         ["RCC - CONCRETE FINISHING BOQ"],
-        ["ITEM-WISE SUMMARY - CONCRETE AND SHUTTERING"],
+        [
+            "ITEM-WISE SUMMARY - CONCRETE{0}".format(
+                " AND SHUTTERING" if show_shuttering else ""
+            )
+        ],
         [],
         [
             ("MERGE_V", "SNO"),
             ("MERGE_V", "CATEGORY"),
             "ELEMENTS",
             "VOLUME (m3)",
-            "SHUTTERING (m2)"
-        ],
-        ["", "", "", "", ""],
+        ] + (["SHUTTERING (m2)"] if show_shuttering else []),
+        ["", "", "", ""] + ([""] if show_shuttering else []),
     ]
 
     first_data_row = len(out_rows) + 1
@@ -4076,15 +4262,19 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
 
         category_meta = site_detail_meta.get(category_name, {})
 
-        out_rows.append(
-            [
-                item_number,
-                header_label_map[category_name],
-                category_meta.get("elements", 0),
-                aggregate_metric(category_name, "Qty: Volume (m3)"),
+        category_row = [
+            item_number,
+            header_label_map[category_name],
+            category_meta.get("elements", 0),
+            aggregate_metric(category_name, "Qty: Volume (m3)")
+        ]
+
+        if show_shuttering:
+            category_row.append(
                 aggregate_metric(category_name, "Qty: Shuttering (m2)")
-            ]
-        )
+            )
+
+        out_rows.append(category_row)
 
         item_number += 1
 
@@ -4096,31 +4286,39 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name):
     vol_letter = xlsx_column_name(vol_col)
     shut_letter = xlsx_column_name(shut_col)
 
-    out_rows.append(
-        [
-            "TOTAL",
-            "",
-            "",
-            (
-                "FORMULA",
-                "SUM({0}{1}:{0}{2})".format(
-                    vol_letter, first_data_row, total_row_number - 1)
-            ),
+    total_row_cells = [
+        "TOTAL",
+        "",
+        "",
+        (
+            "FORMULA",
+            "SUM({0}{1}:{0}{2})".format(
+                vol_letter, first_data_row, total_row_number - 1)
+        )
+    ]
+
+    if show_shuttering:
+        total_row_cells.append(
             (
                 "FORMULA",
                 "SUM({0}{1}:{0}{2})".format(
                     shut_letter, first_data_row, total_row_number - 1)
             )
-        ]
-    )
+        )
+
+    out_rows.append(total_row_cells)
+
+    summary_columns = {
+        "Volume (m3)": vol_letter
+    }
+
+    if show_shuttering:
+        summary_columns["Shuttering (m2)"] = shut_letter
 
     meta = {
         "present_categories": present_categories,
-        "columns": {
-            "Volume (m3)": vol_letter,
-            "Shuttering (m2)": shut_letter
-        },
-        "total_columns": 5,
+        "columns": summary_columns,
+        "total_columns": 5 if show_shuttering else 4,
         "bands": (5, 6),
         "grid_start": first_data_row,
         "levels": []
@@ -4133,18 +4331,20 @@ SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 
 
 def write_site_xlsx(file_path, data_result, project_name="",
-                    tool_version="", generated_stamp=""):
+                    tool_version="", generated_stamp="",
+                    include_formwork=True):
     """
     Write the v1.4.0 site-format workbook.
 
     Sheet plan mirrors the manual site BOQ:
-      Summary                - level-wise CONCRETE / SHUTTERING grid
+      Summary                - element-count cover
       Beam / Column / Slab /
       Foundation             - one detail sheet per populated category
-                               with title blocks and one column per
-                               user-selected parameter (no automatic
-                               SIZE / VOLUME / SHUTTERING / LEVEL
-                               columns and no SUM totals row).
+                               with title blocks, one column per
+                               user-selected parameter and (P3, v1.8.0)
+                               an automatic SHUTTERING (SQM) column
+                               when include_formwork is True - no other
+                               automatic columns and no SUM totals row.
 
     Returns a plain {sheet_name: table} mapping (identical contract to
     write_basic_xlsx) covering Summary plus every populated category.
@@ -4171,7 +4371,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
         table, meta = build_site_detail_sheet(
             category_name,
             rows,
-            project_name
+            project_name,
+            include_formwork=include_formwork
         )
 
         sheet_names.append(category_name)
@@ -4192,7 +4393,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
     summary_table, summary_meta = build_site_summary_sheet(
         data_result,
         site_detail_meta,
-        project_name
+        project_name,
+        include_formwork=include_formwork
     )
 
     if not summary_table:
@@ -4209,7 +4411,10 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
     total_columns = summary_meta.get("total_columns", 3)
 
-    summary_widths = [7, 24, 10, 14, 17]  # SNO|CATEGORY|ELEMENTS|VOL|SHUT
+    # SNO | CATEGORY | ELEMENTS | VOL (+ SHUT only when formwork shows)
+    summary_widths = [7, 24, 10, 14] + (
+        [17] if include_formwork else []
+    )
 
 
     sheet_rows["Summary"] = summary_table
@@ -5586,6 +5791,28 @@ try:
         except:
             pass
 
+        # P3: restore the saved formwork (shuttering) rules so the
+        # deduction percentages and the enabled state survive sessions.
+        try:
+            restored_formwork = normalize_formwork_rules(
+                saved_settings.get("formwork", {})
+            )
+            formwork_rules["enabled"] = restored_formwork["enabled"]
+            formwork_rules["deduction_pct"] = restored_formwork["deduction_pct"]
+
+            # Mirror the saved enabled state onto the footer checkbox
+            # so the dialog shows the real current setting.
+            try:
+                fw_restore = window.FindName("IncludeFormworkCheck")
+                if fw_restore:
+                    fw_restore.IsChecked = bool(
+                        formwork_rules.get("enabled", True)
+                    )
+            except:
+                pass
+        except:
+            pass
+
         # Restore the previously selected parameters in saved order.
         saved_selected = {}
 
@@ -5806,6 +6033,32 @@ try:
                         )
                     except:
                         pass
+            except:
+                pass
+
+            # P3: persist the formwork rules, syncing "enabled" with
+            # the footer "Include formwork" checkbox state.
+            try:
+                fw_save = window.FindName("IncludeFormworkCheck")
+                if fw_save:
+                    try:
+                        formwork_rules["enabled"] = bool(
+                            fw_save.IsChecked
+                        )
+                    except:
+                        pass
+            except:
+                pass
+
+            try:
+                settings["formwork"] = {
+                    "enabled": bool(
+                        formwork_rules.get("enabled", True)
+                    ),
+                    "deduction_pct": dict(
+                        formwork_rules.get("deduction_pct", {})
+                    )
+                }
             except:
                 pass
 
@@ -6613,6 +6866,24 @@ try:
                     else:
                         quantities_flag = True
 
+                    # P3: honour the footer "Include formwork" checkbox
+                    # BEFORE the rows are built - get_element_quantities
+                    # reads formwork_rules while it computes every row,
+                    # so the flag must be current before
+                    # build_element_data() runs, not just before the
+                    # workbook writer is called.
+                    fw_check = window.FindName(
+                        "IncludeFormworkCheck"
+                    )
+
+                    if fw_check:
+                        try:
+                            formwork_rules["enabled"] = bool(
+                                fw_check.IsChecked
+                            )
+                        except:
+                            pass
+
                     # Always rebuild metadata before export so the
                     # workbook reflects the current selection/order.
                     global parameter_metadata
@@ -6690,7 +6961,8 @@ try:
                                     SCRIPT_VERSION
                                 )
                             ),
-                            generated_stamp=time.strftime("%Y-%m-%d %H:%M")
+                            generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
+                            include_formwork=is_formwork_enabled()
                         )
 
                     else:

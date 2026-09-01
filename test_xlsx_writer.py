@@ -18,8 +18,8 @@ from xml.dom import minidom
 
 SCRIPT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "Aasif.extension",
-    "Aasif.tab",
+    "Nudge.extension",
+    "Nudge.tab",
     "Generate.panel",
     "BOQ.pushbutton",
     "script.py"
@@ -56,6 +56,10 @@ FUNCTION_NAMES = [
     "build_section_description",
     "resolve_element_dimensions",
     "compute_shuttering_area",
+    "_safe_factor",
+    "normalize_formwork_rules",
+    "get_formwork_factor",
+    "is_formwork_enabled",
     "_site_sort_key",
     "_site_cell_value",
     "_site_numeric",
@@ -99,7 +103,7 @@ def main():
     with io.open(SCRIPT_PATH, "r", encoding="utf-8") as handle:
         source = handle.read()
 
-    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]']
+    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
 
     import time
 
@@ -594,6 +598,102 @@ def main():
             "Shuttering stays blank when dimensions are missing or bad"
         )
 
+        # ====================================================
+        # P3 slice 2: configurable formwork rules (pure logic)
+        # ====================================================
+
+        normalize_formwork_rules = namespace["normalize_formwork_rules"]
+        get_formwork_factor = namespace["get_formwork_factor"]
+        is_formwork_enabled = namespace["is_formwork_enabled"]
+
+        check(
+            normalize_formwork_rules(None)["enabled"] is True
+            and normalize_formwork_rules(None)["deduction_pct"]["Beam"] == 0.0,
+            "normalize_formwork_rules falls back to defaults on bad input"
+        )
+
+        cleaned_rules = normalize_formwork_rules({
+            "enabled": False,
+            "deduction_pct": {
+                "Beam": 5,
+                "Column": "x",
+                "Slab": 150,
+                "Foundation": -3
+            }
+        })
+
+        check(
+            cleaned_rules["enabled"] is False
+            and cleaned_rules["deduction_pct"]["Beam"] == 5.0
+            and cleaned_rules["deduction_pct"]["Column"] == 0.0
+            and cleaned_rules["deduction_pct"]["Slab"] == 100.0
+            and cleaned_rules["deduction_pct"]["Foundation"] == 0.0,
+            "Deduction percentages are clamped to 0-100 and bad values reset"
+        )
+
+        namespace["formwork_rules"]["deduction_pct"]["Beam"] = 5.0
+
+        check(
+            get_formwork_factor("Beam") == 0.95,
+            "get_formwork_factor converts the Beam percentage to a multiplier"
+        )
+
+        namespace["formwork_rules"]["deduction_pct"]["Beam"] = 0.0
+
+        check(
+            is_formwork_enabled() is True,
+            "Formwork takeoff is enabled by default"
+        )
+
+        namespace["formwork_rules"]["enabled"] = False
+
+        check(
+            is_formwork_enabled() is False,
+            "is_formwork_enabled reflects the runtime rules state"
+        )
+
+        namespace["formwork_rules"]["enabled"] = True
+
+        check(
+            compute_shuttering_area(
+                "Column", length_m=0.45, width_m=0.3, height_m=3.5, factor=0.95
+            ) == round(2.0 * (0.45 + 0.3) * 3.5 * 0.95, 2),
+            "Column shuttering honours the deduction factor"
+        )
+
+        check(
+            compute_shuttering_area(
+                "Beam", length_m=6.096, width_m=0.23, height_m=0.6, factor=0.9
+            ) == round((0.23 + 2.0 * 0.6) * 6.096 * 0.9, 2),
+            "Beam shuttering honours the deduction factor"
+        )
+
+        check(
+            compute_shuttering_area("Slab", area_m2=9.3, factor=0.9)
+            == round(9.3 * 0.9, 2),
+            "Slab soffit shuttering honours the deduction factor"
+        )
+
+        check(
+            compute_shuttering_area(
+                "Column", length_m=0.45, width_m=0.3, height_m=3.5,
+                enabled=False
+            ) == "",
+            "Disabled formwork rules blank the SHUTTERING column"
+        )
+
+        check(
+            compute_shuttering_area("Slab", area_m2=9.3, factor=0) == "",
+            "A zero factor yields a blank shuttering cell"
+        )
+
+        check(
+            compute_shuttering_area(
+                "Column", length_m=0.45, width_m=0.3, height_m=3.5, factor=-1
+            ) == 5.25,
+            "A negative factor falls back to no deduction"
+        )
+
         ordered_levels_check = sorted(
             ["Level 10", "Level 2"],
             key=namespace["_site_sort_key"]
@@ -659,9 +759,31 @@ def main():
         )
 
         check(
-            len(first_site_row) == 2
+            len(first_site_row) == 3
             and detail_table[7][1] == "B2",
-            "No auto columns (SIZE/VOLUME/SHUTTERING/LEVEL) present"
+            "Only the SHUTTERING auto column is present (P3 default on)"
+        )
+
+        check(
+            detail_table[4][2] == ("MERGE_V", "SHUTTERING (SQM)")
+            and first_site_row[2] == "8.72",
+            "SHUTTERING (SQM) column renders the row's shuttering value"
+        )
+
+        nofw_table, nofw_meta = namespace["build_site_detail_sheet"](
+            "Beam", site_rows_fixture, "Sample Project",
+            include_formwork=False
+        )
+
+        check(
+            len(nofw_table[6]) == 2
+            and nofw_meta["shuttering_col"] == "",
+            "Include formwork off removes the SHUTTERING column entirely"
+        )
+
+        check(
+            nofw_meta["widths"] == [7, 18],
+            "Widths shrink back when formwork is off"
         )
 
         check(
@@ -713,6 +835,35 @@ def main():
             and summary_meta_s["columns"]["Volume (m3)"] == "D"
             and summary_meta_s["columns"]["Shuttering (m2)"] == "E",
             "Summary meta exposes the 5-column VOL/SHUT column plan"
+        )
+
+        nofw_summary_table, nofw_summary_meta = \
+            namespace["build_site_summary_sheet"](
+                {"Beam": site_rows_fixture},
+                {"Beam": detail_meta},
+                "CHHANYADO HOSPITAL SURAT",
+                include_formwork=False
+            )
+
+        check(
+            nofw_summary_table[2][0]
+            == "ITEM-WISE SUMMARY - CONCRETE"
+            and nofw_summary_table[4] == [
+                ("MERGE_V", "SNO"),
+                ("MERGE_V", "CATEGORY"),
+                "ELEMENTS",
+                "VOLUME (m3)",
+            ]
+            and len(nofw_summary_table[6]) == 4
+            and "SHUTTERING (m2)" not in nofw_summary_table[4],
+            "Formwork off drops the summary SHUTTERING column and caption"
+        )
+
+        check(
+            nofw_summary_meta["total_columns"] == 4
+            and "Shuttering (m2)" not in nofw_summary_meta["columns"]
+            and nofw_summary_table[-1][0] == "TOTAL",
+            "Formwork-off summary meta carries the 4-column plan"
         )
 
     finally:

@@ -42,7 +42,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P0 | Live-Revit confirmation of the current dialog | — | **done** (`v1.0.1`) |
 | P1 | Structural Quantity Engine (extend, don't duplicate) | 5/5/3/4 | **done** (`v1.1.0`) |
 | P2 | Structural BOQ Grouping (level + concrete grade done) | 4/4/2/5 | **done** (`v1.6.0`) |
-| P3 | Formwork Engine (configurable rules) | 5/5/3/4 | `todo` |
+| P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | `todo` |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `todo` |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | `todo` |
@@ -170,6 +170,26 @@ param-driven description format, SUMIF criteria, merge-span integrity (zero bad 
 bordered-grid styles and XML parts all pass; `script.py` compiles clean under CPython 3.12.
 **Remaining:** live Revit confirmation on CP3123 (parameter-backed dims vs bbox fallback;
 shuttering overlap handling at frame intersections), then tag `v1.4.0`.
+
+### P3-02 — Configurable formwork rules + Include formwork toggle — **done** (`v1.8.2`)
+**Built:** `formwork_rules` (enabled + per-category `deduction_pct` 0-100) persisted under
+`settings["formwork"]`; `compute_shuttering_area(factor, enabled)` with `_safe_factor` clamping;
+`normalize_formwork_rules` / `get_formwork_factor` / `is_formwork_enabled` helpers;
+footer **"Include formwork"** checkbox wired at export/restore/save (restore mirrors the state
+onto the checkbox). Harness: 11 new checks, `RESULT: all checks passed`.
+**Fixed round 1 (owner feedback, `v1.8.1`):** the site detail sheets rendered no SHUTTERING column —
+the SF round-3 redesign had removed all automatic columns. `build_site_detail_sheet` /
+`write_site_xlsx` now take `include_formwork` and render an automatic **`SHUTTERING (SQM)`**
+column (2-decimal figures from `Qty: Shuttering (m2)`, `shuttering_col` letter in meta) when the
+checkbox is on; the export handler passes `is_formwork_enabled()`.
+**Fixed round 2 (owner feedback, `v1.8.2`):** (a) checkbox read moved above `build_element_data()`
+— rows were built against the stale flag, so the detail column rendered empty; (b) Summary sheet
+now honours `include_formwork` too — off state drops the SHUTTERING (m2) column, its TOTAL SUM and
+the caption tail, with 4-column meta and widths.
+**Confirmed live (2026-09, owner):** both states verified end to end in Revit 2025 — checked →
+SHUTTERING (SQM) values on detail sheets + summary; unchecked → column absent everywhere.
+**Remaining (optional, non-blocking):** per-category percentage UI editor; geometric junction
+analysis (current deduction is a configurable percentage, not intersection-aware). P3 is closed.
 
 ---
 

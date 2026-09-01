@@ -634,6 +634,197 @@ confirm the search boxes look proper in both themes (matching background/border/
 
 ---
 
+## Search-box text clipping fix (row height + vertical centering) — code complete (`v1.7.9`)
+
+**Asked for.** "Jo mene image me mark kiya hai woh text dikh nh rh search krne par" — the typed
+search text was clipped vertically (only the bottom sliver of the glyphs visible at the top edge
+of the box).
+
+**Root cause.** Not a colour/size problem this time — a **clipping** problem. The search box row
+was fixed at `Height="35"`; with `Margin="5"` the TextBox had only 25 px, while FontSize 14 +
+Padding `10,7` (14 px vertical) + 2 px border need ≈33 px. The default WPF TextBox template
+centred the text view in the remaining space, so the glyphs were cut top and bottom.
+
+**Built.**
+- `ui.xaml`: all six fixed search/input rows `Height="35"` → `Height="42"` (Beam/Column/Slab/Foundation
+  search boxes + two matching rows) — full room for 14 pt text + padding + border.
+- `Brand.Controls.xaml` `BrandTextBox`: added `VerticalContentAlignment="Center"` so the text stays
+  centred regardless of box height.
+- Side fix: a PowerShell rewrite during the edit double-encoded the header em-dash
+  (`â€”`); restored to a proper `—` and re-saved clean UTF-8 (no BOM).
+- Version bumped to **1.7.9** (script was still at 1.7.7 — the v1.7.8 double-click change had not
+  been bumped; script jumps 1.7.7 → 1.7.9).
+
+**How it is known.** Both XAML files parse as valid XML; `python -m py_compile` clean; em-dash and
+six `Height="42"` rows verified by content check. **Unverified live** — owner to reload and confirm
+the typed search text is fully visible (not clipped) in both themes.
+
+**Cost / limits.** Search rows are 7 px taller; the Available list under each box loses that much
+vertical space (negligible).
+
+---
+
+## P3 Formwork Engine slice 2 — configurable rules + Include formwork toggle — code complete (`v1.8.0`)
+
+**Asked for.** Roadmap P3 "Formwork Engine (configurable rules)" — the v1.4.0 first slice had the
+hard-coded shuttering formulas; this increment makes them configurable and switchable from the
+dialog.
+
+**Built.**
+- **Engine** (`script.py`): `DEFAULT_FORMWORK_RULES` + runtime `formwork_rules` — `enabled` flag and
+  per-category `deduction_pct` (0-100, e.g. a junction allowance where beams frame into columns).
+  `compute_shuttering_area(..., factor=1.0, enabled=True)` now scales the raw contact area by a
+  clamped factor (`_safe_factor`: negative/invalid → 1.0) and short-circuits to `""` when disabled —
+  the SHUTTERING column goes blank instead of crashing. Slab passthrough honours the same factor and
+  zero-filter as the other categories. Helpers: `normalize_formwork_rules` (settings merge with
+  clamping and bad-value fallbacks), `get_formwork_factor` (pct → multiplier), `is_formwork_enabled`.
+  `get_element_quantities` passes the rules so every site-format row obeys them.
+- **UI** (`ui.xaml`): fifth footer checkbox **"Include formwork"** (`IncludeFormworkCheck`, default
+  checked) with a tooltip documenting the formulas and where the percentages live.
+- **Wiring**: export time reads the checkbox into `formwork_rules["enabled"]` (same pattern as
+  `QuantitiesCheck`); apply-settings persists `settings["formwork"]` (enabled + percentages); dialog
+  open restores the rules **and mirrors the saved enabled state back onto the checkbox**.
+- Per-category percentages are advanced settings — edited in `.rcc_boq_settings.json` under
+  `"formwork" → "deduction_pct"`; a UI editor is deliberately deferred.
+- Version bumped to **1.8.0**.
+
+**How it is known.** Harness extended: 41 functions extracted incl. the three new helpers + 11 new
+checks (defaults fallback, 0-100 clamping, pct→factor conversion, enabled toggling, factor on
+Column/Beam/Slab, disabled blank, zero-factor blank, negative-factor fallback);
+`python test_xlsx_writer.py` ends `RESULT: all checks passed`; `python -m py_compile` clean; XAML
+parses. **Unverified live** — owner to reload and confirm: "Include formwork" unchecked leaves the
+SHUTTERING column blank in the site workbook, checked restores it; the choice survives restart.
+
+**Cost / limits.** Junction deduction is a configurable percentage, not geometric intersection
+analysis — beam/column overlap at frames is still counted unless the owner sets a deduction; a
+per-category UI editor for the percentages is future work.
+
+---
+
+## Site-format SHUTTERING column restored — code complete (`v1.8.1`)
+
+**Asked for.** "Export krne par SHUTTERING column nh dikh rh hai" — after the v1.8.0 formwork
+rules landed, the exported site workbook still had no SHUTTERING column.
+
+**Root cause.** Not a regression — the SF round-3 redesign had **deliberately removed** every
+automatic column (`SIZE (MM) / VOLUME / SHUTTERING / LEVEL`) from the site detail sheets, leaving
+only SNO + selected parameters. `build_site_detail_sheet` skipped all `Qty:` keys, so the engine's
+`Qty: Shuttering (m2)` values were computed but never rendered.
+
+**Built.**
+- `build_site_detail_sheet(..., include_formwork=True)`: after the selected-parameter columns it
+  renders one automatic **`SHUTTERING (SQM)`** band header (`MERGE_V`) plus per-row 2-decimal
+  figures from `Qty: Shuttering (m2)`; `meta` gains `shuttering_col` (column letter via
+  `xlsx_column_name`) and widths grow by 12 only when shown. `include_formwork=False` restores the
+  previous column plan exactly.
+- `write_site_xlsx(..., include_formwork=True)` passes the flag through to every detail sheet.
+- Export handler calls `write_site_xlsx(..., include_formwork=is_formwork_enabled())` — the footer
+  **"Include formwork"** checkbox now actually controls the workbook (the checkbox read happens
+  before the writer call).
+- Version bumped to **1.8.1**.
+
+**How it is known.** Harness updated: the old "No auto columns" assertion replaced with
+`include_formwork` on/off checks (SHUTTERING band header + `"8.72"` value with the fixture, column
+removed and widths shrinking when off); `python test_xlsx_writer.py` ends `RESULT: all checks
+passed`; `python -m py_compile` clean. **Unverified live** — owner to reload and confirm the
+SHUTTERING (SQM) column appears on every populated detail sheet with real values, and disappears
+when "Include formwork" is unchecked.
+
+**Cost / limits.** SIZE (MM), VOLUME and LEVEL automatic columns stay removed (unchanged SF round-3
+behavior); the Summary sheet remains the element-count cover — a SHUTTERING summary column is
+future work once the owner confirms the detail figures.
+
+---
+
+## Formwork flag order fix + Summary honours Include formwork — code complete (`v1.8.2`)
+
+**Asked for (owner live test of `v1.8.1`).** Two defects:
+1. Site format + Include formwork **checked** → the SHUTTERING (SQM) column appeared on the detail
+   sheets but every cell was **empty**.
+2. Include formwork **unchecked** → the detail sheets correctly dropped the column, but the front
+   **Summary still showed SHUTTERING (m2) with values**.
+
+**Root causes.**
+1. **Order-of-operations.** The export handler read the IncludeFormworkCheck checkbox *after*
+   `build_element_data()` had already computed the rows. `get_element_quantities` ran against the
+   stale (restored) `formwork_rules["enabled"]` — so the rows carried blank shuttering values while
+   the flag updated in time for the writer, which then rendered the (empty) column.
+2. **Summary ignored the flag.** `build_site_summary_sheet` had no `include_formwork` parameter; it
+   always aggregated `Qty: Shuttering (m2)` straight from `data_result` (independent of what the
+   detail sheets rendered), so its SHUTTERING column kept showing figures even when formwork was off.
+
+**Built.**
+- Export handler: the checkbox read moved **above `build_element_data()`** (beside the
+  `QuantitiesCheck` read, with an explanatory comment); the stale copy after the site-format check
+  was deleted. Rows now always see the current dialog state.
+- `build_site_summary_sheet(..., include_formwork=True)`: formwork off drops the SHUTTERING (m2)
+  band column, the per-category aggregate cell and the TOTAL-row SUM formula, renames the caption
+  to "ITEM-WISE SUMMARY - CONCRETE", and reports `total_columns: 4` / no `Shuttering (m2)` in meta.
+  `write_site_xlsx` passes the flag through and shrinks `summary_widths` to
+  `[7, 24, 10, 14]` when off.
+- Version bumped to **1.8.2**.
+
+**How it is known.** Harness extended with formwork-off summary checks (caption, band without
+SHUTTERING, 4-cell data rows, 4-column meta); `python test_xlsx_writer.py` ends `RESULT: all checks
+passed`; `python -m py_compile` clean; checkbox-read-before-rows-build order verified by line
+inspection. **Confirmed live (2026-09, owner)** — both checkbox states verified end to end in
+Revit 2025; with v1.8.2 this closes roadmap **P3 — Formwork Engine**.
+
+**Cost / limits.** None beyond v1.8.1's — junction deduction is still a configurable percentage.
+
+---
+
+## Search-box descender clipping fix + mojibake arrow buttons repaired — code complete (`v1.8.3`)
+
+**Asked for (owner screenshots).**
+1. Search-box me typed alphabets ke descenders (g/y/p ki neeche wali tail) **puri tarah nahi
+   dikhte** — "building" ka g cut.
+2. Add/Remove/Up/Down/Top/Bottom buttons pe text corrupt: `Add â†'`, `â†‘ Up`, `â‡§ Top`…
+
+**Root causes.**
+1. **Descenders:** search row 46 px se bhi chhoti math nahi ban rahi thi — box 32 px (42 - 10
+   margin), border 2 px, Padding `10,7` = 14 px vertical → text ke liye sirf 16 px, jabki Segoe UI
+   14 pt ki line height ≈ 19 px. Descender clip fix karna tha.
+2. **Buttons:** file me arrows (`→ ← ↑ ↓ ⇧ ⇩`) ki UTF-8 bytes **Windows-1252 se dobara encode** ho
+   chuki thi — mojibake literally stored tha (`â†'` = U+2192 ke bytes), WPF sahi render kar raha
+   tha, file hi galat thi.
+
+**Built.**
+- `ui.xaml`: search/input rows `Height="42"` → **46** (6 places); button Content strings ke mojibake
+  sequences ko **XML numeric character references** me convert kiya — `Add &#x2192;`,
+  `&#x2190; Remove`, `&#x2191; Up`, `&#x2193; Down`, `&#x21E7; Top`, `&#x21E9; Bottom` (24
+  replacements — 4 tabs × 6 buttons). Numeric references encoding-proof hain: ab koi bhi file
+  reader/parser unhe hamesha sahi arrow me hi convert karega.
+- `Brand.Controls.xaml` `BrandTextBox`: `Padding` `10,7` → **`10,5`** — content area ab
+  30 - 10 = 20+ px text room deta hai (19 px line height fit), descender safe.
+- Version bumped to **1.8.3**.
+
+**How it is known.** Dono XAML valid XML; mojibake sequence count 0; 24 numeric refs present;
+6× `Height="46"`; `Padding 10,5` present; `python -m py_compile` clean; harness `RESULT: all checks
+passed`. **Unverified live** — owner to reload and confirm: search me g/y/p descenders poore dikhen
+aur buttons par sahi arrows (→ ← ↑ ↓ ⇧ ⇩) dikhen.
+
+**Cost / limits.** Rows 4 px taller (negligible); numeric refs source me thode less readable —
+intentional trade for encoding-immunity.
+
+---
+
+## Descender clipping fix (corrected) — code complete (`v1.8.4`)
+
+**Asked for (owner screenshots).** Small alphabets (g, p, q, y) ke descenders abhi bhi clip ho rahe hain — "g" pura nahi dikh raha.
+
+**Root cause.** v1.8.3 ne Padding `10,7` se `10,5` kar diya (ghataya), jisse content area aur chhota ho gaya. FontSize 14 + line height ~19px ke liye bottom padding 5px kam tha — descenders neeche se clip ho rahe the.
+
+**Built.**
+- `Brand.Controls.xaml` `BrandTextBox`: `Padding` `10,5` → **`10,8`** — content area ab 32px (border 2px + padding 16px = 18px used, ~14px text room, descenders safe).
+- Version bumped to **1.8.4**.
+
+**How it is known.** XAML valid; `Padding 10,8` present; `python -m py_compile` clean. **Unverified live** — owner to reload and confirm: g/p/q/y ke descenders poore dikhen.
+
+**Cost / limits.** Negligible — text box thoda zyada padding ke saath, par visually balanced.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.
