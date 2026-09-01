@@ -825,6 +825,24 @@ intentional trade for encoding-immunity.
 
 ---
 
+## v1.8.5 — Shuttering column now writes Excel formulas (not plain values)
+
+**Asked.** P3 me SHUTTERING (SQM) column direct value likhta tha — ab Excel formula chahiye taaki sheet dynamic rahe aur L/W/H change hone par shuttering auto-update ho jaaye.
+
+**What was built.** `build_site_detail_sheet` me shuttering cell ab `=ROUND(..., 2)` formula likhta hai:
+- Column: `=ROUND(2*(L+W)*H, 2)`
+- Beam: `=ROUND((W+2*H)*L, 2)`
+- Slab: `=ROUND(L*W, 2)` (soffit area)
+- Foundation: `=ROUND(2*(L+W)*H, 2)`
+
+Formula column letters dynamically assign hoti hain — selected parameters ke hisab se L/W/H ka letter calculate hota hai.
+
+**How it is known.** Harness: all checks passed (41 functions). Naye checks verify ki har category ka formula sahi column letters ke saath likh raha hai. `py_compile` clean. **Confirmed live (owner)** — SHUTTERING (SQM) column me formula dikhta hai, L/W/H change hone par auto-update hota hai.
+
+**Cost / limits.** None — Excel native formulas, no performance impact.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

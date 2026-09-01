@@ -60,6 +60,7 @@ FUNCTION_NAMES = [
     "normalize_formwork_rules",
     "get_formwork_factor",
     "is_formwork_enabled",
+    "build_shuttering_formula",
     "_site_sort_key",
     "_site_cell_value",
     "_site_numeric",
@@ -694,6 +695,53 @@ def main():
             "A negative factor falls back to no deduction"
         )
 
+        # ===================================================
+        # Shuttering formula helper (for Excel cell formulas)
+        # ===================================================
+
+        build_shuttering_formula = namespace["build_shuttering_formula"]
+
+        check(
+            build_shuttering_formula("Column", "F", "G", "H", 1.0)
+            == "=ROUND(2*(F+G)*H, 2)",
+            "Column shuttering formula: 2*(L+W)*H"
+        )
+
+        check(
+            build_shuttering_formula("Beam", "F", "G", "H", 1.0)
+            == "=ROUND((G+2*H)*F, 2)",
+            "Beam shuttering formula: (W+2*H)*L"
+        )
+
+        check(
+            build_shuttering_formula("Slab", "F", "G", "H", 1.0)
+            == "=ROUND(F*G, 2)",
+            "Slab shuttering formula: L*W (soffit area)"
+        )
+
+        check(
+            build_shuttering_formula("Foundation", "F", "G", "H", 1.0)
+            == "=ROUND(2*(F+G)*H, 2)",
+            "Foundation shuttering formula: 2*(L+W)*H"
+        )
+
+        check(
+            build_shuttering_formula("Column", "F", "G", "H", 0.95)
+            == "=ROUND(2*(F+G)*H*0.95, 2)",
+            "Column formula includes deduction factor (5% deduction)"
+        )
+
+        check(
+            build_shuttering_formula("Beam", "F", "G", "H", 0.9)
+            == "=ROUND((G+2*H)*F*0.9, 2)",
+            "Beam formula includes deduction factor (10% deduction)"
+        )
+
+        check(
+            build_shuttering_formula("Unknown", "F", "G", "H", 1.0) == "",
+            "Unknown category returns empty string"
+        )
+
         ordered_levels_check = sorted(
             ["Level 10", "Level 2"],
             key=namespace["_site_sort_key"]
@@ -759,15 +807,36 @@ def main():
         )
 
         check(
-            len(first_site_row) == 3
+            len(first_site_row) == 6
             and detail_table[7][1] == "B2",
-            "Only the SHUTTERING auto column is present (P3 default on)"
+            "Detail sheet has SNO + param + L/W/H + SHUTTERING columns"
         )
 
         check(
-            detail_table[4][2] == ("MERGE_V", "SHUTTERING (SQM)")
-            and first_site_row[2] == "8.72",
-            "SHUTTERING (SQM) column renders the row's shuttering value"
+            detail_table[4][2] == ("MERGE_V", "L (m)")
+            and detail_table[4][3] == ("MERGE_V", "W (m)")
+            and detail_table[4][4] == ("MERGE_V", "H (m)")
+            and detail_table[4][5] == ("MERGE_V", "SHUTTERING (SQM)"),
+            "Dimension columns L/W/H and SHUTTERING header present"
+        )
+
+        check(
+            first_site_row[2] == "6.096"
+            and first_site_row[3] == "0.230"
+            and first_site_row[4] == "0.600",
+            "Dimension columns carry L/W/H values (3 decimals)"
+        )
+
+        check(
+            isinstance(first_site_row[5], tuple)
+            and first_site_row[5][0] == "FORMULA"
+            and "ROUND" in first_site_row[5][1],
+            "SHUTTERING column contains a FORMULA tuple"
+        )
+
+        check(
+            "=ROUND((D7+2*E7)*C7, 2)" == first_site_row[5][1],
+            "Beam shuttering formula: (W+2*H)*L"
         )
 
         nofw_table, nofw_meta = namespace["build_site_detail_sheet"](
@@ -778,7 +847,7 @@ def main():
         check(
             len(nofw_table[6]) == 2
             and nofw_meta["shuttering_col"] == "",
-            "Include formwork off removes the SHUTTERING column entirely"
+            "Include formwork off removes dimension and SHUTTERING columns"
         )
 
         check(
@@ -1134,9 +1203,9 @@ def main():
 
         check(
             ">B1<" in site_beam_xml and ">B2<" in site_beam_xml
-            and "<f>" not in site_beam_xml,
-            "Detail element rows carry selected MARK values and no "
-            "auto-sum formulas"
+            and "<f>ROUND" in site_beam_xml,
+            "Detail element rows carry selected MARK values and "
+            "SHUTTERING formula"
         )
 
         site_styles_xml = site_archive.read(

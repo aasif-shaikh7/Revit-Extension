@@ -51,7 +51,7 @@ class ParameterItem(object):
 # Single source of truth for the runtime version. Keep in sync with the
 # `__version__` value declared in the module docstring at the top of this
 # script. Semantic versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.8.4'
+SCRIPT_VERSION = '1.8.5'
 
 # v1.4.0 site-format export switch. When True the export produces the
 # manual site-style workbook (title blocks, MM dimension columns,
@@ -4040,23 +4040,55 @@ def _site_desc_text(value):
     return text
 
 
-def build_site_detail_sheet(category_name, rows, project_name,
-                            include_formwork=True):
+def build_shuttering_formula(category_name, l_col, w_col, h_col, factor):
     """
-    Site detail sheet, selection-only columns plus the P3 automatic
-    SHUTTERING column.
+    Build an Excel formula string for shuttering area based on category.
 
-    Shows exactly the parameters the user ticked in the UI, then one
-    automatic "SHUTTERING (SQM)" column fed from the row's
-    "Qty: Shuttering (m2)" value - rendered only when include_formwork
-    is True (the footer "Include formwork" checkbox). The other old
-    automatic columns (SIZE / VOLUME / LEVEL) and the SUM totals row
-    stay removed.
+    Formulas (matching compute_shuttering_area logic):
+      Column:    2*(L+W)*H
+      Beam:      (W+2*H)*L
+      Slab:      L*W (soffit = plan area)
+      Foundation: 2*(L+W)*H
+
+    factor is (1 - deduction_pct/100), applied as a multiplier.
+    Returns a formula string like "=ROUND(2*(F7+G7)*H7*0.95, 2)".
+    """
+    try:
+        factor_val = float(factor)
+        if factor_val < 0 or factor_val > 1:
+            factor_val = 1.0
+    except:
+        factor_val = 1.0
+
+    factor_str = "*{0}".format(factor_val) if factor_val != 1.0 else ""
+
+    if category_name == "Column":
+        return "=ROUND(2*({0}+{1})*{2}{3}, 2)".format(l_col, w_col, h_col, factor_str)
+    elif category_name == "Beam":
+        return "=ROUND(({1}+2*{2})*{0}{3}, 2)".format(l_col, w_col, h_col, factor_str)
+    elif category_name == "Slab":
+        return "=ROUND({0}*{1}{2}, 2)".format(l_col, w_col, factor_str)
+    elif category_name == "Foundation":
+        return "=ROUND(2*({0}+{1})*{2}{3}, 2)".format(l_col, w_col, h_col, factor_str)
+    return ""
+
+
+def build_site_detail_sheet(category_name, rows, project_name,
+                            include_formwork=True, formwork_factor=1.0):
+    """
+    Site detail sheet, selection-only columns plus dimension columns
+    (L/W/H) and a formula-based SHUTTERING column.
+
+    Shows exactly the parameters the user ticked in the UI, then three
+    automatic dimension columns (L/W/H in metres), then one automatic
+    "SHUTTERING (SQM)" column with a live Excel formula that calculates
+    shuttering area from the dimension cells - rendered only when
+    include_formwork is True (the footer "Include formwork" checkbox).
 
     Layout: rows 1-3 merged title block, row 4 spacer, rows 5/6
     two-tier band (each header vertically merged), row 7+ one row per
-    element with SNO followed by the selected values in UI order and
-    the optional shuttering figure.
+    element with SNO followed by the selected values in UI order,
+    dimension values, and the shuttering formula.
 
     meta carries the dynamic widths (per parameter count) and, when
     formwork is shown, the SHUTTERING column letter so a future summary
@@ -4082,7 +4114,9 @@ def build_site_detail_sheet(category_name, rows, project_name,
 
     show_shuttering = bool(include_formwork)
 
-    total_cols = 1 + len(param_names) + (1 if show_shuttering else 0)
+    # Dimension columns (L/W/H) are always present when shuttering is shown
+    dim_count = 3 if show_shuttering else 0
+    total_cols = 1 + len(param_names) + dim_count + (1 if show_shuttering else 0)
 
     def merge_vertical(label):
         return ("MERGE_V", label)
@@ -4095,6 +4129,12 @@ def build_site_detail_sheet(category_name, rows, project_name,
     band_two = ["" for _band_cell in param_names]
 
     if show_shuttering:
+        band_one.append(merge_vertical("L (m)"))
+        band_two.append("")
+        band_one.append(merge_vertical("W (m)"))
+        band_two.append("")
+        band_one.append(merge_vertical("H (m)"))
+        band_two.append("")
         band_one.append(merge_vertical("SHUTTERING (SQM)"))
         band_two.append("")
 
@@ -4136,22 +4176,34 @@ def build_site_detail_sheet(category_name, rows, project_name,
 
         if show_shuttering:
 
-            try:
-                shutter_value = row.get("Qty: Shuttering (m2)", "")
-            except:
-                shutter_value = ""
+            # Get dimension values for this row
+            dim_l = row.get("Qty: Dim L (m)", "")
+            dim_w = row.get("Qty: Dim W (m)", "")
+            dim_h = row.get("Qty: Dim H (m)", "")
 
-            display_shutter = ""
-
-            if shutter_value not in ("", None):
+            # Format dimension values
+            def fmt_dim(val):
+                if val in ("", None):
+                    return ""
                 try:
-                    display_shutter = "{0:.2f}".format(
-                        float(shutter_value)
-                    )
+                    return "{0:.3f}".format(float(val))
                 except:
-                    display_shutter = str(shutter_value)
+                    return str(val)
 
-            out_values.append(display_shutter)
+            out_values.append(fmt_dim(dim_l))
+            out_values.append(fmt_dim(dim_w))
+            out_values.append(fmt_dim(dim_h))
+
+            # Build formula cell as a tuple (FORMULA, expression)
+            # Data starts at row SITE_DETAIL_DATA_START_ROW (7)
+            data_row = SITE_DETAIL_DATA_START_ROW + item_number - 1
+            l_col = "{0}{1}".format(xlsx_column_name(1 + len(param_names) + 1), data_row)
+            w_col = "{0}{1}".format(xlsx_column_name(1 + len(param_names) + 2), data_row)
+            h_col = "{0}{1}".format(xlsx_column_name(1 + len(param_names) + 3), data_row)
+            formula = build_shuttering_formula(
+                category_name, l_col, w_col, h_col, formwork_factor
+            )
+            out_values.append(("FORMULA", formula))
 
         table.append(out_values)
         item_number += 1
@@ -4160,7 +4212,7 @@ def build_site_detail_sheet(category_name, rows, project_name,
 
     if show_shuttering:
         shuttering_col = xlsx_column_name(
-            1 + len(param_names) + 1
+            1 + len(param_names) + dim_count + 1
         )
 
     meta = {
@@ -4174,7 +4226,7 @@ def build_site_detail_sheet(category_name, rows, project_name,
         "widths": (
             [7]
             + [18 for _name in param_names]
-            + ([12] if show_shuttering else [])
+            + ([8, 8, 8, 12] if show_shuttering else [])
         ),
         "param_columns": list(param_names)
     }
@@ -4372,7 +4424,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
             category_name,
             rows,
             project_name,
-            include_formwork=include_formwork
+            include_formwork=include_formwork,
+            formwork_factor=get_formwork_factor(category_name)
         )
 
         sheet_names.append(category_name)
