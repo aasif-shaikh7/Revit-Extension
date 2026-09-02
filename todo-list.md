@@ -106,9 +106,12 @@ ships in pyRevit.
 click-through check stated in T-03; and(b) if the engine is not CP3123, shows a clear
 `forms.alert(...)` warning instead of silently claiming the CP3123-only support. Fully guarded —
 a failure never blocks the dialog or export. **Verified:** `python -m py_compile` clean; the XLSX
-harness still ends `RESULT: all checks passed` (engine untouched). **Not "Tested (live)"**—
-neither an engine switch nor the live alert has been run in a Revit session by an agent; the project owner
-should confirm the output-window line + alert once in Revit 2025.**
+harness still ends `RESULT: all checks passed` (engine untouched).
+**Tested (live) 2026-09-02:** the owner clicked the BOQ button in Revit 2025 — the guard's
+`forms.alert` appeared with the expected IP27 wording, and the dialog opened, which also live-proves
+that the v1.8.6 module split (plain imports from `Nudge.extension/lib/`) loads on the IP27 engine.
+Still pending from the live click-through: the output-window `RCC BOQ engine: ...` line, a full
+export, and settings persistence.
 
 ---
 
