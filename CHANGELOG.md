@@ -22,6 +22,28 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.8.7] - 2026-09-02
+
+### Fixed (harness)
+- **Site-format detail rows now group ascending by level** (`export_engine.py`): the site workbook
+  rendered rows in element-collection order, so the same storey appeared in several separated blocks
+  and named storeys (PLINTH / TERRACE / OHW-LMR) mixed with numbered floors. `_site_sort_key` existed
+  but had no caller. It now ranks named storeys in real building order (FOUNDATION/BASE < PLINTH <
+  numbered levels, "Level 2 before Level 10" preserved < TERRACE < OHW/LMR), and a new stable
+  `_sort_site_rows` orders each category sheet by its first LEVEL-like selected parameter (LEVEL_V,
+  BASE LEVEL, ...). Sheets without a level parameter keep their collection order; within one storey
+  the original element order and SNO sequence stay stable.
+- **test_xlsx_writer.py**: new checks — building-order ranking of the level key, ascending stable
+  grouping via `_sort_site_rows`, and no-level rows passing through untouched.
+
+### Notes
+- Blank VOLUME cells seen in a real export (26 Beam rows) are model data, not a writer defect: those
+  beams have an empty user `VOLUME` parameter while L/W/H and the SHUTTERING formula are populated.
+- LEVEL_V appearing on Beam/Column sheets but not Slab/Foundation reflects the per-category parameter
+  selection, not a rendering bug.
+
+---
+
 ## [v1.8.6] - 2026-09-02
 
 ### Changed (refactor — zero behaviour change)

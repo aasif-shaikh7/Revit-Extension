@@ -83,6 +83,7 @@ FUNCTION_NAMES = [
     "is_formwork_enabled",
     "build_shuttering_formula",
     "_site_sort_key",
+    "_sort_site_rows",
     "_site_cell_value",
     "_site_numeric",
     "_site_dim_value",
@@ -814,6 +815,51 @@ def main():
         check(
             ordered_levels_check == ["Level 2", "Level 10"],
             "Natural sort orders levels numerically (2 before 10)"
+        )
+
+        # v1.8.7: named storeys order like a real building (foundation
+        # and plinth below numbered floors, terrace and OHW/LMR above),
+        # and site detail rows group ascending by their level column.
+        building_order = [
+            "12 TERRACE LEVEL", "05 2ND LEVEL", "04 1ST LEVEL",
+            "OHW/LMR LEVEL", "03 PLINTH LEVEL", "01 FOUNDATION LEVEL",
+            "TERRACE LEVEL", "1ST LEVEL", "PLINTH LEVEL", "Level 2",
+            "Level 10", "8TH LEVEL"
+        ]
+
+        check(
+            sorted(building_order, key=namespace["_site_sort_key"])
+            == [
+                "01 FOUNDATION LEVEL", "03 PLINTH LEVEL", "PLINTH LEVEL",
+                "1ST LEVEL", "Level 2", "04 1ST LEVEL", "05 2ND LEVEL",
+                "8TH LEVEL", "Level 10", "12 TERRACE LEVEL",
+                "TERRACE LEVEL", "OHW/LMR LEVEL"
+            ],
+            "Level key orders building storeys: FOUNDATION < PLINTH < "
+            "numbered < TERRACE < OHW/LMR"
+        )
+
+        sort_rows = namespace["_sort_site_rows"]
+
+        shuffled_rows = [
+            {"LEVEL_V": "8TH LEVEL", "MARK": "B8"},
+            {"LEVEL_V": "PLINTH LEVEL", "MARK": "B9"},
+            {"LEVEL_V": "1ST LEVEL", "MARK": "B1"},
+            {"LEVEL_V": "1ST LEVEL", "MARK": "B2"},
+            {"LEVEL_V": "2ND LEVEL", "MARK": "B3"},
+        ]
+
+        check(
+            [row["MARK"] for row in sort_rows(shuffled_rows)]
+            == ["B9", "B1", "B2", "B3", "B8"],
+            "Site rows group ascending by level (stable within a level)"
+        )
+
+        unsorted_rows = [{"AREA": 2}, {"AREA": 1}]
+
+        check(
+            sort_rows(unsorted_rows) == unsorted_rows,
+            "Rows without a level column keep collection order"
         )
 
         # ====================================================

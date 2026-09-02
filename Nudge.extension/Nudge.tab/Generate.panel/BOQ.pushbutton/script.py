@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.8.6'
+__version__ = '1.8.7'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.8.6'
+SCRIPT_VERSION = '1.8.7'
 
 # ------------------------------------------------------------
 # ENGINE GUARD (todo-list.md T-03)

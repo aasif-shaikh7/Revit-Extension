@@ -874,6 +874,36 @@ engine guard still applies: on this machine the button runs on IP27 until a CPyt
 
 ---
 
+## v1.8.7 — Site detail sheets now sort by level (ascending building order)
+
+**Asked.** Site-format detail sheets me rows collector order me aa rahi thi — LEVEL_V ascending
+nahi tha (Beam tail me 7TH LEVEL ke baad 2ND/3RD wapas aa rahe the; Column sheet me 12 TERRACE
+LEVEL, 06 3RD LEVEL se pehle dikh raha tha). Owner ne ascending order fix manga.
+
+**What was built.** `export_engine.py` me naya stable `_sort_site_rows(rows)` — har category sheet
+ko uske pehle LEVEL-like selected parameter (LEVEL_V, BASE LEVEL, ...) par ascending sort karta hai,
+caller `write_site_xlsx` se wired. `_site_sort_key` ab documented building order follow karta hai:
+FOUNDATION/BASE < PLINTH < numbered levels ("Level 2 before Level 10" preserved) < TERRACE <
+OHW/LMR < baaki text alphabetically. Named storeys jinke naam me number nahi hai (PLINTH LEVEL,
+TERRACE LEVEL, OHW/LMR LEVEL) keyword-rank se place hote hain, aur jinka number model-list index
+hai ("01 FOUNDATION LEVEL", "03 PLINTH LEVEL") wo bhi keyword se hi sahi rank hota hai. No-level
+selections (jaise Slab/Foundation me LEVEL_V select nahi hai) apne original collection order me
+aate hain. Sort stable hai — ek hi storey ke andar element order aur SNO sequence deterministic
+reheta hai. `SCRIPT_VERSION` / docstring `__version__` bumped to **1.8.7**.
+
+**How it is known.** Harness: `python test_xlsx_writer.py` → `RESULT: all checks passed` (43
+functions; naye checks — building-order ranking of the level key, ascending stable grouping via
+`_sort_site_rows`, no-level rows passing through untouched). `py_compile` clean. **Unverified
+live** — owner ko v1.8.7 reload karke re-export karna hoga; purani workbook pre-fix export hai.
+
+**Cost / limits.** Beam sheet me 26 blank VOLUME rows the (25 x 7TH LEVEL + 1 x 2ND LEVEL, SNO
+515-545 range) — unka L/W/H/CUT LENGTH bhara hai, sirf VOLUME parameter khali report hua, matlab
+model-data side: tool selected parameter ko as-is dikhata hai, values invent nahi karta. LEVEL_V
+Slab/Foundation sheets par tabhi dikhega jab owner dialog me un categories ke liye LEVEL_V select
+kare — per-category selection by design hai.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

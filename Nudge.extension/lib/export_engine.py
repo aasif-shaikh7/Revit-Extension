@@ -1954,18 +1954,84 @@ SITE_DETAIL_DATA_START_ROW = 7
 
 
 def _site_sort_key(level_name):
-    """Natural sort: Level 2 sorts after Level 1."""
+    """
+    Natural sort key for level text so detail rows group by storey.
+
+    Documented building order (lowest to highest): foundation/basement
+    levels, plinth, numbered levels (1, 2, ... 10+), terrace, overhead
+    tank / lift machine room levels, then any other text alphabetically.
+
+    Common site level names carry no digits (PLINTH LEVEL, TERRACE
+    LEVEL, OHW/LMR LEVEL), so keyword ranks sit outside the numeric
+    range; numeric names keep the "Level 2 sorts after Level 1"
+    behaviour. Levels that embed their model order ("01 FOUNDATION
+    LEVEL") still rank by the keyword, which matches the same order.
+    """
 
     try:
-        level_text = str(level_name)
+        level_text = str(level_name).strip()
     except:
         level_text = ""
+
+    lowered = level_text.lower()
+
+    # Keyword ranks first: they decide for named storeys that either
+    # carry no number at all or whose number is the model list index.
+    if "foundation" in lowered or lowered.startswith("base"):
+        return (-300, lowered)
+
+    if "plinth" in lowered:
+        return (-200, lowered)
+
+    if "terrace" in lowered:
+        return (10 ** 9 - 2, lowered)
+
+    if "ohw" in lowered or "lmr" in lowered:
+        return (10 ** 9 - 1, lowered)
 
     match = re.search(r"(\d+)", level_text)
 
     number_part = int(match.group(1)) if match else 10 ** 9
 
-    return (number_part, level_text.lower())
+    return (number_part, lowered)
+
+
+def _sort_site_rows(rows):
+    """
+    Order site detail rows by their first LEVEL-like column (ascending).
+
+    Looks for the first selected-parameter key containing "LEVEL"
+    (LEVEL_V, BASE LEVEL, Level, ...) and stable-sorts the rows with
+    _site_sort_key so each storey's elements stay contiguous in
+    ascending building order. Rows without any level-like column (e.g.
+    Slab / Foundation selections) come back in their original
+    collection order; the sort is stable, so elements within one level
+    keep their collection order and the SNO sequence stays
+    deterministic.
+    """
+    result = list(rows or [])
+
+    level_key = None
+
+    for probe in result[:1]:
+        for key in probe.keys():
+            try:
+                key_text = str(key)
+            except:
+                continue
+            if "LEVEL" in key_text.upper():
+                level_key = key
+                break
+
+    if level_key is None:
+        return result
+
+    try:
+        result.sort(key=lambda row: _site_sort_key(row.get(level_key, "")))
+    except:
+        pass
+
+    return result
 
 
 def _site_cell_value(row, key):
@@ -2383,7 +2449,9 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
     for category_name in SITE_CATEGORY_ORDER:
 
-        rows = data_result.get(category_name) or []
+        rows = _sort_site_rows(
+            data_result.get(category_name) or []
+        )
 
         if not rows:
             continue
