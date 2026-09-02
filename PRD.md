@@ -96,7 +96,8 @@ dependency-free engine's tests.
 ### Supported
 
 - Autodesk Revit **2025 and above**.
-- pyRevit **6.10.0 and above**, both the CP3123 (CPython 3.12.3) and IP27 (IronPython 2.7) engines.
+- pyRevit **6.10.0 and above** with CP3123 (CPython 3.12.3) as the product target; IP27 remains
+  best-effort while the inspected pyRevit forms backend is IP27-only.
 
 The script targets the Revit `DB` API via pyRevit and the RevitPythonShell-style
 `from pyrevit import revit, forms`, with safe fallbacks where a newer Revit API (e.g.
@@ -124,7 +125,7 @@ elements of that category in the current document and lists them alphabetically 
 | Beam | `OST_StructuralFraming` |
 | Column | `OST_StructuralColumns` |
 | Slab | `OST_Floors` (plus logical slabs stored as foundations) |
-| Foundation | `OST_StructuralFoundation` |
+| Foundation | `OST_StructuralFoundation` plus logical foundations stored as floors |
 
 ### 5.2 Search and selection
 
@@ -133,13 +134,20 @@ Add → / Remove buttons to move parameters between **Available** and **Selected
 
 ### 5.3 Logical classification (Slab / Foundation)
 
-Elements are classified by name/code, independent of how they are stored:
+Floors and Structural Foundations are kept as separate raw collections, then passed through one
+central classifier. Physical category never overrides an explicit construction identity:
 
-- **Slab subtypes:** Slab, Fold Slab, Grade Slab, Other.
+- **Slab subtypes:** Slab (including Chajja), Fold Slab, Grade Slab, Other.
 - **Foundation subtypes:** Footing, Combined Footing, PCC, Raft, Combined Raft, Other.
 
-Codes such as `S1`, `CF`, `GS` are matched as tokens; a floor stored as a Structural Foundation
-with a slab-like name is still classified as a slab element (unless it is PCC).
+Foundation identity has priority over generic slab wording. Codes use exact boundaries:
+`F1`/`CF2` are foundations and `S1`/`GS` are slabs, while bare `F`, `SF`, `FLOOR` and `FOLD`
+are not footing codes. Parameter discovery, subtype filters and Excel export consume the same
+logical collections.
+
+Before export, the classifier reconciles raw counts against logical Slab/Foundation counts,
+checks that their ElementId intersection is empty, reports duplicates/unclassified rows, and
+retains unknown identities as `Other` instead of silently dropping them.
 
 ### 5.4 Export scope
 
@@ -214,8 +222,8 @@ read/write the file are silent and never block the tool.
 
 - **Testability:** the pure-Python engine must be extractable and runnable by
   `test_xlsx_writer.py` in any Python 3.x.
-- **Compatibility:** safe fallbacks must keep the tool working on both CP3123 and IP27 engines on
-  Revit 2025+, and degrade gracefully rather than crash on API members absent on a given engine.
+- **Compatibility:** keep syntax and guarded fallbacks IP27-safe while CP3123 remains the single
+  product target; degrade gracefully on unavailable API members and do not claim unverified parity.
 - **Performance:** element/parameter discovery uses `FilteredElementCollector` once per category; no
   per-row Revit API calls beyond parameter reads.
 - **Determinism:** quantity conversion constants are fixed so the same model yields the same numbers
@@ -273,7 +281,7 @@ organised. The AI development guide defines **how coding agents must change the 
 Revit 2025+ (host)
        │
        ▼
-pyRevit 6.10.0+ (CP3123 / IP27)
+pyRevit 6.10.0+ (CP3123 target; IP27 best-effort forms fallback)
        │
        ▼
 BOQ.pushbutton (script.py + ui.xaml)

@@ -3,3 +3,7 @@ __pycache__/
 
 # Local throwaway output of the regression harness
 _boq_writer_test.xlsx
+
+# Root-level local diagnostics/readback scripts
+/_*.py
+/_*.txt

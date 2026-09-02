@@ -22,6 +22,79 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.8.10] - 2026-09-02
+
+### Fixed (harness)
+- Replaced the partial Slab/Foundation routing fixes with one authoritative
+  `classify_rcc_element()` result containing logical group, subtype, source category, normalized
+  identity and classification reason.
+- Both raw `OST_Floors` and `OST_StructuralFoundation` collections now feed exclusive logical
+  Slab/Foundation collections. Initial parameter discovery, subtype filters and Excel export reuse
+  those same results instead of rebuilding routing independently.
+- Foundation priority is deterministic: PCC, Combined Footing / exact `CF<number>`, Footing /
+  exact `F<number>`, Combined Raft, Raft, then slab identities. Bare `F`, `SF`, `FLOOR` and `FOLD`
+  are not footing codes.
+- Added `S<number>`, `GS`, Grade/Fold Slab and Chajja routing to Slab regardless of physical Revit
+  category. Unknown elements remain visible under a controlled `Other` fallback.
+- Added a pre-export audit with raw/logical counts, duplicate ElementIds, unclassified rows and
+  per-element diagnostic reasons. Duplicate source IDs are reported and routed only once; a
+  destination overlap or count discrepancy blocks export.
+- Expanded `test_xlsx_writer.py` with the complete Structural Foundation, Floor and mixed-project
+  matrices plus strict-code, Chajja, reconciliation and duplicate-ID regressions.
+
+### Repository maintenance
+- Purged local root diagnostic/readback scripts, text dumps and generated `__pycache__` folders;
+  `.gitignore` now excludes future root `_*.py` / `_*.txt` scratch artifacts.
+- Updated active project documentation to the real `Nudge.extension/Nudge.tab` layout and current
+  P1-P3 / `v1.8.10` status. `docs/reference/` remains frozen historical Kestrel material.
+
+Verification: `python -m py_compile` passed for the pushbutton and five engine modules;
+`python test_xlsx_writer.py` ends `RESULT: all checks passed`. Live Revit 2025 re-export is pending.
+
+---
+
+## [v1.8.9] - 2026-09-02
+
+### Fixed (harness)
+- **PCC/footing floors now correctly classified** (`script.py`): two root causes made the v1.8.8
+  routing patch ineffective for the Uma Niwas footings:
+  1. `is_pcc_element` and `classify_foundation_subtype` used `\bpcc\b` to detect PCC tokens, but
+     `\b` (word boundary) fails when 'PCC' is followed by '_' because underscore is a regex word
+     character — so 'PCC_FOOTING' was never recognized as PCC. Replaced with lookaround
+     `(?<![a-z0-9])pcc(?![a-z0-9])` which correctly matches 'PCC_FOOTING', 'PCC-CF2', etc.
+  2. `classify_foundation_subtype` checked for slab-like subtypes BEFORE footing/raft tokens. Footing
+     elements modeled as floors often carry slab-ish family names (e.g. 'RCC_SLAB | F1'), so they
+     were classified as 'Slab-like' before the footing check could run. Reordered: footing/raft
+     tokens now checked first, slab-like last.
+- Net effect: F1-F5, CF1/CF2, and PCC_FOOTING floors now route to the Foundation sheet; Slab sheet
+  keeps only genuine slabs.
+
+Live re-export on a real project: **Unverified** (owner click-through).
+
+---
+
+## [v1.8.8] - 2026-09-02
+
+### Fixed (harness)
+- **Footing/raft floors now route to the Foundation sheet** (`script.py`): the Uma Niwas export
+  showed "Footing & PCC" (F1-F5) and "Combine Footing & PCC" (CF1/CF2) floors on the Slab sheet
+  because the Slab/Foundation routing redirected only PCC floors. New `is_foundation_like_floor()`
+  (PCC first, then Footing / Combined Footing / Raft / Combined Raft via
+  `classify_foundation_subtype`) is applied at all four routing sites — the initial
+  `category_elements` Slab and Foundation lists (kept mutually exclusive) and both
+  `refresh_category_view` branches.
+- **PCC double-count removed**: the Foundation filter refresh re-added elements the initial
+  routing had placed in Slab, so PCC beds appeared on both sheets and the Summary VOLUME totals
+  were inflated. The refresh now applies exactly the initial routing rule.
+- Export collectors (`build_element_data`, metadata collector) read `category_elements`, so the
+  corrected routing reaches the workbook without further changes.
+- `test_xlsx_writer.py`: new routing regression section (foundation-like vs slab-like cases,
+  including `PCC Slab` wording; name-only fake elements).
+
+Live re-export on a real project: **Unverified** (owner click-through).
+
+---
+
 ## [v1.8.7] - 2026-09-02
 
 ### Fixed (harness)
@@ -393,7 +466,7 @@ wiring stays in `script.py` as dead code behind the `if apply_button:` guard.
 `docs/reference/brand-guidelines.md` from a document into the toolkit's actual UI surface: one
 shared Light/Dark theme system for every WPF dialog.
 
-- **`Aasif.extension/lib/Resources/`** — four brand resource dictionaries:
+- **`Nudge.extension/lib/Resources/`** — four brand resource dictionaries:
   `Brand.Colors.Light.xaml` / `Brand.Colors.Dark.xaml` (the Ember accent ramp
   `F2994A` / `D97C2B` / `FCE8D5` / `7A3F14` plus Light/Dark surface, border and text neutrals and
   the shared system success/warning/error/info colors), `Brand.Typography.xaml` (Sora with a
@@ -401,7 +474,7 @@ shared Light/Dark theme system for every WPF dialog.
   caption 11, SemiBold labels, default TextBlock style) and `Brand.Controls.xaml` (Ember primary
   button with hover/pressed trigger, outline secondary button, TextBox, CheckBox, ComboBox
   chrome, status chips, dialog/ribbon containers).
-- **`Aasif.extension/lib/theme_manager.py`** — `get_current_theme()` (guarded `UIThemeManager`
+- **`Nudge.extension/lib/theme_manager.py`** — `get_current_theme()` (guarded `UIThemeManager`
   lookup, falling back to the Windows `AppsUseLightTheme` registry value and then Light),
   `apply_theme()` (merges the color + typography + controls dictionaries into any `Window` and
   stashes the active theme on `window.Tag`), `toggle_theme()`, `watch_theme_changes()` (re-applies
@@ -409,7 +482,7 @@ shared Light/Dark theme system for every WPF dialog.
   (unsubscribes the watcher from the window's Closed event so repeated open/close cycles don't
   accumulate dead handlers). Host-independent apart from the guarded Revit call site —
   pythonnet/.NET only, no pyRevit API dependency.
-- **`Aasif.tab ▶ Brand.panel ▶ BrandShowcase.pushbutton`** — a live preview of every brand style
+- **`Nudge.tab ▶ Brand.panel ▶ BrandShowcase.pushbutton`** — a live preview of every brand style
   that doubles as a Light/Dark visual QA tool (theme label + toggle; the window re-themes itself
   if Revit's theme changes while it is open, and unsubscribes its listener on close). Click
   handlers are wired explicitly in Python (`self.ToggleThemeBtn.Click += ...`) because XAML
@@ -689,7 +762,7 @@ finalized workbook drops formerly-empty/tab duplicates; the harness explicitly c
 
 ### `09dab85` — RCC BOQ Parameter Manager UI
 
-**Initial tool added.** `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton` with `script.py`
+**Initial tool added.** `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton` with `script.py`
 and `ui.xaml`. Introduced the four-category dialog (Beam, Column, Slab, Foundation), per-category
 parameter discovery from real elements, search + Add/Remove selection, WPF `ui.xaml` layout, status
 bar, and the first dependency-free Open XML XLSX writer with element sheets and a `SaveFileDialog`.

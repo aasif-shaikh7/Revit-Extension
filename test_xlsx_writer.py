@@ -1508,6 +1508,175 @@ def main():
         except:
             pass
 
+    # -----------------------------------------------------------------
+    # v1.8.10 centralized RCC classification and routing regression.
+    # This is the production acceptance matrix: both physical categories
+    # can route to either logical sheet, codes use strict boundaries,
+    # Chajja stays in Slab, and the audit proves no duplicates/missing rows.
+    # -----------------------------------------------------------------
+    routing_ns = {
+        "re": re,
+        "safe_text": lambda value, fallback="": (
+            fallback if value is None else str(value)
+        ),
+        "find_parameter_with_scope": lambda element, name: (None, "Unknown"),
+        "find_parameter_on_element": lambda *args, **kwargs: None,
+        "safe_parameter_value": lambda parameter: "",
+    }
+    for classifier_name in (
+        "normalize_label",
+        "code_token_match",
+        "_contains_rcc_identity_signal",
+        "get_element_identity_text",
+        "_read_identity_parameter",
+        "_element_source_category",
+        "_element_routing_key",
+        "_safe_element_id_text",
+        "classify_rcc_element",
+        "build_logical_rcc_collections",
+        "validate_classification_audit",
+    ):
+        block, _ = extract_from_sources(texts, classifier_name)
+        exec(block, routing_ns)
+
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeCategory(object):
+        def __init__(self, name):
+            self.Name = name
+
+    class FakeElement(object):
+        next_id = 1000
+
+        def __init__(self, name, category, element_id=None):
+            self.Name = name
+            self.Category = FakeCategory(category)
+            if element_id is None:
+                element_id = FakeElement.next_id
+                FakeElement.next_id += 1
+            self.Id = FakeId(element_id)
+
+    def classify_name(name, category):
+        return routing_ns["classify_rcc_element"](
+            FakeElement(name, category), category
+        )
+
+    direct_cases = (
+        ("F1", "Floors", "Foundation", "Footing"),
+        ("F10", "Floors", "Foundation", "Footing"),
+        ("CF2", "Floors", "Foundation", "Combined Footing"),
+        ("PCC_FOOTING", "Floors", "Foundation", "PCC"),
+        ("RAFT_PCC", "Floors", "Foundation", "PCC"),
+        ("RCC_SLAB_F1", "Floors", "Foundation", "Footing"),
+        ("S1", "Structural Foundations", "Slab", "Slab"),
+        ("GS", "Structural Foundations", "Slab", "Grade Slab"),
+        ("GRADE-SLAB", "Structural Foundations", "Slab", "Grade Slab"),
+        ("FOLD_SLAB", "Structural Foundations", "Slab", "Fold Slab"),
+        ("RCC Chajja", "Structural Foundations", "Slab", "Slab"),
+    )
+    for name, category, expected_group, expected_subtype in direct_cases:
+        result = classify_name(name, category)
+        check(
+            result["logical_group"] == expected_group
+            and result["subtype"] == expected_subtype
+            and bool(result["reason"]),
+            "Routing: {} {} -> {}/{}".format(
+                category, name, result["logical_group"], result["subtype"]
+            )
+        )
+
+    for unsafe_name in ("F", "SF", "FLOOR", "FOLD"):
+        unsafe = classify_name(unsafe_name, "Floors")
+        check(
+            unsafe["logical_group"] == "Slab"
+            and unsafe["subtype"] == "Other",
+            "Strict code boundary rejects '{}' as a footing".format(
+                unsafe_name
+            )
+        )
+
+    case_a_foundation_names = (
+        "F1", "F2", "CF1", "CF2", "PCC", "Raft",
+    )
+    case_a_slab_names = (
+        "Grade Slab", "Slab", "Chajja", "Fold Slab",
+    )
+    case_a = routing_ns["build_logical_rcc_collections"](
+        [],
+        [
+            FakeElement(name, "Structural Foundations")
+            for name in case_a_foundation_names + case_a_slab_names
+        ],
+    )
+    check(
+        [e.Name for e in case_a["Foundation"]]
+        == list(case_a_foundation_names)
+        and [e.Name for e in case_a["Slab"]] == list(case_a_slab_names),
+        "Case A: Structural Foundation elements route by logical identity"
+    )
+
+    case_b_foundation_names = ("F1", "CF1", "PCC", "Raft")
+    case_b_slab_names = (
+        "S1", "S2", "GS", "Grade Slab", "Fold Slab", "Chajja",
+    )
+    case_b = routing_ns["build_logical_rcc_collections"](
+        [
+            FakeElement(name, "Floors")
+            for name in case_b_foundation_names + case_b_slab_names
+        ],
+        [],
+    )
+    check(
+        [e.Name for e in case_b["Foundation"]]
+        == list(case_b_foundation_names)
+        and [e.Name for e in case_b["Slab"]] == list(case_b_slab_names),
+        "Case B: Floor elements route by logical identity"
+    )
+
+    mixed_foundation = ("F1", "F2", "PCC", "Raft", "GS", "Chajja")
+    mixed_floors = ("S1", "S2", "CF1", "PCC_FOOTING")
+    mixed = routing_ns["build_logical_rcc_collections"](
+        [FakeElement(name, "Floors") for name in mixed_floors],
+        [
+            FakeElement(name, "Structural Foundations")
+            for name in mixed_foundation
+        ],
+    )
+    check(
+        [e.Name for e in mixed["Slab"]] == [
+            "S1", "S2", "GS", "Chajja"
+        ]
+        and [e.Name for e in mixed["Foundation"]] == [
+            "CF1", "PCC_FOOTING", "F1", "F2", "PCC", "Raft"
+        ],
+        "Mixed project: both source categories route with no missing rows"
+    )
+    valid_audit, audit_summary = routing_ns[
+        "validate_classification_audit"
+    ](mixed["audit"])
+    check(
+        valid_audit
+        and mixed["audit"]["eligible_unique"] == 10
+        and not mixed["audit"]["destination_duplicate_ids"]
+        and not mixed["audit"]["unclassified"],
+        "Classification audit reconciles all mixed-project rows ({})".format(
+            audit_summary
+        )
+    )
+
+    duplicate = FakeElement("F1", "Floors", element_id=9999)
+    duplicate_route = routing_ns["build_logical_rcc_collections"](
+        [duplicate], [duplicate]
+    )
+    check(
+        duplicate_route["audit"]["eligible_unique"] == 1
+        and duplicate_route["audit"]["source_duplicate_ids"] == ["9999"]
+        and not duplicate_route["audit"]["destination_duplicate_ids"],
+        "Duplicate source ElementId is reported and exported exactly once"
+    )
+
     print("")
 
     if failures:

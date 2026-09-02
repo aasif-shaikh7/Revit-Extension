@@ -59,6 +59,26 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ---
 
+## Active production fix
+
+### T-08 — Intelligent Slab/Foundation classification and Excel routing — `testing` (`v1.8.10`)
+**Built:** one centralized `classify_rcc_element()` pipeline now routes both Floors and Structural
+Foundations by logical identity. Foundation-priority codes/keywords, strict `F<number>` /
+`CF<number>` boundaries, `S<number>` / `GS`, Grade/Fold Slab and Chajja are covered. Filters,
+parameter pools and Excel export consume the same exclusive logical collections. A pre-export audit
+reconciles counts, reports duplicate/unclassified IDs and retains unknowns under `Other`.
+
+**Tested (harness, 2026-09-02):** complete Category A, Category B and mixed-project matrices,
+strict-code negatives, Chajja, duplicate-ID de-duplication and count reconciliation all pass; full
+workbook suite ends `RESULT: all checks passed`; syntax compilation passes.
+
+**Remaining:** owner must reload `v1.8.10` in Revit 2025 and re-export the previously failing model.
+Confirm: F/CF/PCC/Raft appear only in Foundation; S/GS/Grade/Fold Slab/Chajja appear only in Slab;
+output-window audit shows duplicates 0 and unclassified 0. Until that confirmation this stays
+`testing`, not live-verified.
+
+---
+
 ## P0 — Confirm the current dialog in Revit 2025 (before any new phase)
 
 ### T-01 — Confirm live-Revit behavior of the dialog — **done** (`v1.0.1`)
@@ -162,8 +182,8 @@ generation stamp, tool version and the sheet listing.
 A true/embedded Revit 3D view inside Excel is **not feasible** via the supported API. The realistic
 option is an *Experimental* image sheet capturing the current 3D view (window screenshot) — only if
 the owner opts in. Exact column styling from
-`20260312-CHHANYADO_HOSPITAL_SURAT-CONCRETE_FINISHING_BOQ.xlsm` also needs a layout reference
-(screenshot/sheet dump) since binary workbooks cannot be read here.
+Exact reference styling is deferred until a new workbook or screenshots are intentionally supplied;
+the old local `.xlsm` reference has been purged from the repository.
 
 ---
 
@@ -237,12 +257,9 @@ analysis (current deduction is a configurable percentage, not intersection-aware
 **Tested (harness):** style assertions updated to the Ember fills and the full
 suite is green (`RESULT: all checks passed`); `script.py` compiles clean.
 
-**Open decision — Toolkit naming (owner):** the guidelines §2 list candidate
-names (Forma / Anvil / Kitbash / Trueline / Nudge) and mark the working name
-*"to be finalized"*. Renaming the button/extension label is intentionally NOT
-applied here — it is a product decision with repo-wide blast radius (path
-`Aasif.extension/Aasif.tab/...`, dialog titles, docs). Pick a name and the
-label swap is a follow-up.
+**Toolkit naming:** **Nudge** is the active repository and Revit-tab name
+(`Nudge.extension/Nudge.tab/...`). Older candidate-name wording in the brand brief is historical;
+active project documentation follows the implemented Nudge layout.
 
 ### Brand UI system — shared theme resources + Brand Showcase — **confirmed live** (2026-08-28 code, 2026-08-31 owner QA)
 **Built:** the guidelines became the actual UI surface — `lib/Resources/` carries
@@ -279,7 +296,7 @@ unchanged.
 
 ---
 
-## P1 — Structural Quantity Engine (next phase)
+## P1 — Structural Quantity Engine (completed)
 
 ### P1-01 — Extend quantity engine per category — **done** (`v1.1.0`)
 **Goal:** Keep the existing dependency-free engine and extend it per category — Beam (Volume, Area,

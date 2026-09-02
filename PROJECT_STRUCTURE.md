@@ -21,7 +21,7 @@ that:
 ```text
 Revit-Extension/
 │
-├── Aasif.extension/            <- installable pyRevit extension root
+├── Nudge.extension/            <- installable pyRevit extension root
 ├── docs/
 │   └── reference/              <- older Kestrel docs kept for study
 │
@@ -57,16 +57,16 @@ The root is intentionally kept for files every contributor or coding agent shoul
 
 ---
 
-# 3. `Aasif.extension/` — the pyRevit Extension
+# 3. `Nudge.extension/` — the pyRevit Extension
 
 A pyRevit extension is a folder named `*.extension` containing `*.tab` folders, each with `*.panel`
 folders, each with one or more `*.pushbutton` folders. This determines where the button appears in
 Revit.
 
 ```text
-Aasif.extension/
+Nudge.extension/
 │
-├── Aasif.tab/
+├── Nudge.tab/
 │   ├── Generate.panel/
 │   │   └── BOQ.pushbutton/
 │   │       ├── script.py    <- Revit-bound tool (dialog, discovery, wiring);
@@ -94,7 +94,7 @@ Aasif.extension/
         └── Brand.Controls.xaml
 ```
 
-- **`Aasif.tab`** → the extension's top-level Revit tab named **Aasif**.
+- **`Nudge.tab`** → the extension's top-level Revit tab named **Nudge**.
 - **`Generate.panel`** → a panel named **Generate** on that tab.
 - **`BOQ.pushbutton`** → the **BOQ** button in that panel.
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
@@ -126,31 +126,25 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
    quantity flag.
 3. **Selection helpers** — safe collection of the current Revit selection across multiple pyRevit
    API shapes.
-4. **Settings persistence** — JSON under the user profile (`.rcc_boq_settings.json`).
+4. **Settings persistence adapter** — uses `lib/settings_engine.py`; JSON lives under the user
+   profile (`.rcc_boq_settings.json`).
 5. **Safe value readers** — `safe_text`, `safe_storage_type`, `safe_is_built_in`,
    `safe_definition_info`, `read_parameter_value`, resolution-with-scope helpers.
-6. **Quantity takeoff engine** — metric conversion (`convert_quantity_value`),
-   `read_metric_parameter` (Parameter quantity by name), category-aware
-   `get_element_quantities(element, element_name)` (Calculated Volume/Area/Length + Parameter
-   Height/Thickness + Count), plus `get_sample_values` / `build_element_data`.
-7. **XLSX engine** — pure-Python, dependency-free Open XML writer: `xlsx_column_name`,
-   `xlsx_inline_string`, `try_export_as_number`, `xlsx_cell`, `xlsx_formula_cell`,
-   `build_xlsx_sheet_xml`, `build_xlsx_styles_xml`, `build_xlsx_workbook_xml`,
-   `build_xlsx_workbook_rels_xml`, `build_xlsx_root_rels_xml`, `build_xlsx_content_types_xml`,
-   `build_parameter_metadata_sheet`, `build_missing_values_summary`, `build_costing_sheet`,
-   `build_level_summary_table` (P2 level grouping), `write_basic_xlsx`,
-   `choose_excel_output_path`.
+6. **Quantity takeoff adapter** — Revit-bound reads and `build_element_data`; pure calculations
+   live in `lib/quantity_engine.py` and `lib/formwork_engine.py`.
+7. **Export adapter** — output path selection and dispatch to the dependency-free Open XML writer
+   in `lib/export_engine.py`; costing formulas live in `lib/costing_engine.py`.
 8. **Document + category definitions** — `CATEGORY_INFO` mapping the four tabs to Revit
    `BuiltInCategory` values.
-9. **Collection / classification** — `get_elements`, `get_parameters`, the slab/foundation
-   classifier and filters, and the module-level element/parameter caches.
+9. **Collection / classification** — raw Floor/Foundation collections remain separate;
+   `classify_rcc_element` creates one structured logical result per element, from which exclusive
+   Slab/Foundation collections, subtype filters, parameter pools and a pre-export audit derive.
 10. **XAML wiring + main entry** — loads `ui.xaml`, wires search/filter/Add-Remove/export events,
     runs `window.ShowDialog()` inside a guarded `try/except`.
 
 ### Dependency rule
 
-- The **XLSX engine must stay pure Python** — only `os`, `re`, `json`, `zipfile`, `xml.sax.saxutils`
-  and the `System` items needed for the save dialog. It must remain extractable by
+- The **XLSX engine must stay pure Python** — only standard-library dependencies. It must remain extractable by
   `test_xlsx_writer.py` and runnable in any Python 3.x with **no** Revit symbols.
 - Everything that touches Revit/postscript is confined to the rest of the file.
 
@@ -210,9 +204,10 @@ together:
 
 ## Revit / pyRevit gating
 
-The docstring declares the environment contract for pyRevit so the button only loads on supported
-hosts: `__min_revit_ver__ = '2025'` (Revit **2025 and above**), with the CP3123 (CPython 3.12.3) and
-IP27 (IronPython 2.7) engines supported on pyRevit 6.10.0+.
+The docstring declares `__min_revit_ver__ = '2025'` (Revit **2025 and above**). CP3123
+(CPython 3.12.3) is the product target; IP27 is best-effort. On the currently inspected pyRevit
+build the forms backend is available only through IP27, so the guarded runtime warning remains
+until upstream supplies CPython-capable forms.
 
 ## Bump rules (semver)
 

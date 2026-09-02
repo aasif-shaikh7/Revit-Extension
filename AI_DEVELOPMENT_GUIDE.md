@@ -25,7 +25,7 @@ CHANGELOG.md (what has actually been established)
 2. `PRD.md`
 3. `PROJECT_STRUCTURE.md`
 4. `test_xlsx_writer.py`
-5. `Aasif.extension/.../BOQ.pushbutton/script.py` and `ui.xaml`
+5. `Nudge.extension/.../BOQ.pushbutton/script.py` and `ui.xaml`
 
 ## Hierarchy of truth
 

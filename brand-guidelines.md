@@ -1,7 +1,7 @@
 # Brand Guidelines
 ### [Toolkit Name] — Revit Extension Toolkit
 
-*Working name to be finalized. See naming options below.*
+*Active toolkit name: Nudge. Earlier naming options are retained below as decision history.*
 
 ---
 

@@ -63,7 +63,7 @@ The items below are confirmed present in the current `script.py` / `ui.xaml`. Fu
 **Asked for.** "Generate a BOQ parameter manager for Beam, Column, Slab, and Foundation with
 Available/Selected parameter lists."
 
-**Built.** A pyRevit pushbutton under `Aasif.tab ▶ Generate.panel ▶ BOQ.pushbutton` that opens a WPF
+**Built.** A pyRevit pushbutton under `Nudge.tab ▶ Generate.panel ▶ BOQ.pushbutton` that opens a WPF
 dialog (`ui.xaml`) with four category tabs, a search box per tab, Available→Selected
 Add/Remove controls, a status bar, and OK/Export/Close. Parameter lists are discovered from the real
 elements in the current document, never hard-coded.
@@ -187,7 +187,7 @@ pending; `v1.3.0`/`v1.4.0` tags withheld until then.
 for the toolkit's WPF dialogs, plus a live visual QA surface for them.
 
 **Built.**
-- `Aasif.extension/lib/Resources/` — `Brand.Colors.Light.xaml` /
+- `Nudge.extension/lib/Resources/` — `Brand.Colors.Light.xaml` /
   `Brand.Colors.Dark.xaml` (Ember 500/600/100/900 accent brushes + Light/Dark
   surface-alt/border/text neutrals + system success/warning/error/info),
   `Brand.Typography.xaml` (Sora with Segoe UI Variable → Segoe UI fallback;
@@ -195,14 +195,14 @@ for the toolkit's WPF dialogs, plus a live visual QA surface for them.
   default TextBlock style) and `Brand.Controls.xaml` (Ember primary button with
   hover trigger, outline secondary button, TextBox/CheckBox/ComboBox chrome,
   success/error chips, dialog + ribbon containers).
-- `Aasif.extension/lib/theme_manager.py` — `get_current_theme` (guarded
+- `Nudge.extension/lib/theme_manager.py` — `get_current_theme` (guarded
   `UIThemeManager`, then the Windows `AppsUseLightTheme` registry value, then
   Light), `apply_theme` (merges color + typography + controls dictionaries onto
   any `Window` and stashes the theme on `window.Tag`), `toggle_theme`,
   `watch_theme_changes` (re-applies on Revit's own theme flip; silent no-op
   where the event is absent) and `stop_watching` (unsubscribes from the
   window's Closed event so open/close cycles don't leak handlers).
-- `Aasif.tab ▶ Brand.panel ▶ BrandShowcase.pushbutton` (`script.py`, `ui.xaml`,
+- `Nudge.tab ▶ Brand.panel ▶ BrandShowcase.pushbutton` (`script.py`, `ui.xaml`,
   `bundle.yaml`, icons) — previews typography, buttons, inputs and status chips
   with a theme label and a Toggle Light/Dark button; re-themes itself if
   Revit's theme changes while open. Handlers are wired explicitly in Python
@@ -283,10 +283,10 @@ cleaner composition: primary action (Export Excel) moved into the header, footer
 Close + options.
 
 **Files.**
-- `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton/ui.xaml` — header rebuilt as a DockPanel
+- `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton/ui.xaml` — header rebuilt as a DockPanel
   (title + subtitle + project left, Export right); footer simplified (ApplyButton removed); TabControl
   gets `BorderThickness="0"`.
-- `Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton/script.py` — version bumped to 1.4.3.
+- `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton/script.py` — version bumped to 1.4.3.
   ApplyButton handler stays behind the `if apply_button:` guard (resolves to None, degrades gracefully).
 
 **How it is known.** XAML parses as well-formed XML; `script.py` compiles clean under CPython 3.12;
@@ -901,6 +901,90 @@ live** — owner ko v1.8.7 reload karke re-export karna hoga; purani workbook pr
 model-data side: tool selected parameter ko as-is dikhata hai, values invent nahi karta. LEVEL_V
 Slab/Foundation sheets par tabhi dikhega jab owner dialog me un categories ke liye LEVEL_V select
 kare — per-category selection by design hai.
+
+---
+
+## v1.8.8 — Footing/PCC floors ab Foundation sheet me route hote hain (PCC double-count fix)
+
+**Asked.** Owner: Slab sheet me "Structure Foundation - Footing & PCC" (F1, F2, ...) aur "Combine
+Footing & PCC" (CF1, CF2, ...) elements dikh rahe the; inhe Foundation sheet me chahiye.
+
+**What was built.** Diagnosis: ye footing elements FLOOR-stored hain; routing sirf PCC floors ko
+Foundation bhejta tha, footing floors ko nahi — aur Foundation ka filter-refresh path initial
+routing se inconsistent tha, isliye PCC rows dono sheets par aa rahe the (VOLUME double-count).
+Fix (`script.py`): naya `is_foundation_like_floor()` — PCC-first, phir `classify_foundation_subtype`
+in ('Footing', 'Combined Footing', 'Raft', 'Combined Raft') — chaar routing spots par lagaya:
+initial `category_elements` ki Slab/Foundation lists (mutually exclusive) aur
+`refresh_category_view` ke dono branches (ab initial routing ke barabar). Export
+(`build_element_data`) aur metadata collector `category_elements` se hi padhte hain, isliye
+corrected routing automatically workbook tak pahunchi. Genuine 'Other'-named floors Slab me hi
+rehete hain taaki exotic naam wali slabs kabhi galti se move na hon. `SCRIPT_VERSION` / docstring
+`__version__` bumped to **1.8.8**.
+
+**How it is known.** Harness: naya routing regression section — F1/F5/CF1/CF2/PCC F1/PCC-CF2/
+RAFT 2 foundation-like classify hote hain; RCC_SLAB_*/RCC_FOLD_*/GRADE SLAB Slab-like rehte hain;
+BS_300MM (naam-only) Slab me rehta hai; 'PCC Slab' wording PCC-first ko nahi haraati.
+`python test_xlsx_writer.py` → `RESULT: all checks passed`; `py_compile` clean. **Unverified
+live** — owner ko v1.8.8 reload karke re-export karna hoga.
+
+**Cost / limits.** Real model me TYPE/Mark parameter se aane wali PCC identity (jaise BS bed
+TYPE=PCC) parameter path se aati hai — naam-only harness fakes us path ko cover nahi karte; wo
+path already live-proven hai (purane export me PCC floors Foundation me pahunch chuke the). Naam
+me explicit slab wording + footing code dono ho to slab-like policy pehle aati hai (pre-existing,
+by design).
+
+---
+
+## v1.8.9 — PCC/footing classification fix (regex bug + check ordering)
+
+**Asked.** (Same complaint as v1.8.8 — fix was incomplete.) Slab sheet me abhi bhi F1-F5, CF1/CF2,
+PCC_FOOTING floors dikh rahe the; Foundation sheet me nahi.
+
+**What was built.** Two root causes found by reading the classifier code (not the routing — the
+routing was correct, but the classifiers returned the wrong answer):
+1. `is_pcc_element` and `classify_foundation_subtype` used `\bpcc\b` to detect PCC tokens. `\b` is a
+   regex word boundary, and '_' is a word character — so 'PCC_FOOTING' has NO boundary between
+   'PCC' and '_', and the regex silently failed. Replaced with lookaround
+   `(?<![a-z0-9])pcc(?![a-z0-9])` which matches 'PCC_FOOTING', 'PCC-CF2', 'PCC F1' correctly.
+2. `classify_foundation_subtype` checked for slab-like subtypes (Slab/Fold Slab/Grade Slab) BEFORE
+   footing/raft tokens. Footing elements modeled as floors often carry slab-ish family names
+   (e.g. identity text 'RCC_SLAB | F1'), so they were classified as 'Slab-like' before the footing
+   check could run. Reordered: footing/raft tokens now checked first, slab-like last.
+`SCRIPT_VERSION` / docstring `__version__` bumped to **1.8.9**.
+
+**How it is known.** Harness routing regression (existing v1.8.8 tests) still pass; the fix is in
+the classifier functions which the routing depends on. `python test_xlsx_writer.py` → `RESULT: all
+checks passed`; `py_compile` clean. **Unverified live** — owner ko v1.8.9 reload karke re-export
+karna hoga.
+
+**Cost / limits.** The lookaround change is safe: `(?<![a-z0-9])pcc(?![a-z0-9])` is strictly more
+permissive than `\bpcc\b` for the PCC token (matches in all the same places plus underscore/hyphen
+cases). The reordering only affects elements whose identity text contains BOTH a footing/raft token
+AND slab wording — those are now classified as footing/raft, which is the desired behavior.
+
+---
+
+## v1.8.10 — Central Slab/Foundation classifier + audited Excel routing
+
+**Asked.** The prior `v1.8.8`/`v1.8.9` fixes were confirmed incomplete. Routing had to work across
+both modeling standards without duplicates, missing unknowns, filter/export disagreement or unsafe
+single-letter code matches.
+
+**What was built.** `classify_rcc_element()` is now the sole routing decision and returns the
+logical sheet, subtype, normalized identity, source category and reason. Raw Floor/Foundation
+collections remain intact; one pass derives exclusive logical collections reused by parameter
+loading, filters and export. Exact `F<number>`/`CF<number>` and foundation keywords win over slab
+wording; `S<number>`, `GS`, Grade/Fold Slab and Chajja route to Slab from either source category.
+Unknowns remain under `Other`. A pre-export audit reconciles counts, reports source/destination
+duplicates and unclassified rows, logs detailed decisions, and blocks inconsistent export.
+
+**How it is known.** `python -m py_compile` passes on the pushbutton and five engine modules. The
+full workbook harness plus Category A/B/mixed routing matrices, strict-code negatives, Chajja,
+duplicate-ID and reconciliation tests ends `RESULT: all checks passed`. **Live Revit verification
+is still pending**, so T-08 remains in `todo-list.md` as `testing`.
+
+**Repository cleanup.** Thirteen untracked diagnostic/readback files and four generated
+`__pycache__` directories were purged; root scratch patterns were added to `.gitignore`.
 
 ---
 

@@ -8,7 +8,7 @@
 This repository contains a **pyRevit extension** that runs inside Autodesk Revit and
 automates the generation of **RCC (Reinforced Cement Concrete) BOQ** workbooks.
 
-Right now it ships two buttons — **BOQ** in the **Generate** panel of the **Aasif** tab, which
+Right now it ships two buttons — **BOQ** in the **Generate** panel of the **Nudge** tab, which
 opens the **RCC BOQ Parameter Manager**, and **Brand Showcase** in the **Brand** panel — a live
 preview of the toolkit's brand/theme system that doubles as a Light/Dark visual QA tool.
 
@@ -22,7 +22,7 @@ preview of the toolkit's brand/theme system that doubles as a Light/Dark visual 
 > for IronPython — upstream master `6.5.5` carries the same CPython stub as the installed
 > build (`6.5.3`). So today the BOQ dialog **runs on IP27** despite the CP3123-only product
 > decision, until a CPython-capable `pyrevit.forms` ships upstream. The button logs the active
-> engine to the pyRevit output window each run (and warns via `forms.alert` when it isn't CP3123** —
+> engine to the pyRevit output window each run (and warns via `forms.alert` when it isn't CP3123) —
 > see `todo-list.md` T-03.
 
 ---
@@ -70,7 +70,7 @@ The BOQ pushbutton turns the selection and export into one repeatable step and p
 Revit Project
       │
       ▼
-Aasif tab ▶ Generate panel ▶ BOQ pushbutton
+Nudge tab ▶ Generate panel ▶ BOQ pushbutton
       │
       ▼
 RCC BOQ Parameter Manager
@@ -98,9 +98,11 @@ dependencies imported into the pyRevit host.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
-- **Logical classification filters** for Slab and Foundation. A floor modeled as a Structural
-  Foundation (and vice-versa) is still classified by its real name/code — Slab, Fold Slab, Grade
-  Slab, Footing, Combined Footing, PCC, Raft, Combined Raft, Other.
+- **Central logical classification** for Slab and Foundation. Floors and Structural Foundations
+  are both routed by construction identity, not physical category: `S1`, `GS`, Grade/Fold Slab
+  and Chajja go to Slab; exact `F<number>` / `CF<number>`, PCC and raft identities go to
+  Foundation. A pre-export audit prevents duplicate or missing element IDs and retains unknowns
+  under a controlled `Other` subtype.
 - **Export scope** — optionally restrict output to exactly the elements selected in the current
   Revit view.
 - **Quantity takeoff** (toggleable) — numeric metric columns `Qty: Volume (m3)`, `Qty: Area (m2)`,
@@ -117,7 +119,7 @@ dependencies imported into the pyRevit host.
 
 ## How to Use It
 
-1. Install the extension so `Aasif.extension` is picked up by pyRevit (see the layout below).
+1. Install the extension so `Nudge.extension` is picked up by pyRevit (see the layout below).
 2. Open a Revit 2025+ project; ensure the structural elements for the categories you want exist.
 3. In the **Generate** panel click **BOQ**.
 4. For each category tab, search and move parameters to **Available → Selected / Export**.
@@ -135,8 +137,8 @@ one or more `*.pushbutton` folders:
 ```text
 Revit-Extension/
 │
-├── Aasif.extension/
-│   ├── Aasif.tab/
+├── Nudge.extension/
+│   ├── Nudge.tab/
 │   │   ├── Generate.panel/
 │   │   │   └── BOQ.pushbutton/
 │   │   │       ├── script.py     <- the whole tool (entry, UI wiring, XLSX engine)
@@ -187,9 +189,10 @@ formulas, auto-filter range, styles, GRAND TOTAL). It runs in any Python 3.x:
 python test_xlsx_writer.py
 ```
 
-The pure-Python engine (unit conversion, classification, sheets, styles, formulas) is intended to
-stay dependency-free and unit-testable. Forms/UI and Revit API access are only exercised in a live
-Revit session by the user. See [`CHANGELOG.md`](CHANGELOG.md).
+The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
+unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
+elements for routing matrices. Forms/UI and real Revit API access still require a live Revit
+session. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
@@ -270,7 +273,7 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current priority
-is the RCC BOQ Parameter Manager (confirmed live in Revit) and then the roadmap phases —
-quantity engine first. See [`README.md`](README.md) → Development Roadmap and
-[`PRD.md`](PRD.md).
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** P1 quantity,
+P2 grouping and P3 formwork are complete. Code `v1.8.10` adds centralized Slab/Foundation routing
+and is harness-tested; its live Revit 2025 re-export remains pending. P4 Rebar Quantity Engine is
+the next major roadmap phase after that live confirmation.

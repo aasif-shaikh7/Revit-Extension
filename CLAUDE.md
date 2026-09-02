@@ -16,22 +16,23 @@ workbooks from Autodesk Revit.
 single supported runtime. IP27 (IronPython 2.7) is best-effort/untested.
 
 **Current state: one working tool pushbutton plus brand infrastructure.**
-`Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton`
-contains `script.py` (the whole tool), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
+`Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton`
+contains `script.py` (the Revit/UI orchestration), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
 BOQ Parameter Manager for Beam/Column/Slab/Foundation, discovers real parameters, classifies slab/
 foundation subtypes, collects metric quantities, and writes a dependency-free XLSX workbook with a
-BOQ Summary and a Costing sheet. `Aasif.extension/lib/` adds the shared brand/theme system
+BOQ Summary and a Costing sheet. `Nudge.extension/lib/` contains the split pure-Python engines and
+the shared brand/theme system
 (`theme_manager.py` + `lib/Resources/*.xaml` resource dictionaries), previewed live by the
-`Aasif.tab/Brand.panel/BrandShowcase.pushbutton` QA window.
+`Nudge.tab/Brand.panel/BrandShowcase.pushbutton` QA window.
 
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
   `lib/` (brand resource dictionaries + theme manager). No CI.
-- A pure-Python, dependency-free XLSX engine inside `script.py`, deliberately free of Revit symbols
-  so it can be tested outside Revit.
-- A standalone regression harness, `test_xlsx_writer.py`, that extracts the engine's source from the
-  real `script.py`, builds a workbook, unzips it, and XML-validates it.
+- Pure-Python dependency-free engines under `Nudge.extension/lib/`, deliberately free of Revit
+  symbols so they can be tested outside Revit.
+- A standalone regression harness, `test_xlsx_writer.py`, that extracts production functions from
+  `lib/` and the Revit-bound classifier from `script.py`, then validates workbooks and routing.
 
 What an agent can actually verify here:
 
@@ -71,18 +72,19 @@ reference only and does not describe this extension.
 
 ## 3. Key files and what they do
 
-`Aasif.extension/Aasif.tab/Generate.panel/BOQ.pushbutton/`:
+`Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton/`:
 
-- `script.py` — imports, global state, selection, settings JSON, safe parameter readers, quantity
-  takeoff, the pure-Python XLSX engine, category definitions, classification/filters, and the XAML
-  wiring/main entry.
+- `script.py` — Revit imports/state, selection, safe parameter readers, category definitions, the
+  centralized Slab/Foundation classifier and audit, and XAML wiring/main entry.
 - `ui.xaml` — WPF window: header, per-category tabs, search, Available/Selected box, Add/Remove,
   filters, status, OK/Export/Close.
 - `icon.png` — button icon.
 
 The main element sheets come from `CATEGORY_INFO` (Beam→`OST_StructuralFraming`,
 Column→`OST_StructuralColumns`, Slab→`OST_Floors`, Foundation→`OST_StructuralFoundation`), plus a
-logical classifier for slab/foundation subtypes.
+single logical classifier for slab/foundation subtypes. Both Floor and Structural Foundation raw
+collections can route to either logical sheet; code `v1.8.10` audits counts and duplicate IDs before
+export. The dependency-free quantity/formwork/costing/export/settings engines live in `lib/`.
 
 ---
 

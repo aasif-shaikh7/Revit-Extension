@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.8.7'
+__version__ = '1.8.10'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.8.7'
+SCRIPT_VERSION = '1.8.10'
 
 # ------------------------------------------------------------
 # ENGINE GUARD (todo-list.md T-03)
@@ -454,7 +454,7 @@ def safe_definition_info(definition):
     return info
 
 
-def find_parameter_on_element(element, parameter_name):
+def find_parameter_on_element(element, parameter_name, case_sensitive=True):
     """
     Find the first matching parameter on an element by Definition.Name.
     Returns the Parameter object or None.
@@ -473,7 +473,15 @@ def find_parameter_on_element(element, parameter_name):
 
                 name = definition.Name
 
-                if name == parameter_name:
+                if case_sensitive:
+                    is_match = name == parameter_name
+                else:
+                    try:
+                        is_match = name.lower() == parameter_name.lower()
+                    except:
+                        is_match = False
+
+                if is_match:
                     return parameter
 
             except:
@@ -1718,6 +1726,25 @@ def normalize_label(value):
     return text
 
 
+def _contains_rcc_identity_signal(value):
+    """True only for construction words or complete RCC identity codes."""
+    text = normalize_label(value)
+    if not text:
+        return False
+    if any(
+        phrase in text
+        for phrase in (
+            'pcc', 'footing', 'raft', 'grade slab', 'gradeslab',
+            'fold slab', 'foldslab', 'slab', 'chajja'
+        )
+    ):
+        return True
+    return (
+        code_token_match(text, ('f', 'cf', 's'))
+        or code_token_match(text, ('gs',))
+    )
+
+
 def get_element_identity_text(element):
     """
     Build a safe search string from the actual Revit element/type/family
@@ -1777,7 +1804,13 @@ def get_element_identity_text(element):
 
     for parameter_name in common_parameter_names:
         try:
-            parameter = find_parameter_on_element(element, parameter_name)
+            parameter, _scope = find_parameter_with_scope(
+                element, parameter_name
+            )
+            if parameter is None:
+                parameter = find_parameter_on_element(
+                    element, parameter_name, case_sensitive=False
+                )
             if parameter is not None:
                 value = safe_parameter_value(parameter)
                 if value:
@@ -1785,79 +1818,343 @@ def get_element_identity_text(element):
         except:
             continue
 
+    # Fallback: scan every parameter for PCC / footing / raft tokens. This
+    # catches codes stored under project-specific parameter names (e.g. a
+    # custom "TYPE" parameter holding "F1" / "CF1" / "PCC_FOOTING") that the
+    # hardcoded list above would otherwise miss.
+    try:
+        token_hits = []
+        for parameter in element.Parameters:
+            try:
+                definition = parameter.Definition
+                if not definition:
+                    continue
+                if not parameter.HasValue:
+                    continue
+                value = safe_parameter_value(parameter)
+                if not value:
+                    continue
+                if _contains_rcc_identity_signal(value):
+                    token_hits.append(str(value))
+            except:
+                continue
+        for hit in token_hits:
+            add_part(hit)
+    except:
+        pass
+
     return normalize_label(' | '.join(parts))
 
 
 def code_token_match(text, prefixes):
+    """Match complete RCC codes without accepting unsafe bare prefixes."""
     try:
-        token_text = text.replace('|', ' ')
-        pattern = r'(?<![a-z0-9])(?:' + '|'.join(prefixes) + r')[0-9]*(?![a-z0-9])'
-        return re.search(pattern, token_text) is not None
+        normalized = normalize_label(text)
+        alternatives = []
+        for prefix in prefixes:
+            prefix_text = str(prefix or '').lower()
+            if prefix_text in ('f', 'cf', 's'):
+                alternatives.append(re.escape(prefix_text) + r'[0-9]+')
+            elif prefix_text:
+                alternatives.append(re.escape(prefix_text) + r'[0-9]*')
+        if not alternatives:
+            return False
+        pattern = r'(?<![a-z0-9])(?:' + '|'.join(alternatives) + r')(?![a-z0-9])'
+        return re.search(pattern, normalized) is not None
     except:
         return False
+
+
+def _read_identity_parameter(element, parameter_name):
+    """Read an instance/type identity value for audit diagnostics."""
+    try:
+        parameter, _scope = find_parameter_with_scope(element, parameter_name)
+        if parameter is None:
+            parameter = find_parameter_on_element(
+                element, parameter_name, case_sensitive=False
+            )
+        return safe_parameter_value(parameter) if parameter is not None else ''
+    except:
+        return ''
+
+
+def _element_source_category(element, fallback=''):
+    try:
+        category = element.Category
+        if category is not None and category.Name:
+            return str(category.Name)
+    except:
+        pass
+    return str(fallback or 'Unknown')
+
+
+def _element_routing_key(element, fallback_index=None):
+    try:
+        return ('id', int(element.Id.IntegerValue))
+    except:
+        try:
+            return ('id', int(element.Id.Value))
+        except:
+            return (
+                'object',
+                id(element) if fallback_index is None else fallback_index
+            )
+
+
+def _safe_element_id_text(element):
+    key = _element_routing_key(element)
+    return str(key[1]) if key[0] == 'id' else 'N/A'
+
+
+def classify_rcc_element(element, source_category=''):
+    """Return the one authoritative logical RCC classification result."""
+    text = get_element_identity_text(element)
+    source_name = _element_source_category(element, source_category)
+    normalized_source = normalize_label(source_name)
+
+    logical_group = ''
+    subtype = 'Other'
+    reason = ''
+
+    # Foundation identities deliberately precede generic slab wording.
+    if re.search(r'(?<![a-z0-9])pcc(?![a-z0-9])', text):
+        logical_group, subtype = 'Foundation', 'PCC'
+        reason = 'Explicit PCC identity'
+    elif (
+        'combined footing' in text
+        or 'combine footing' in text
+        or code_token_match(text, ('cf',))
+    ):
+        logical_group, subtype = 'Foundation', 'Combined Footing'
+        reason = 'Combined footing name or exact CF<number> code'
+    elif 'footing' in text or code_token_match(text, ('f',)):
+        logical_group, subtype = 'Foundation', 'Footing'
+        reason = 'Footing name or exact F<number> code'
+    elif 'combined raft' in text or 'combine raft' in text:
+        logical_group, subtype = 'Foundation', 'Combined Raft'
+        reason = 'Combined raft identity'
+    elif re.search(r'(?<![a-z0-9])raft(?![a-z0-9])', text):
+        logical_group, subtype = 'Foundation', 'Raft'
+        reason = 'Explicit raft identity'
+    elif (
+        'grade slab' in text
+        or 'gradeslab' in text
+        or code_token_match(text, ('gs',))
+    ):
+        logical_group, subtype = 'Slab', 'Grade Slab'
+        reason = 'Grade Slab name or exact GS code'
+    elif 'fold slab' in text or 'foldslab' in text:
+        logical_group, subtype = 'Slab', 'Fold Slab'
+        reason = 'Explicit Fold Slab identity'
+    elif 'slab' in text or code_token_match(text, ('s',)):
+        logical_group, subtype = 'Slab', 'Slab'
+        reason = 'Slab name or exact S<number> code'
+    elif re.search(
+        r'(?<![a-z0-9])chajja(?:[0-9]+)?(?![a-z0-9])', text
+    ):
+        logical_group, subtype = 'Slab', 'Slab'
+        reason = 'Chajja is a logical slab'
+    elif 'foundation' in normalized_source:
+        logical_group, subtype = 'Foundation', 'Other'
+        reason = 'Unknown identity retained under source Foundation as Other'
+    else:
+        logical_group, subtype = 'Slab', 'Other'
+        reason = 'Unknown identity retained under source Floor as Other'
+
+    family_name = ''
+    type_name = ''
+    try:
+        symbol = element.Symbol
+        if symbol is not None:
+            family_name = safe_text(symbol.FamilyName, '')
+            type_name = safe_text(symbol.Name, '')
+    except:
+        pass
+
+    return {
+        'element': element,
+        'element_id': _safe_element_id_text(element),
+        'source_category': source_name,
+        'family': family_name,
+        'type_name': type_name,
+        'mark': _read_identity_parameter(element, 'Mark'),
+        'id_unmt': _read_identity_parameter(element, 'ID_UNMT'),
+        'item_description': _read_identity_parameter(element, 'ITEM DES.'),
+        'code_unimont': _read_identity_parameter(element, 'CODE_UNIMONT'),
+        'normalized_identity': text,
+        'logical_group': logical_group,
+        'subtype': subtype,
+        'reason': reason,
+    }
+
+
+def build_logical_rcc_collections(floor_elements, foundation_elements):
+    """Classify raw collections once and return mutually exclusive lists."""
+    slab_elements = []
+    foundation_output = []
+    results = []
+    seen = {}
+    source_duplicate_ids = []
+    source_pairs = (
+        ('Floors', list(floor_elements or [])),
+        ('Structural Foundations', list(foundation_elements or [])),
+    )
+
+    sequence = 0
+    for source_name, source_elements in source_pairs:
+        for element in source_elements:
+            sequence += 1
+            key = _element_routing_key(element, sequence)
+            if key in seen:
+                source_duplicate_ids.append(_safe_element_id_text(element))
+                continue
+            seen[key] = True
+            result = classify_rcc_element(element, source_name)
+            result['routing_key'] = key
+            results.append(result)
+            if result['logical_group'] == 'Foundation':
+                foundation_output.append(element)
+            else:
+                slab_elements.append(element)
+
+    slab_keys = set(_element_routing_key(e) for e in slab_elements)
+    foundation_keys = set(
+        _element_routing_key(e) for e in foundation_output
+    )
+    destination_duplicates = sorted(
+        str(key[1]) for key in slab_keys.intersection(foundation_keys)
+    )
+    unclassified = [
+        result for result in results
+        if result.get('logical_group') not in ('Slab', 'Foundation')
+    ]
+    other_results = [
+        result for result in results if result.get('subtype') == 'Other'
+    ]
+    unique_total = len(results)
+    audit = {
+        'total_floor_source': len(source_pairs[0][1]),
+        'total_foundation_source': len(source_pairs[1][1]),
+        'eligible_unique': unique_total,
+        'logical_slab': len(slab_elements),
+        'logical_foundation': len(foundation_output),
+        'source_duplicate_ids': source_duplicate_ids,
+        'destination_duplicate_ids': destination_duplicates,
+        'unclassified': unclassified,
+        'other': other_results,
+        'results': results,
+        'balanced': (
+            len(slab_elements) + len(foundation_output) == unique_total
+            and not destination_duplicates
+            and not unclassified
+        ),
+    }
+    return {
+        'Slab': slab_elements,
+        'Foundation': foundation_output,
+        'results': results,
+        'audit': audit,
+    }
+
+
+def validate_classification_audit(audit):
+    """Return (valid, summary); export must not ignore a discrepancy."""
+    valid = bool(audit and audit.get('balanced'))
+    summary = (
+        'Floors={0}; Structural Foundations={1}; Slab={2}; '
+        'Foundation={3}; Duplicates={4}; Unclassified={5}; Other={6}'
+    ).format(
+        audit.get('total_floor_source', 0) if audit else 0,
+        audit.get('total_foundation_source', 0) if audit else 0,
+        audit.get('logical_slab', 0) if audit else 0,
+        audit.get('logical_foundation', 0) if audit else 0,
+        (
+            len(audit.get('source_duplicate_ids', []))
+            + len(audit.get('destination_duplicate_ids', []))
+        ) if audit else 0,
+        len(audit.get('unclassified', [])) if audit else 0,
+        len(audit.get('other', [])) if audit else 0,
+    )
+    return valid, summary
+
+
+def emit_classification_audit(audit, include_details=True):
+    """Write counts and traceable per-element decisions to pyRevit output."""
+    try:
+        from pyrevit import script as _pyrevit_script
+        output = _pyrevit_script.get_output()
+        valid, summary = validate_classification_audit(audit)
+        output.print_html(
+            '<b>RCC classification audit:</b> {0} | valid={1}'.format(
+                summary, valid
+            )
+        )
+        if include_details:
+            for result in audit.get('results', []):
+                values = [
+                    result.get('element_id', 'N/A'),
+                    result.get('source_category', ''),
+                    result.get('family', ''),
+                    result.get('type_name', ''),
+                    result.get('mark', ''),
+                    result.get('id_unmt', ''),
+                    result.get('item_description', ''),
+                    result.get('code_unimont', ''),
+                    result.get('normalized_identity', ''),
+                    result.get('subtype', ''),
+                    result.get('logical_group', ''),
+                    result.get('reason', ''),
+                ]
+                escaped = [
+                    safe_text(value, '').replace('&', '&amp;')
+                    .replace('<', '&lt;').replace('>', '&gt;')
+                    for value in values
+                ]
+                output.print_html(
+                    '<span style="color:#888">ElementId={0} | Category={1} | '
+                    'Family={2} | Type={3} | Mark={4} | ID_UNMT={5} | '
+                    'ITEM DES.={6} | CODE_UNIMONT={7} | Identity={8} | '
+                    'Logical Type={9} | BOQ Sheet={10} | Reason={11}</span>'
+                    .format(*escaped)
+                )
+    except:
+        pass
+
+
+classification_by_key = {}
+
+
+def get_rcc_classification(element):
+    result = classification_by_key.get(_element_routing_key(element))
+    if result is not None:
+        return result
+    return classify_rcc_element(element, _element_source_category(element))
 
 
 def classify_slab_subtype(element):
-    """Classify logical slab subtypes regardless of Floor/Foundation storage."""
-    text = get_element_identity_text(element)
-
-    # Explicit logical slab names/codes take priority.
-    if 'grade slab' in text or 'gradeslab' in text or code_token_match(text, ('gs',)):
-        return 'Grade Slab'
-
-    if 'fold slab' in text or 'foldslab' in text:
-        return 'Fold Slab'
-
-    if 'slab' in text or code_token_match(text, ('s',)):
-        return 'Slab'
-
-    return 'Other'
+    result = get_rcc_classification(element)
+    return (
+        result.get('subtype', 'Other')
+        if result.get('logical_group') == 'Slab'
+        else 'Other'
+    )
 
 
 def is_pcc_element(element):
-    """
-    True when an element's identity carries a PCC token (plain cement
-    concrete). PCC beds under Footings / Combined Footings / rafts are
-    commonly modeled as floors in the model; they belong to the
-    Foundation tab, not the Slab tab.
-    """
-    try:
-        text = get_element_identity_text(element)
-    except:
-        return False
-
-    return re.search(r'\bpcc\b', text) is not None
+    return get_rcc_classification(element).get('subtype') == 'PCC'
 
 
 def classify_foundation_subtype(element):
-    """Classify logical foundation subtypes from actual names/codes."""
-    text = get_element_identity_text(element)
+    result = get_rcc_classification(element)
+    return (
+        result.get('subtype', 'Other')
+        if result.get('logical_group') == 'Foundation'
+        else 'Slab-like'
+    )
 
-    # PCC (plain cement concrete) beds under Footings / Combined
-    # Footings / rafts belong to Foundation as their own subtype, even
-    # when modeled as floors or when the rest of the name carries slab
-    # wording or a footing mark/code ("PCC F1", "PCC-CF2", "PCC Slab").
-    if re.search(r'\bpcc\b', text):
-        return 'PCC'
 
-    # Explicit slab-like foundation elements stay in the Slab tab.
-    if classify_slab_subtype(element) in ('Slab', 'Fold Slab', 'Grade Slab'):
-        return 'Slab-like'
-
-    if ('combined footing' in text or 'combine footing' in text or
-            code_token_match(text, ('cf',))):
-        return 'Combined Footing'
-
-    if 'footing' in text or code_token_match(text, ('f',)):
-        return 'Footing'
-
-    if ('combined raft' in text or 'combine raft' in text):
-        return 'Combined Raft'
-
-    if 'raft' in text:
-        return 'Raft'
-
-    return 'Other'
+def is_foundation_like_floor(element):
+    return get_rcc_classification(element).get('logical_group') == 'Foundation'
 
 
 def classify_element_group(element, logical_tab):
@@ -1892,7 +2189,7 @@ def filter_elements(elements, logical_tab, filter_name):
         if filter_name == 'All Slab Types':
             return [
                 e for e in elements
-                if classify_slab_subtype(e) in ('Slab', 'Fold Slab', 'Grade Slab', 'Other')
+                if get_rcc_classification(e).get('logical_group') == 'Slab'
             ]
 
         return [
@@ -1904,7 +2201,7 @@ def filter_elements(elements, logical_tab, filter_name):
         if filter_name == 'All Foundation Types':
             return [
                 e for e in elements
-                if classify_foundation_subtype(e) != 'Slab-like'
+                if get_rcc_classification(e).get('logical_group') == 'Foundation'
             ]
 
         return [
@@ -1922,25 +2219,26 @@ all_column_elements = get_elements(CATEGORY_INFO['Column'])
 all_floor_elements = get_elements(CATEGORY_INFO['Slab'])
 all_foundation_elements = get_elements(CATEGORY_INFO['Foundation'])
 
+rcc_logical_collections = build_logical_rcc_collections(
+    all_floor_elements,
+    all_foundation_elements
+)
+logical_slab_elements = list(rcc_logical_collections['Slab'])
+logical_foundation_elements = list(rcc_logical_collections['Foundation'])
+classification_audit = rcc_logical_collections['audit']
+
+for _classification_result in rcc_logical_collections['results']:
+    classification_by_key[
+        _classification_result['routing_key']
+    ] = _classification_result
+
+emit_classification_audit(classification_audit, include_details=True)
+
 category_elements = {
     'Beam': list(all_beam_elements),
     'Column': list(all_column_elements),
-    'Slab': [
-        # PCC beds are floors in the model but belong to Foundation.
-        e for e in all_floor_elements
-        if not is_pcc_element(e)
-    ] + [
-        e for e in all_foundation_elements
-        if classify_slab_subtype(e) in ('Slab', 'Fold Slab', 'Grade Slab')
-    ],
-    'Foundation': [
-        e for e in all_foundation_elements
-        if classify_foundation_subtype(e) != 'Slab-like'
-    ] + [
-        # PCC beds modeled as floors join the Foundation tab too.
-        e for e in all_floor_elements
-        if is_pcc_element(e)
-    ]
+    'Slab': list(logical_slab_elements),
+    'Foundation': list(logical_foundation_elements)
 }
 
 category_parameters = {}
@@ -2497,21 +2795,8 @@ try:
                     'Slab',
                     'All Slab Types'
                 )
-                # PCC beds are floors in the model but belong to
-                # Foundation, so they are excluded here.
-                base_elements = [
-                    e for e in all_floor_elements
-                    if not is_pcc_element(e)
-                ]
-
-                # Slab/Grade/Fold Slab can also be modeled as Structural
-                # Foundation, so those logical slab elements are added here.
-                base_elements.extend([
-                    e for e in all_foundation_elements
-                    if classify_slab_subtype(e) in (
-                        'Slab', 'Fold Slab', 'Grade Slab'
-                    )
-                ])
+                # Use the same precomputed logical collection as export.
+                base_elements = list(logical_slab_elements)
 
                 category_elements['Slab'] = filter_elements(
                     base_elements,
@@ -2525,13 +2810,8 @@ try:
                     'All Foundation Types'
                 )
 
-                base_elements = list(all_foundation_elements)
-
-                # PCC beds modeled as floors join the Foundation tab too.
-                base_elements.extend([
-                    e for e in all_floor_elements
-                    if is_pcc_element(e)
-                ])
+                # Use the same precomputed logical collection as export.
+                base_elements = list(logical_foundation_elements)
 
                 category_elements['Foundation'] = filter_elements(
                     base_elements,
@@ -3889,6 +4169,21 @@ try:
                             )
                         except:
                             pass
+
+                    # Validate and report the single logical routing result
+                    # immediately before workbook data is assembled.
+                    routing_valid, routing_summary = (
+                        validate_classification_audit(classification_audit)
+                    )
+                    emit_classification_audit(
+                        classification_audit,
+                        include_details=True
+                    )
+                    if not routing_valid:
+                        raise Exception(
+                            "Slab/Foundation classification audit failed: "
+                            + routing_summary
+                        )
 
                     # Always rebuild metadata before export so the
                     # workbook reflects the current selection/order.
