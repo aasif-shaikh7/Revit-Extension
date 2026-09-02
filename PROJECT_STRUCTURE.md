@@ -69,7 +69,8 @@ Aasif.extension/
 ├── Aasif.tab/
 │   ├── Generate.panel/
 │   │   └── BOQ.pushbutton/
-│   │       ├── script.py    <- the whole tool
+│   │       ├── script.py    <- Revit-bound tool (dialog, discovery, wiring);
+│   │       │                   pure engines import from ../../lib/
 │   │       ├── ui.xaml      <- WPF dialog definition
 │   │       └── icon.png     <- button icon
 │   └── Brand.panel/
@@ -81,6 +82,11 @@ Aasif.extension/
 │
 └── lib/
     ├── theme_manager.py     <- Revit Light/Dark detection + resource merging
+    ├── settings_engine.py   <- JSON settings persistence (pure Python)
+    ├── quantity_engine.py   <- unit conversion + dimension helpers (pure Python)
+    ├── formwork_engine.py   <- P3 shuttering rules + formula builder (pure Python)
+    ├── costing_engine.py    <- per-element rate x quantity costing sheet (pure Python)
+    ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
     └── Resources/
         ├── Brand.Colors.Light.xaml
         ├── Brand.Colors.Dark.xaml
@@ -94,9 +100,16 @@ Aasif.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. `theme_manager.py` is host-independent except for the guarded
-  `UIThemeManager` call site; the dictionaries are plain XAML data. Nothing in
-  `lib/` may import the XLSX engine or touch the workbook writer.
+  dictionaries. Since the v1.8.6 module split it also hosts the five
+  **pure-Python engine modules** (`settings_engine`, `quantity_engine`,
+  `formwork_engine`, `costing_engine`, `export_engine`) that the BOQ
+  pushbutton imports by plain module name — pyRevit puts the extension
+  `lib/` folder on `sys.path` (the mechanism `theme_manager` already
+  relied on). The engines must stay dependency-free: stdlib only, no
+  Revit symbols, no WPF. The UI-side assets (`theme_manager.py` —
+  host-independent except for the guarded `UIThemeManager` call site —
+  and the XAML dictionaries) must never import the engine modules, and
+  the engine modules must never import UI/Revit code.
 
 Two pushbuttons exist today; nesting stays intentionally flat.
 
@@ -240,16 +253,18 @@ every phase:
 - **Keep `script.py` modular, but don't split for its own sake.** `PRD.md` §14 shows the target
   layout (`quantity_engine.py`, `rebar_engine.py`, `formwork_engine.py`, `rule_engine.py`,
   `validation_engine.py`, `costing_engine.py`, `export_engine.py`, `settings_engine.py`). A module
-  is created only when a phase genuinely needs it and it improves maintainability without breaking
-  the current single-file architecture. Until then code continues to live in `script.py`.
+  is created only when a phase genuinely needs it and it improves maintainability. The first five
+  engines were extracted to `Nudge.extension/lib/` in `v1.8.6` (pure-Python code only; Revit-bound
+  code stays in `script.py`); future engines (`rebar_engine.py`, `rule_engine.py`,
+  `validation_engine.py`) follow the same pattern when their phase lands.
 
 ## Where each phase's code will go (planned)
 
 | Phase | Planned landing point |
 |---|---|
-| P1 Quantity Engine | extend existing quantity section of `script.py` |
-| P2 Grouping | new grouping/summary module or section |
-| P3 Formwork Engine | `formwork_engine.py` (once split is justified) |
+| P1 Quantity Engine | `lib/quantity_engine.py` (**exists since v1.8.6**; Revit-bound reads stay in `script.py`) |
+| P2 Grouping | grouping/summary section of `script.py` (or a module when justified) |
+| P3 Formwork Engine | `lib/formwork_engine.py` (**exists since v1.8.6**) |
 | P4 Rebar Engine | `rebar_engine.py` |
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | settings-driven configuration + export |
@@ -257,9 +272,9 @@ every phase:
 | P8 Rule Engine | `rule_engine.py` |
 | P9 Validation Engine | `validation_engine.py` |
 | P10 Unmapped report | reuse validation engine |
-| P11 Rate Analysis | `costing_engine.py` |
+| P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
 | P12 Rate Database | settings + data module |
-| P13 Professional Excel BOQ | extend XLSX engine |
-| P14 Revision | export engine |
+| P13 Professional Excel BOQ | `lib/export_engine.py` (**exists since v1.8.6**) |
+| P14 Revision | `lib/export_engine.py` |
 | P15 Model change detection | separate diagnostic module |
 | P16 Dashboard | new feature/UI module |

@@ -6,6 +6,11 @@
 **Minimum Revit version:** 2025 and above
 **Runtime:** pyRevit 6.10.0 and above — **CP3123 (CPython 3.12.3) is the supported engine**; IP27
 (IronPython 2.7) is best-effort/untested
+> **Engine caveat (T-03):** pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
+> is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
+> `PyRevitCPythonNotSupported`**). On the currently-installed build (`6.5.3`) — and upstream
+> master (`6.5.5`) — the BOQ dialog therefore executes on **IP27** until a CPython forms
+> backend ships. See `todo-list.md` T-03.
 **Technology:** Python (pyRevit API), WPF `ui.xaml` for the dialog, dependency-free Open XML XLSX writer
 **Primary development method:** AI-assisted development with human product direction and testing
 

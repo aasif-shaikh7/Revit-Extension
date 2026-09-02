@@ -87,6 +87,28 @@ value in Revit; record any engine adjustments.
 modern runtime. **IP27 (IronPython 2.7)** is legacy EOL Python and is documented as best-effort /
 untested, not a support target. The code stays 2.7-syntax-safe so IP27 may still work, but no
 parity testing is promised or tracked here.
+**Engine reality — confirmed by inspection (2026-09-01, evidence-based):** the installed pyRevit
+build at `%APPDATA%\pyRevit-Master` reports version `6.5.3.26176+2017`; its
+`pyrevitlib/pyrevit/forms/__init__.py` dispatches on `IRONPY` (`compat.py:15`,
+`'.net' in sys.version.lower()`) → `forms/_ipy.py` (IronPython) or `forms/_cpy.py` (CPython); its
+`forms/_cpy.py` is a **pure stub** — every symbol raises `PyRevitCPythonNotSupported` (checked against the installed file,and against upstream master `6.5.5`, which ships the identical stub).
+Upstream pyRevit master currently exposes **no** CPython-capable `pyrevit.forms`, so **no** upstream
+version/bump fixes this yet. **Consequence (stated, not guessed):** both form-based pushbuttons
+(`BOQ.pushbutton`, `BrandShowcase.pushbutton`) execute on the **IP27** engine on this machine today
+— the dialog can only open via `forms/_ipy.py`. The "CP3123-only" product decision remains the
+support target, but it is **not** the actually-active runtime until a CPython `forms` backend
+ships in pyRevit.
+
+**Runtime verification hook (added in code `v1.8.6`):** `script.py` now calls
+`_warn_if_not_cp3123()` at startup (engine-guard block right after `SCRIPT_VERSION`) which:(a) writes
+`RCC BOQ engine: <IP27 or CPython 3.x>` to the pyRevit output window via
+`pyrevit.script.get_output().print_html(...)` each time the button runs — the live
+click-through check stated in T-03; and(b) if the engine is not CP3123, shows a clear
+`forms.alert(...)` warning instead of silently claiming the CP3123-only support. Fully guarded —
+a failure never blocks the dialog or export. **Verified:** `python -m py_compile` clean; the XLSX
+harness still ends `RESULT: all checks passed` (engine untouched). **Not "Tested (live)"**—
+neither an engine switch nor the live alert has been run in a Revit session by an agent; the project owner
+should confirm the output-window line + alert once in Revit 2025.**
 
 ---
 

@@ -22,6 +22,36 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.8.6] - 2026-09-02
+
+### Changed (refactor — zero behaviour change)
+- **Module split (PROJECT_STRUCTURE.md §9)**: the five pure-Python engines moved verbatim out of the
+  7,289-line `BOQ.pushbutton/script.py` (now 4,181 lines — Revit-bound code only) into
+  `Nudge.extension/lib/`, the folder pyRevit already puts on `sys.path` (the same proven mechanism the
+  existing `theme_manager` import uses): `settings_engine.py` (79 lines), `quantity_engine.py` (235),
+  `formwork_engine.py` (247), `costing_engine.py` (155), `export_engine.py` (2,566). `script.py`
+  imports the moved names back by plain module name; classification, parameter discovery, the WPF
+  dialog and all event wiring stay in `script.py`. The dependency rule is preserved: the engines are
+  stdlib-only (`os / re / json / time / zipfile / xml.sax.saxutils`), no Revit symbols.
+  Two minimal mechanical shims were required by the move and are documented in the modules:
+  `convert_quantity_value` gained a guarded `Autodesk.Revit` import so the module stays importable in
+  plain Python, and `write_basic_xlsx` imports `build_costing_sheet` from `costing_engine` at call
+  time to avoid a writer→costing import cycle.
+- **test_xlsx_writer.py**: extraction is now module-aware — engine modules first, `script.py` as
+  fallback — and puts `Nudge.extension/lib` on `sys.path` for the call-time import. Also fixed a
+  pre-existing broken `\Z` anchor in the extraction regex (the raw string contained `\\Z`, a literal
+  backslash-Z, so end-of-string never terminated a block; it only ever worked because script.py
+  always had trailing defs).
+- **Version**: `SCRIPT_VERSION` and the docstring `__version__` aligned at `1.8.6` (they had drifted
+  to 1.8.5 / 1.8.3). PATCH bump per §8: backward-compatible refactor with no behaviour change.
+
+**Verification:** `python test_xlsx_writer.py` → `RESULT: all checks passed` (harness; 42 functions
+resolved from the new modules: export ×31, formwork ×6, quantity ×3, costing ×1, script ×1). The
+in-Revit runtime (lib/ import at button click, engine guard) is **Unverified** until the project
+owner runs the BOQ button in Revit 2025.
+
+---
+
 ## [v1.7.7] - 2026-08-31
 
 ### Fixed

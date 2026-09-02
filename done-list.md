@@ -843,6 +843,37 @@ Formula column letters dynamically assign hoti hain — selected parameters ke h
 
 ---
 
+## v1.8.6 — Module split: five pure-Python engines moved to `Nudge.extension/lib/`
+
+**Asked.** `script.py` (~7,289 lines) ko PROJECT_STRUCTURE.md §9 ke target layout me split karna —
+refactor only, zero behaviour change; P4 (Rebar Engine) se pehle required.
+
+**What was built.** Five engines moved verbatim (byte-identical, machine-verified against the
+pre-split file) from `BOQ.pushbutton/script.py` (7,289 → 4,181 lines) into `Nudge.extension/lib/`:
+`settings_engine.py` (79), `quantity_engine.py` (235), `formwork_engine.py` (247),
+`costing_engine.py` (155), `export_engine.py` (2,566). `script.py` imports the moved names back by
+plain module name — the same extension-`lib/` sys.path mechanism the existing `theme_manager`
+import uses. Revit-bound code (classification, parameter discovery, WPF dialog, event wiring) stays
+in `script.py`. Two documented mechanical shims were unavoidable: a guarded `Autodesk.Revit` import
+in `convert_quantity_value` (keeps the module importable in plain Python for the harness), and a
+call-time `from costing_engine import build_costing_sheet` inside `write_basic_xlsx` (avoids the
+writer→costing import cycle). `test_xlsx_writer.py` is now module-aware (engine modules first,
+`script.py` fallback; `lib/` on sys.path) and a pre-existing broken `\Z` anchor in its extraction
+regex was fixed. `SCRIPT_VERSION` / docstring `__version__` aligned at `1.8.6` (PATCH bump per §8).
+
+**How it is known.** Harness: `python test_xlsx_writer.py` → `RESULT: all checks passed` (42
+functions resolved from the new modules: export ×31, formwork ×6, quantity ×3, costing ×1,
+script ×1). A separate verbatim proof confirmed 45 moved defs byte-identical to the pre-split file
+(modulo the two documented shims). `py_compile` clean on all six files. **Unverified in Revit** —
+the `lib/` import at button click must be confirmed live by the project owner (Revit 2025; T-03
+engine guard still applies: on this machine the button runs on IP27 until a CPython-capable
+`pyrevit.forms` ships).
+
+**Cost / limits.** In-Revit behaviour of the split is pending owner verification. Pre-existing
+`__version__` drift (docstring 1.8.3 vs `SCRIPT_VERSION` 1.8.5) is now aligned at 1.8.6.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

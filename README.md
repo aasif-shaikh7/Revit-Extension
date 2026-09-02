@@ -18,6 +18,12 @@ preview of the toolkit's brand/theme system that doubles as a Light/Dark visual 
 - **pyRevit 6.10.0 and above** on the **CP3123 (CPython 3.12.3)** engine — the single supported
   runtime. The legacy **IP27 (IronPython 2.7)** engine is best-effort/untested (code stays
   2.7-syntax-safe but is not a support target).
+> **Engine caveat (T-03, confirmed 2026-09-01):** pyRevit still ships `pyrevit.forms` only
+> for IronPython — upstream master `6.5.5` carries the same CPython stub as the installed
+> build (`6.5.3`). So today the BOQ dialog **runs on IP27** despite the CP3123-only product
+> decision, until a CPython-capable `pyrevit.forms` ships upstream. The button logs the active
+> engine to the pyRevit output window each run (and warns via `forms.alert` when it isn't CP3123** —
+> see `todo-list.md` T-03.
 
 ---
 

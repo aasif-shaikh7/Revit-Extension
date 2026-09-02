@@ -2,11 +2,13 @@
 """
 Standalone regression harness for the RCC BOQ XLSX writer.
 
-Extracts the dependency-free XLSX functions straight from the pushbutton
-script.py (so tests always run against the real production code), builds
-a sample workbook including quantity takeoff columns, totals rows and
-the BOQ Summary sheet, then unzips the result and XML-validates every
-part. Run with any Python 3.x:  python test_xlsx_writer.py
+Extracts the dependency-free XLSX/formwork/quantity functions straight
+from the production code (the lib/ engine modules first, then the
+pushbutton script.py - so tests always run against the real code where
+it currently lives), builds a sample workbook including quantity takeoff
+columns, totals rows and the BOQ Summary sheet, then unzips the result
+and XML-validates every part. Run with any Python 3.x:
+python test_xlsx_writer.py
 """
 
 import io
@@ -16,14 +18,33 @@ import sys
 import zipfile
 from xml.dom import minidom
 
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
+    REPO_DIR,
     "Nudge.extension",
     "Nudge.tab",
     "Generate.panel",
     "BOQ.pushbutton",
     "script.py"
 )
+
+# Engine modules under the extension lib/ folder (v1.8.6 module split,
+# PROJECT_STRUCTURE.md section 9). Functions are resolved from these
+# first; script.py stays as the fallback so the harness is green before,
+# during and after the incremental split.
+ENGINE_MODULES = [
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "settings_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "quantity_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "formwork_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
+]
+
+# The exec'd write_basic_xlsx does a call-time
+# `from costing_engine import build_costing_sheet` (anti-cyclical import,
+# same mechanism pyRevit uses with the extension lib on sys.path), so the
+# lib folder must be importable while the harness runs.
+LIB_DIR = os.path.join(REPO_DIR, "Nudge.extension", "lib")
 
 FUNCTION_NAMES = [
     # Pure cell/XML primitives
@@ -77,7 +98,7 @@ FUNCTION_NAMES = [
 def extract_function_source(source, name):
     """Pull one top-level def block out of the script source."""
     pattern = re.compile(
-        r"^def {0}\(.*?(?=^def |\\Z)".format(name),
+        r"^def {0}\(.*?(?=^def |\Z)".format(name),
         re.S | re.M
     )
 
@@ -91,6 +112,47 @@ def extract_function_source(source, name):
     return match.group(0)
 
 
+def load_source_texts():
+    """Read every existing source file (engine modules, then script.py)."""
+    texts = []
+    for path in ENGINE_MODULES + [SCRIPT_PATH]:
+        if os.path.isfile(path):
+            with io.open(path, "r", encoding="utf-8-sig") as handle:
+                texts.append((path, handle.read()))
+    if not texts:
+        raise AssertionError("No source files found to extract from")
+    return texts
+
+
+def extract_from_sources(texts, name):
+    """Pull one top-level def block from the engine modules or script.py."""
+    searched = []
+    for path, source in texts:
+        try:
+            return extract_function_source(source, name), path
+        except AssertionError:
+            searched.append(os.path.basename(path))
+    raise AssertionError(
+        "Could not extract function: {} (searched: {})".format(
+            name, ", ".join(searched))
+    )
+
+
+def extract_constant_from_sources(texts, name):
+    """Pull one top-level single-line constant assignment by name."""
+    pattern = re.compile(r"^{0} = .*$".format(name), re.M)
+    searched = []
+    for path, source in texts:
+        match = pattern.search(source)
+        if match:
+            return match.group(0), path
+        searched.append(os.path.basename(path))
+    raise AssertionError(
+        "Could not extract constant: {} (searched: {})".format(
+            name, ", ".join(searched))
+    )
+
+
 def main():
     failures = []
 
@@ -101,8 +163,12 @@ def main():
             failures.append(message)
             print("FAIL: {}".format(message))
 
-    with io.open(SCRIPT_PATH, "r", encoding="utf-8") as handle:
-        source = handle.read()
+    # source texts: engine modules first, script.py as fallback.
+    if LIB_DIR not in sys.path:
+        sys.path.insert(0, LIB_DIR)
+    texts = load_source_texts()
+    for path, _ in texts:
+        print("Source: {}".format(os.path.relpath(path, REPO_DIR)))
 
     CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
 
@@ -122,11 +188,12 @@ def main():
     from xml.sax.saxutils import escape as xml_escape
     namespace["xml_escape"] = xml_escape
 
+    source_tally = {}
     for name in FUNCTION_NAMES:
-        exec(
-            extract_function_source(source, name),
-            namespace
-        )
+        block, from_path = extract_from_sources(texts, name)
+        exec(block, namespace)
+        source_tally[os.path.basename(from_path)] = \
+            source_tally.get(os.path.basename(from_path), 0) + 1
 
     # Site-format module constants (v1.4.0): simple single-line
     # assignments pulled straight from the production source so the
@@ -138,25 +205,22 @@ def main():
         "SITE_DETAIL_COLUMN_WIDTHS",
         "CONCRETE_GRADE_VALUES"
     ):
-        constant_pattern = re.compile(
-            r"^{0} = .*$".format(constant_name),
-            re.M
-        )
+        constant_line, _ = extract_constant_from_sources(texts, constant_name)
+        exec(constant_line, namespace)
 
-        match = constant_pattern.search(source)
+    for path, style_source in texts:
+        for style_match in re.finditer(
+                r"^STYLE_[A-Z_]+ = \d+$",
+                style_source,
+                re.M):
+            exec(style_match.group(0), namespace)
 
-        assert match is not None, \
-            "Could not extract constant: {}".format(constant_name)
-
-        exec(match.group(0), namespace)
-
-    for style_match in re.finditer(
-            r"^STYLE_[A-Z_]+ = \d+$",
-            source,
-            re.M):
-        exec(style_match.group(0), namespace)
-
-    print("Extracted {} functions.".format(len(FUNCTION_NAMES)))
+    print("Extracted {} functions from: {}".format(
+        len(FUNCTION_NAMES),
+        ", ".join(
+            "{} x{}".format(fname, count)
+            for fname, count in sorted(source_tally.items()))
+    ))
 
     data_result = {
         "Beam": [
