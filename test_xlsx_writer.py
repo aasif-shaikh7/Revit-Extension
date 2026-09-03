@@ -1519,9 +1519,16 @@ def main():
         "safe_text": lambda value, fallback="": (
             fallback if value is None else str(value)
         ),
-        "find_parameter_with_scope": lambda element, name: (None, "Unknown"),
-        "find_parameter_on_element": lambda *args, **kwargs: None,
-        "safe_parameter_value": lambda parameter: "",
+        "find_parameter_with_scope": lambda element, name: (
+            getattr(element, "parameter_map", {}).get(name),
+            "Instance"
+        ),
+        "find_parameter_on_element": lambda element, name, **kwargs: (
+            getattr(element, "parameter_map", {}).get(name)
+        ),
+        "safe_parameter_value": lambda parameter: (
+            "" if parameter is None else parameter.value
+        ),
     }
     for classifier_name in (
         "normalize_label",
@@ -1530,6 +1537,7 @@ def main():
         "get_element_identity_text",
         "_read_identity_parameter",
         "_element_source_category",
+        "_element_family_type_names",
         "_element_routing_key",
         "_safe_element_id_text",
         "classify_rcc_element",
@@ -1547,16 +1555,34 @@ def main():
         def __init__(self, name):
             self.Name = name
 
+    class FakeDefinition(object):
+        def __init__(self, name):
+            self.Name = name
+
+    class FakeParameter(object):
+        def __init__(self, name, value):
+            self.Definition = FakeDefinition(name)
+            self.value = value
+            self.HasValue = value not in (None, "")
+
     class FakeElement(object):
         next_id = 1000
 
-        def __init__(self, name, category, element_id=None):
+        def __init__(
+            self, name, category, element_id=None, parameter_values=None
+        ):
             self.Name = name
             self.Category = FakeCategory(category)
             if element_id is None:
                 element_id = FakeElement.next_id
                 FakeElement.next_id += 1
             self.Id = FakeId(element_id)
+            self.parameter_map = {}
+            for parameter_name, value in (parameter_values or {}).items():
+                self.parameter_map[parameter_name] = FakeParameter(
+                    parameter_name, value
+                )
+            self.Parameters = list(self.parameter_map.values())
 
     def classify_name(name, category):
         return routing_ns["classify_rcc_element"](
@@ -1596,6 +1622,32 @@ def main():
                 unsafe_name
             )
         )
+
+    parameter_footing = routing_ns["classify_rcc_element"](
+        FakeElement(
+            "RCC_SLAB_200MM",
+            "Floors",
+            parameter_values={"ID_UNMT": "CF2"}
+        ),
+        "Floors"
+    )
+    parameter_chajja = routing_ns["classify_rcc_element"](
+        FakeElement(
+            "GENERIC FOUNDATION",
+            "Structural Foundations",
+            parameter_values={"ITEM DES.": "Chajja 01"}
+        ),
+        "Structural Foundations"
+    )
+    check(
+        parameter_footing["logical_group"] == "Foundation"
+        and parameter_footing["subtype"] == "Combined Footing",
+        "Reliable ID_UNMT value overrides slab-like family wording"
+    )
+    check(
+        parameter_chajja["logical_group"] == "Slab",
+        "Reliable ITEM DES. routes Foundation-stored Chajja to Slab"
+    )
 
     case_a_foundation_names = (
         "F1", "F2", "CF1", "CF2", "PCC", "Raft",

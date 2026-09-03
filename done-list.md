@@ -978,9 +978,11 @@ wording; `S<number>`, `GS`, Grade/Fold Slab and Chajja route to Slab from either
 Unknowns remain under `Other`. A pre-export audit reconciles counts, reports source/destination
 duplicates and unclassified rows, logs detailed decisions, and blocks inconsistent export.
 
-**How it is known.** `python -m py_compile` passes on the pushbutton and five engine modules. The
+**How it is known.** `python -m py_compile` passes on the harness, pushbutton and five engine
+modules. The
 full workbook harness plus Category A/B/mixed routing matrices, strict-code negatives, Chajja,
-duplicate-ID and reconciliation tests ends `RESULT: all checks passed`. **Live Revit verification
+reliable project-parameter identities, duplicate-ID and reconciliation tests ends
+`RESULT: all checks passed`. **Live Revit verification
 is still pending**, so T-08 remains in `todo-list.md` as `testing`.
 
 **Repository cleanup.** Thirteen untracked diagnostic/readback files and four generated

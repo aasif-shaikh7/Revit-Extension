@@ -143,7 +143,6 @@ active_selection_ids = set()
 # columns (volume, area, length) to the element sheets and builds the
 # BOQ Summary sheet with live SUM formulas.
 quantities_flag = True
-quantities_flag = True
 
 # ============================================================
 # FORMWORK ENGINE (P3) - moved to lib/formwork_engine.py
@@ -1888,6 +1887,42 @@ def _element_source_category(element, fallback=''):
     return str(fallback or 'Unknown')
 
 
+def _element_family_type_names(element):
+    """Return useful Family/Type diagnostics for family and system elements."""
+    family_name = ''
+    type_name = ''
+
+    try:
+        symbol = element.Symbol
+        if symbol is not None:
+            family_name = safe_text(symbol.FamilyName, '')
+            type_name = safe_text(symbol.Name, '')
+    except:
+        pass
+
+    if not family_name or not type_name:
+        try:
+            type_id = element.GetTypeId()
+            if (
+                type_id is not None
+                and not type_id.Equals(DB.ElementId.InvalidElementId)
+            ):
+                type_element = doc.GetElement(type_id)
+                if type_element is not None:
+                    if not family_name:
+                        family_name = safe_text(
+                            getattr(type_element, 'FamilyName', ''), ''
+                        )
+                    if not type_name:
+                        type_name = safe_text(
+                            getattr(type_element, 'Name', ''), ''
+                        )
+        except:
+            pass
+
+    return family_name, type_name
+
+
 def _element_routing_key(element, fallback_index=None):
     try:
         return ('id', int(element.Id.IntegerValue))
@@ -1961,15 +1996,7 @@ def classify_rcc_element(element, source_category=''):
         logical_group, subtype = 'Slab', 'Other'
         reason = 'Unknown identity retained under source Floor as Other'
 
-    family_name = ''
-    type_name = ''
-    try:
-        symbol = element.Symbol
-        if symbol is not None:
-            family_name = safe_text(symbol.FamilyName, '')
-            type_name = safe_text(symbol.Name, '')
-    except:
-        pass
+    family_name, type_name = _element_family_type_names(element)
 
     return {
         'element': element,
@@ -2232,7 +2259,7 @@ for _classification_result in rcc_logical_collections['results']:
         _classification_result['routing_key']
     ] = _classification_result
 
-emit_classification_audit(classification_audit, include_details=True)
+emit_classification_audit(classification_audit, include_details=False)
 
 category_elements = {
     'Beam': list(all_beam_elements),

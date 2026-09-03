@@ -22,7 +22,7 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
-## [v1.8.10] - 2026-09-02
+## [v1.8.10] - 2026-09-03
 
 ### Fixed (harness)
 - Replaced the partial Slab/Foundation routing fixes with one authoritative
@@ -39,8 +39,11 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - Added a pre-export audit with raw/logical counts, duplicate ElementIds, unclassified rows and
   per-element diagnostic reasons. Duplicate source IDs are reported and routed only once; a
   destination overlap or count discrepancy blocks export.
+- Audit diagnostics now resolve Family/Type for both loadable-family and system-family elements;
+  startup prints the compact summary while the full per-element trace is emitted before export.
 - Expanded `test_xlsx_writer.py` with the complete Structural Foundation, Floor and mixed-project
-  matrices plus strict-code, Chajja, reconciliation and duplicate-ID regressions.
+  matrices plus strict-code, Chajja, reliable `ID_UNMT` / `ITEM DES.` parameter-source,
+  reconciliation and duplicate-ID regressions.
 
 ### Repository maintenance
 - Purged local root diagnostic/readback scripts, text dumps and generated `__pycache__` folders;
@@ -48,7 +51,8 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - Updated active project documentation to the real `Nudge.extension/Nudge.tab` layout and current
   P1-P3 / `v1.8.10` status. `docs/reference/` remains frozen historical Kestrel material.
 
-Verification: `python -m py_compile` passed for the pushbutton and five engine modules;
+Verification (re-run 2026-09-03): `python -m py_compile` passed for the harness, pushbutton and
+five engine modules;
 `python test_xlsx_writer.py` ends `RESULT: all checks passed`. Live Revit 2025 re-export is pending.
 
 ---

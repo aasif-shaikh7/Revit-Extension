@@ -68,9 +68,10 @@ Foundations by logical identity. Foundation-priority codes/keywords, strict `F<n
 parameter pools and Excel export consume the same exclusive logical collections. A pre-export audit
 reconciles counts, reports duplicate/unclassified IDs and retains unknowns under `Other`.
 
-**Tested (harness, 2026-09-02):** complete Category A, Category B and mixed-project matrices,
-strict-code negatives, Chajja, duplicate-ID de-duplication and count reconciliation all pass; full
-workbook suite ends `RESULT: all checks passed`; syntax compilation passes.
+**Tested (harness, re-run 2026-09-03):** complete Category A, Category B and mixed-project matrices,
+strict-code negatives, Chajja, reliable `ID_UNMT` / `ITEM DES.` parameter identities, duplicate-ID
+de-duplication and count reconciliation all pass; full workbook suite ends
+`RESULT: all checks passed`; syntax compilation passes.
 
 **Remaining:** owner must reload `v1.8.10` in Revit 2025 and re-export the previously failing model.
 Confirm: F/CF/PCC/Raft appear only in Foundation; S/GS/Grade/Fold Slab/Chajja appear only in Slab;
