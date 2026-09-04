@@ -28,8 +28,8 @@ The product provides a single dialog — the **RCC BOQ Parameter Manager** — t
 3. send a real `.xlsx` workbook to a costing sheet or client,
 4. with metric quantities and costing already computed.
 
-This is **not a general Revit scheduling tool**. It is deliberately narrow: the five structural
-categories used in RCC takeoff — **Beam, Column, Structure Wall, Slab, Foundation** — and a repeatable export of
+This is **not a general Revit scheduling tool**. It is deliberately narrow: the six structural
+categories used in RCC takeoff — **Beam, Column, Structure Wall, Slab, Foundation, Rebar** — and a repeatable export of
 their parameter data and quantities.
 
 **Project direction.** The agreed, incremental direction is to evolve from
@@ -37,7 +37,7 @@ their parameter data and quantities.
 concrete, reinforcement, formwork, grouping, rate analysis, validation and a complete Excel BOQ —
 built one roadmap phase at a time **on top of the existing working project**, never as a rewrite.
 
-**Structural scope only.** Beam, Column, Structure Wall, Slab, Foundation + RCC concrete, reinforcement, formwork,
+**Structural scope only.** Beam, Column, Structure Wall, Slab, Foundation, Rebar + RCC concrete, reinforcement, formwork,
 binding wire, cover blocks, structural labour, materials, wastage, rate analysis, costing and BOQ
 export. Architecture, Doors, Windows, Plumbing, Electrical, HVAC and other MEP modules are **out of
 scope** for now.
@@ -51,7 +51,7 @@ scope** for now.
 1. Present the real parameters that exist on the current document's elements — a discovery-based
    list, never a hard-coded fixture.
 2. Let the user build a per-category **export selection** (which parameter columns to include).
-3. Keep Beam / Column / Structure Wall / Slab / Foundation separate tabs so a selection stays scoped.
+3. Keep Beam / Column / Structure Wall / Slab / Foundation / Rebar separate tabs so a selection stays scoped.
 4. Classify Slab and Foundation elements logically by their real names/codes even when a floor is
    actually stored as a Structural Foundation (and vice-versa).
 5. Export a dependency-free, real `.xlsx` workbook — no Excel installed, no `openpyxl`.
@@ -116,7 +116,7 @@ The script targets the Revit `DB` API via pyRevit and the RevitPythonShell-style
 
 ### 5.1 Categories and discovery
 
-For each of **Beam, Column, Structure Wall, Slab, Foundation**, the dialog discovers the actual parameters on the
+For each of **Beam, Column, Structure Wall, Slab, Foundation, Rebar**, the dialog discovers the actual parameters on the
 elements of that category in the current document and lists them alphabetically as
 "Available Parameters". Selection is per-category; there is no cross-category column inheritance.
 
@@ -127,6 +127,7 @@ elements of that category in the current document and lists them alphabetically 
 | Structure Wall | `OST_Walls`, restricted to elements with Revit's Structural flag enabled |
 | Slab | `OST_Floors` (plus logical slabs stored as foundations) |
 | Foundation | `OST_StructuralFoundation` plus logical foundations stored as floors |
+| Rebar | `OST_Rebar` |
 
 ### 5.2 Search and selection
 
@@ -240,7 +241,7 @@ read/write the file are silent and never block the tool.
 
 The project is successful when an engineer can:
 
-> Open a Revit 2025+ RCC model, run BOQ, select the five categories' parameters, and receive a real
+> Open a Revit 2025+ RCC model, run BOQ, select the six categories' parameters, and receive a real
 > `.xlsx` workbook — with quantities and a costing summary — in a few clicks, with no Excel and no
 > external packages required.
 
@@ -291,7 +292,7 @@ pyRevit 6.10.0+ (CP3123 target; IP27 best-effort forms fallback)
        ▼
 BOQ.pushbutton (script.py + ui.xaml)
        │
-       ├── Category collection (Beam/Column/Structure Wall/Slab/Foundation)
+       ├── Category collection (Beam/Column/Structure Wall/Slab/Foundation/Rebar)
        ├── Logical classification (Slab / Foundation subtypes)
        ├── Parameter discovery + selection
        ├── Metric quantity takeoff
@@ -323,9 +324,11 @@ project.
 - **Phase 3 — Formwork Engine.** Dedicated, configurable per-category rules: Beam (bottom, sides,
   ends where applicable), Column (four sides), Slab (bottom, edge where applicable), Foundation
   (sides where applicable). Rules must be configurable — no one universal formula.
-- **Phase 4 — Rebar Quantity Engine.** Extract Bar Mark, Diameter, Shape, Quantity, Bar Length,
-  Total Length, Host Element/Category/ID, Level. Compute Unit Weight and Total Weight using standard
-  steel unit-weight logic.
+- **Phase 4 — Rebar Quantity Engine (`v1.10.1` testing).** A dedicated `OST_Rebar` tab/sheet extracts
+  Bar Mark, Diameter, Shape, Quantity, Bar Length, Total Length, Host Element/Category/ID and Level.
+  All automatic fields are exposed in Rebar's Available Parameters list. The pure engine computes
+  Unit Weight with `d²/162 kg/m` and Total Weight. Initial code/harness is
+  complete; live comparison with a native Revit 2025 rebar schedule is required before closure.
 - **Phase 5 — Rebar Summary / BBS.** Diameter-wise summary (Diameter, Total Length, Total Weight,
   Number of Bars, Total in Ton), then BBS (Bar Mark, Shape, Diameter, Quantity, A/B/C/D, Cutting
   Length, Total Length, Unit Weight, Total Weight, Host, Level). High-value/high-complexity; only
@@ -380,7 +383,7 @@ Every candidate feature is evaluated on four axes with ⭐ ratings (⭐⭐⭐⭐
 | # | Feature | Priority | Benefit | Complexity | Ease |
 |---:|---|---|---|---|---|
 | 1 | Existing quantity engine enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
-| 2 | Beam/Column/Structure Wall/Slab/Foundation BOQ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 2 | Beam/Column/Structure Wall/Slab/Foundation/Rebar BOQ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
 | 3 | Parameter mapping enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
 | 4 | Existing Excel export enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
 | 5 | Level-wise BOQ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
@@ -453,7 +456,7 @@ first.
 
 # 17. Regression Protection
 
-After every change verify: WPF startup; Beam/Column/Structure Wall/Slab/Foundation tabs; parameter loading,
+After every change verify: WPF startup; Beam/Column/Structure Wall/Slab/Foundation/Rebar tabs; parameter loading,
 selection, multi-selection, Add/Remove, Up/Down/Top/Bottom; parameter order preservation; filter
 system; saved settings; export selected only; auto-open; include quantities; Excel export; BOQ
 Summary; Costing; XLSX formulas; the existing regression test. Do not sacrifice a working feature

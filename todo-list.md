@@ -44,7 +44,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P2 | Structural BOQ Grouping (level + concrete grade done) | 4/4/2/5 | **done** (`v1.6.0`) |
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
 | P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
-| P4 | Rebar Quantity Engine | 5/5/3/3 | `todo` |
+| P4 | Rebar Quantity Engine | 5/5/3/3 | `testing` (`v1.10.1`) |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `todo` |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | `todo` |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
@@ -60,10 +60,27 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ---
 
-## Next roadmap phase
+## Active roadmap phase
 
-P3.5 / T-10 is live-confirmed and closed. **P4 — Rebar Quantity Engine** is now the next
-implementation phase.
+### P4-01 — Rebar Quantity Engine first slice — `testing` (`v1.10.1`)
+
+**Built:** a dedicated Rebar tab collects `OST_Rebar`, discovers raw Revit parameters and writes a
+Rebar sheet in Classic and Site formats. Automatic fields are Bar Mark, Diameter, Shape, included
+bar Quantity, individual Bar Length, Total Length, Host Element ID/category, Level, Unit Weight and
+Total Weight. The pure `lib/rebar_engine.py` uses `d²/162 kg/m`; Revit's `TotalLength` is preferred,
+with `Bar Length × Quantity` as a guarded fallback. Rebar-only models may export without selecting an
+extra raw parameter. Every automatic field also appears in Rebar's Available Parameters list and can
+be moved into Selected / Export. Costing uses Total Weight first when a rate field exists.
+
+**Tested (harness):** pure unit/total weight, Classic Rebar columns and sheet order, Site Rebar
+columns without formwork, costing integration, UI controls, `OST_Rebar` wiring and every prior
+regression pass. Syntax compilation passes.
+
+**Remaining live QA:** reload `v1.10.1` in Revit 2025 and check one single bar plus one rebar set.
+Confirm Diameter, Quantity, Bar Length, Total Length, Host ID/category, Level and Total Weight against
+a native Revit rebar schedule. Confirm Rebar has no L/W/H or SHUTTERING columns in Site format.
+Variable-length/free-form/fabric reinforcement remain outside this first slice until real-model data
+shows which additional API paths are required. P5 BBS does not start until P4 is live-confirmed.
 
 ---
 

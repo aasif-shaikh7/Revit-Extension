@@ -42,7 +42,7 @@
                     Style="{DynamicResource BrandHeaderText}"/>
 
                 <TextBlock
-                    Text="Structural Bill of Quantities — pick parameters for Beam, Column, Structure Wall, Slab and Foundation."
+                    Text="Structural Bill of Quantities — pick parameters for Beam, Column, Structure Wall, Slab, Foundation and Rebar."
                     Style="{DynamicResource BrandBodyText}"
                     Margin="0,5,0,0"/>
 
@@ -431,6 +431,104 @@
 
                         <ListBox
                             x:Name="StructureWallSelected"
+                            Margin="5"
+                            SelectionMode="Extended"
+                            DisplayMemberPath="Name"
+                            Background="{DynamicResource SurfaceBrush}"
+                            Foreground="{DynamicResource TextPrimaryBrush}"
+                            BorderBrush="{DynamicResource BorderBrush2}"/>
+
+                    </GroupBox>
+
+                </Grid>
+
+            </TabItem>
+
+
+            <!-- ================================================= -->
+            <!-- REBAR -->
+            <!-- ================================================= -->
+
+            <TabItem Header="Rebar">
+
+                <Grid Margin="10">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <GroupBox
+                        Grid.Column="0"
+                        Header="Available Parameters"
+                        Margin="0,0,8,0">
+
+                        <Grid>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="46"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox
+                                x:Name="RebarSearch"
+                                Grid.Row="0"
+                                Margin="5"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                Style="{DynamicResource BrandTextBox}"/>
+
+                            <ListBox
+                                x:Name="RebarAvailable"
+                                Grid.Row="1"
+                                Margin="5"
+                                SelectionMode="Extended"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+
+                        </Grid>
+
+                    </GroupBox>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Margin="8">
+
+                        <Button x:Name="RebarAdd" Content="Add &#x2192;"
+                                Height="38" Margin="0,5"
+                                Style="{DynamicResource BrandSecondaryButton}"/>
+                        <Button x:Name="RebarRemove" Content="&#x2190; Remove"
+                                Height="38" Margin="0,5"
+                                Style="{DynamicResource BrandSecondaryButton}"/>
+
+                        <Separator Margin="0,8"/>
+
+                        <Button x:Name="RebarUp" Content="&#x2191; Up"
+                                Height="38" Margin="0,4"
+                                Style="{DynamicResource BrandSecondaryButton}"/>
+                        <Button x:Name="RebarDown" Content="&#x2193; Down"
+                                Height="38" Margin="0,4"
+                                Style="{DynamicResource BrandSecondaryButton}"/>
+                        <Button x:Name="RebarTop" Content="&#x21E7; Top"
+                                Height="38" Margin="0,4"
+                                Style="{DynamicResource BrandSecondaryButton}"/>
+                        <Button x:Name="RebarBottom" Content="&#x21E9; Bottom"
+                                Height="38" Margin="0,4"
+                                Style="{DynamicResource BrandSecondaryButton}"/>
+
+                    </StackPanel>
+
+                    <GroupBox
+                        Grid.Column="2"
+                        Header="Selected / Export Parameters"
+                        Margin="8,0,0,0">
+
+                        <ListBox
+                            x:Name="RebarSelected"
                             Margin="5"
                             SelectionMode="Extended"
                             DisplayMemberPath="Name"

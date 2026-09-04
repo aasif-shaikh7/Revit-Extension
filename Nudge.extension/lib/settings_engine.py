@@ -68,12 +68,13 @@ def save_app_settings(settings):
 # PARAMETER METADATA ENGINE
 # ============================================================
 
-# Stores metadata in the same Beam / Column / Structure Wall / Slab / Foundation
+# Stores metadata in the same structural-category shape used by selection.
 # structure used by the existing parameter-selection system.
 parameter_metadata = {
     "Beam": [],
     "Column": [],
     "Structure Wall": [],
     "Slab": [],
-    "Foundation": []
+    "Foundation": [],
+    "Rebar": []
 }

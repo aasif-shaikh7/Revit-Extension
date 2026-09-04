@@ -18,8 +18,8 @@ single supported runtime. IP27 (IronPython 2.7) is best-effort/untested.
 **Current state: one working tool pushbutton plus brand infrastructure.**
 `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton`
 contains `script.py` (the Revit/UI orchestration), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
-BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation, discovers real parameters, classifies slab/
-foundation subtypes, collects metric quantities, and writes a dependency-free XLSX workbook with a
+BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation/Rebar, discovers real parameters, classifies slab/
+foundation subtypes, collects concrete/formwork/rebar quantities, and writes a dependency-free XLSX workbook with a
 BOQ Summary and a Costing sheet. `Nudge.extension/lib/` contains the split pure-Python engines and
 the shared brand/theme system
 (`theme_manager.py` + `lib/Resources/*.xaml` resource dictionaries), previewed live by the
@@ -85,8 +85,9 @@ Column→`OST_StructuralColumns`, Structure Wall→structural-only `OST_Walls`, 
 Foundation→`OST_StructuralFoundation`), plus a
 single logical classifier for slab/foundation subtypes. Both Floor and Structural Foundation raw
 collections can route to either logical sheet; code `v1.8.10` audits counts and duplicate IDs before
-export. Code `v1.9.0` adds Structure Wall Length/Height/Thickness and gross `2LH` shuttering. The
-dependency-free quantity/formwork/costing/export/settings engines live in `lib/`.
+export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. P4 `v1.10.1` adds
+`OST_Rebar` detail rows plus `d²/162` steel weight through `lib/rebar_engine.py`. The dependency-free
+engines live in `lib/`.
 
 ---
 

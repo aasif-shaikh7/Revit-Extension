@@ -18,9 +18,9 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.9.3'
+__version__ = '1.10.1'
 __min_revit_ver__ = '2025'
-__doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation BOQ export'
+__doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
 
 from pyrevit import revit, forms
@@ -55,13 +55,30 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.9.3'
+SCRIPT_VERSION = '1.10.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
 STRUCTURE_WALL_DERIVED_PARAMETERS = (
     "Qty: Thickness (m)",
     "Qty: Count"
+)
+
+# P4 fields are normalized/calculated by get_rebar_quantities(). Exposing the
+# exact export labels here makes every automatic Rebar column visible in the
+# Available -> Selected UI even when Revit has no parameter with that name.
+REBAR_DERIVED_PARAMETERS = (
+    "Level",
+    "Rebar: Bar Mark",
+    "Rebar: Diameter (mm)",
+    "Rebar: Shape",
+    "Rebar: Quantity",
+    "Rebar: Bar Length (m)",
+    "Rebar: Total Length (m)",
+    "Rebar: Unit Weight (kg/m)",
+    "Rebar: Total Weight (kg)",
+    "Rebar: Host Element ID",
+    "Rebar: Host Category"
 )
 
 # ------------------------------------------------------------
@@ -119,7 +136,8 @@ selected_parameters = {
     "Column": [],
     "Structure Wall": [],
     "Slab": [],
-    "Foundation": []
+    "Foundation": [],
+    "Rebar": []
 }
 
 # Export-scope flags. When export_only_flag is True, only elements that are
@@ -148,6 +166,9 @@ from formwork_engine import (
     get_formwork_factor,
     is_formwork_enabled,
 )
+
+# P4 pure calculation engine; Revit-bound reads remain below.
+from rebar_engine import build_rebar_quantity_values
 
 
 def get_selection_ids():
@@ -219,14 +240,14 @@ from settings_engine import (
 # PARAMETER METADATA ENGINE
 # ============================================================
 
-# Stores metadata in the same Beam / Column / Structure Wall / Slab / Foundation
-# structure used by the existing parameter-selection system.
+# Stores metadata in the same structural-category shape used by selection.
 parameter_metadata = {
     "Beam": [],
     "Column": [],
     "Structure Wall": [],
     "Slab": [],
-    "Foundation": []
+    "Foundation": [],
+    "Rebar": []
 }
 
 
@@ -549,7 +570,8 @@ def build_parameter_metadata():
         "Column": [],
         "Structure Wall": [],
         "Slab": [],
-        "Foundation": []
+        "Foundation": [],
+        "Rebar": []
     }
 
     for element_name in control_map.keys():
@@ -610,6 +632,49 @@ def build_parameter_metadata():
                             "Definition Type": "Calculated Quantity",
                             "Definition Name": parameter_name,
                             "Data Type": "Length" if "Thickness" in parameter_name else "Count",
+                            "Data Type TypeId": "N/A",
+                            "Group Type": "Quantities",
+                            "Group TypeId": "N/A"
+                        }
+                    }
+                )
+                continue
+
+            if (
+                element_name == "Rebar"
+                and parameter_name in REBAR_DERIVED_PARAMETERS
+            ):
+                numeric_names = (
+                    "Rebar: Diameter (mm)",
+                    "Rebar: Quantity",
+                    "Rebar: Bar Length (m)",
+                    "Rebar: Total Length (m)",
+                    "Rebar: Unit Weight (kg/m)",
+                    "Rebar: Total Weight (kg)"
+                )
+                metadata_result[element_name].append(
+                    {
+                        "Parameter Name": parameter_name,
+                        "Instance / Type": "Calculated",
+                        "Shared": False,
+                        "Project Parameter": False,
+                        "Global Parameter": False,
+                        "Built-in Parameter": False,
+                        "Read Only": True,
+                        "Storage Type": (
+                            "Integer" if parameter_name == "Rebar: Quantity"
+                            else "Double" if parameter_name in numeric_names
+                            else "String"
+                        ),
+                        "Parameter ID": "Calculated",
+                        "Parameter Definition": {
+                            "Definition Type": "Calculated Quantity",
+                            "Definition Name": parameter_name,
+                            "Data Type": (
+                                "Count" if parameter_name == "Rebar: Quantity"
+                                else "Number" if parameter_name in numeric_names
+                                else "Text"
+                            ),
                             "Data Type TypeId": "N/A",
                             "Group Type": "Quantities",
                             "Group TypeId": "N/A"
@@ -1141,6 +1206,174 @@ def get_element_quantities(element, element_name=""):
     return results
 
 
+def _rebar_built_in_parameter(element, enum_name):
+    """Resolve a Rebar built-in parameter by enum name, fully guarded."""
+    try:
+        parameter_id = getattr(DB.BuiltInParameter, enum_name)
+        return element.get_Parameter(parameter_id)
+    except:
+        return None
+
+
+def _rebar_double(element, enum_names, lookup_names, unit_kind):
+    """Read a positive Rebar double and convert it from Revit units."""
+    candidates = []
+    for enum_name in enum_names:
+        candidates.append(_rebar_built_in_parameter(element, enum_name))
+    for lookup_name in lookup_names:
+        try:
+            candidates.append(element.LookupParameter(lookup_name))
+        except:
+            pass
+
+    try:
+        type_id = element.GetTypeId()
+        if type_id is not None and not type_id.Equals(DB.ElementId.InvalidElementId):
+            type_element = doc.GetElement(type_id)
+            if type_element is not None:
+                for enum_name in enum_names:
+                    candidates.append(
+                        _rebar_built_in_parameter(type_element, enum_name)
+                    )
+                for lookup_name in lookup_names:
+                    try:
+                        candidates.append(type_element.LookupParameter(lookup_name))
+                    except:
+                        pass
+    except:
+        pass
+
+    for parameter in candidates:
+        if parameter is None:
+            continue
+        try:
+            raw_value = parameter.AsDouble()
+            if raw_value > 0:
+                return convert_quantity_value(raw_value, unit_kind)
+        except:
+            continue
+    return ""
+
+
+def _rebar_integer(element, enum_name, property_name, lookup_name):
+    """Read a positive Rebar integer from API property or parameter."""
+    try:
+        value = int(getattr(element, property_name))
+        if value > 0:
+            return value
+    except:
+        pass
+    parameter = _rebar_built_in_parameter(element, enum_name)
+    if parameter is None:
+        try:
+            parameter = element.LookupParameter(lookup_name)
+        except:
+            parameter = None
+    try:
+        value = int(parameter.AsInteger())
+        return value if value > 0 else 1
+    except:
+        return 1
+
+
+def get_rebar_quantities(element):
+    """P4 Revit adapter: extract one Rebar/set into stable metric fields."""
+    diameter_m = _rebar_double(
+        element,
+        ("REBAR_INSTANCE_BAR_DIAMETER", "REBAR_BAR_DIAMETER"),
+        ("Bar Diameter", "Model Bar Diameter"),
+        "length"
+    )
+    diameter_mm = ""
+    try:
+        diameter_mm = round(float(diameter_m) * 1000.0, 3)
+    except:
+        pass
+
+    quantity = _rebar_integer(
+        element,
+        "REBAR_ELEM_QUANTITY_OF_BARS",
+        "Quantity",
+        "Quantity"
+    )
+    bar_length_m = _rebar_double(
+        element,
+        ("REBAR_ELEM_LENGTH",),
+        ("Bar Length",),
+        "length"
+    )
+
+    total_length_m = ""
+    try:
+        raw_total_length = float(element.TotalLength)
+        if raw_total_length > 0:
+            total_length_m = convert_quantity_value(
+                raw_total_length,
+                "length"
+            )
+    except:
+        total_length_m = _rebar_double(
+            element,
+            ("REBAR_ELEM_TOTAL_LENGTH",),
+            ("Total Bar Length", "Total Length"),
+            "length"
+        )
+
+    calculated = build_rebar_quantity_values(
+        diameter_mm,
+        quantity,
+        bar_length_m,
+        total_length_m
+    )
+
+    mark = ""
+    try:
+        mark = safe_text(element.ScheduleMark, "")
+    except:
+        pass
+    if not mark:
+        for mark_name in ("Schedule Mark", "Bar Mark", "Rebar Number", "Mark"):
+            try:
+                mark = safe_parameter_value(element.LookupParameter(mark_name))
+            except:
+                mark = ""
+            if mark:
+                break
+
+    shape = ""
+    shape_parameter = _rebar_built_in_parameter(element, "REBAR_SHAPE")
+    if shape_parameter is None:
+        try:
+            shape_parameter = element.LookupParameter("Shape")
+        except:
+            pass
+    shape = safe_parameter_value(shape_parameter)
+
+    host_id_text = ""
+    host_category = ""
+    try:
+        host_id = element.GetHostId()
+        host_id_text = str(host_id.IntegerValue)
+        host = doc.GetElement(host_id)
+        if host is not None and host.Category is not None:
+            host_category = safe_text(host.Category.Name, "")
+    except:
+        pass
+
+    return [
+        ("Rebar: Bar Mark", mark),
+        ("Rebar: Diameter (mm)", calculated.get("Diameter (mm)", "")),
+        ("Rebar: Shape", shape),
+        ("Rebar: Quantity", calculated.get("Quantity", 1)),
+        ("Rebar: Bar Length (m)", calculated.get("Bar Length (m)", "")),
+        ("Rebar: Total Length (m)", calculated.get("Total Length (m)", "")),
+        ("Rebar: Unit Weight (kg/m)", calculated.get("Unit Weight (kg/m)", "")),
+        ("Rebar: Total Weight (kg)", calculated.get("Total Weight (kg)", "")),
+        ("Rebar: Host Element ID", host_id_text),
+        ("Rebar: Host Category", host_category),
+    ]
+
+
 def get_element_level(element):
     """
     Return the element's associated level name for level-wise grouping.
@@ -1389,7 +1622,8 @@ def build_element_data():
         "Column": [],
         "Structure Wall": [],
         "Slab": [],
-        "Foundation": []
+        "Foundation": [],
+        "Rebar": []
     }
 
     missing_values = 0
@@ -1465,19 +1699,22 @@ def build_element_data():
             # it sits in a deterministic column (B) on every element sheet.
             row["Level"] = get_element_level(element)
 
-            # P2: concrete grade grouping column, written right after Level
-            # so it sits in a deterministic column (C) on every element
-            # sheet and feeds the BOQ by Grade sheet.
-            row["Grade"] = resolve_concrete_grade(element)
+            # Concrete grade does not apply to reinforcement. Rebar keeps
+            # Element ID + Level followed by its selected/P4 quantity fields.
+            if element_name != "Rebar":
+                row["Grade"] = resolve_concrete_grade(element)
 
             quantity_values = []
             quantity_by_name = {}
 
             if quantities_flag:
-                quantity_values = get_element_quantities(
-                    element,
-                    element_name
-                )
+                if element_name == "Rebar":
+                    quantity_values = get_rebar_quantities(element)
+                else:
+                    quantity_values = get_element_quantities(
+                        element,
+                        element_name
+                    )
                 quantity_by_name = dict(quantity_values)
 
             for parameter_name in selected_names:
@@ -1493,6 +1730,21 @@ def build_element_data():
                         row[parameter_name] = quantity_by_name.get(
                             parameter_name,
                             ""
+                        )
+                    continue
+
+                # Rebar automatic fields use the same labels shown in the UI.
+                # Level already exists on the row; steel fields are appended
+                # from quantity_values below, so never look them up as raw
+                # Revit parameters or count them as missing.
+                if (
+                    element_name == "Rebar"
+                    and parameter_name in REBAR_DERIVED_PARAMETERS
+                ):
+                    if parameter_name != "Level":
+                        row[parameter_name] = (
+                            quantity_by_name.get(parameter_name, "")
+                            if quantities_flag else ""
                         )
                     continue
 
@@ -1549,7 +1801,8 @@ def get_sample_values(data_result, max_rows=3):
         "Column",
         "Structure Wall",
         "Slab",
-        "Foundation"
+        "Foundation",
+        "Rebar"
     ):
 
         rows = data_result.get(
@@ -1689,7 +1942,9 @@ CATEGORY_INFO = {
 
     "Slab": DB.BuiltInCategory.OST_Floors,
 
-    "Foundation": DB.BuiltInCategory.OST_StructuralFoundation
+    "Foundation": DB.BuiltInCategory.OST_StructuralFoundation,
+
+    "Rebar": DB.BuiltInCategory.OST_Rebar
 }
 
 
@@ -2361,6 +2616,7 @@ all_structural_wall_elements = [
 ]
 all_floor_elements = get_elements(CATEGORY_INFO['Slab'])
 all_foundation_elements = get_elements(CATEGORY_INFO['Foundation'])
+all_rebar_elements = get_elements(CATEGORY_INFO['Rebar'])
 
 rcc_logical_collections = build_logical_rcc_collections(
     all_floor_elements,
@@ -2380,7 +2636,8 @@ category_elements = {
     'Column': list(all_column_elements),
     'Structure Wall': list(all_structural_wall_elements),
     'Slab': list(logical_slab_elements),
-    'Foundation': list(logical_foundation_elements)
+    'Foundation': list(logical_foundation_elements),
+    'Rebar': list(all_rebar_elements)
 }
 
 category_parameters = {}
@@ -2389,6 +2646,8 @@ for element_name in category_elements.keys():
     derived_names = ()
     if element_name == "Structure Wall":
         derived_names = STRUCTURE_WALL_DERIVED_PARAMETERS
+    elif element_name == "Rebar":
+        derived_names = REBAR_DERIVED_PARAMETERS
 
     category_parameters[element_name] = get_parameters(
         category_elements[element_name],
@@ -2539,6 +2798,7 @@ try:
                 "BeamSearch",
                 "ColumnSearch",
                 "StructureWallSearch",
+                "RebarSearch",
                 "SlabSearch",
                 "FoundationSearch"
             ):
@@ -2835,6 +3095,18 @@ try:
                 "bottom": "StructureWallBottom"
             },
 
+            "Rebar": {
+                "available": "RebarAvailable",
+                "search": "RebarSearch",
+                "selected": "RebarSelected",
+                "add": "RebarAdd",
+                "remove": "RebarRemove",
+                "up": "RebarUp",
+                "down": "RebarDown",
+                "top": "RebarTop",
+                "bottom": "RebarBottom"
+            },
+
             "Slab": {
                 "available": "SlabAvailable",
                 "search": "SlabSearch",
@@ -2980,8 +3252,14 @@ try:
                 )
 
             try:
+                derived_names = ()
+                if element_name == "Structure Wall":
+                    derived_names = STRUCTURE_WALL_DERIVED_PARAMETERS
+                elif element_name == "Rebar":
+                    derived_names = REBAR_DERIVED_PARAMETERS
                 category_parameters[element_name] = get_parameters(
-                    category_elements.get(element_name, [])
+                    category_elements.get(element_name, []),
+                    derived_names
                 )
 
                 filter_available_by_search(element_name)
@@ -4143,7 +4421,8 @@ try:
                         "Column: {}\n"
                         "Structure Wall: {}\n"
                         "Slab: {}\n"
-                        "Foundation: {}\n\n"
+                        "Foundation: {}\n"
+                        "Rebar: {}\n\n"
                         "Metadata records: {}".format(
 
                             len(
@@ -4164,6 +4443,10 @@ try:
 
                             len(
                                 parameter_metadata["Foundation"]
+                            ),
+
+                            len(
+                                parameter_metadata["Rebar"]
                             ),
 
                             metadata_total
@@ -4253,7 +4536,9 @@ try:
                         selected_parameters[name]
                     )
 
-                if total == 0:
+                # P4 Rebar quantities are automatic, so a Rebar-only model
+                # can export without choosing an additional raw parameter.
+                if total == 0 and not category_elements.get("Rebar", []):
 
                     if status:
                         set_status(
@@ -4263,8 +4548,8 @@ try:
                         )
 
                     forms.alert(
-                        "Please select at least one parameter "
-                        "before exporting Excel.",
+                        "Please select at least one parameter, or ensure "
+                        "the model contains Rebar, before exporting Excel.",
                         title="RCC BOQ - Excel Export"
                     )
 
@@ -4375,7 +4660,7 @@ try:
                             )
 
                         forms.alert(
-                            "No Beam, Column, Structure Wall, Slab, or Foundation "
+                            "No Beam, Column, Structure Wall, Slab, Foundation, or Rebar "
                             "element rows were found to export.",
                             title="RCC BOQ - Excel Export"
                         )
@@ -4459,7 +4744,8 @@ try:
                         "Column",
                         "Structure Wall",
                         "Slab",
-                        "Foundation"
+                        "Foundation",
+                        "Rebar"
                     ):
 
                         if len(
@@ -4509,7 +4795,8 @@ try:
                         "Column",
                         "Structure Wall",
                         "Slab",
-                        "Foundation"
+                        "Foundation",
+                        "Rebar"
                     ):
 
                         category_table = sheet_rows.get(
@@ -4608,6 +4895,10 @@ try:
             category_elements["Foundation"]
         )
 
+        rebar_count = len(
+            category_elements["Rebar"]
+        )
+
         if status:
 
             set_status(
@@ -4616,13 +4907,15 @@ try:
                 "Column: {} | "
                 "Structure Wall: {} | "
                 "Slab: {} | "
-                "Foundation: {}".format(
+                "Foundation: {} | "
+                "Rebar: {}".format(
 
                     len(category_elements.get('Beam', [])),
                     len(category_elements.get('Column', [])),
                     len(category_elements.get('Structure Wall', [])),
                     len(category_elements.get('Slab', [])),
-                    len(category_elements.get('Foundation', []))
+                    len(category_elements.get('Foundation', [])),
+                    len(category_elements.get('Rebar', []))
                 )
             )
 

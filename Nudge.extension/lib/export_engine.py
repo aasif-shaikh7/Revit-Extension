@@ -992,7 +992,7 @@ def build_parameter_metadata_sheet(parameter_metadata):
         return table
 
     for category in (
-        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar"
     ):
 
         records = parameter_metadata.get(
@@ -1142,7 +1142,8 @@ def build_missing_values_summary(data_result):
         "Column",
         "Structure Wall",
         "Slab",
-        "Foundation"
+        "Foundation",
+        "Rebar"
     ):
 
         rows = data_result.get(
@@ -1582,7 +1583,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             "Column",
             "Structure Wall",
             "Slab",
-            "Foundation"
+            "Foundation",
+            "Rebar"
         )
         if data_result.get(category_name)
     ]
@@ -1973,7 +1975,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 # ============================================================
 
 # Manual category order drives sheet sequence everywhere below.
-SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation")
+SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar")
 
 SITE_DETAIL_BAND_ROWS = (5, 6)
 SITE_DETAIL_DATA_START_ROW = 7
@@ -2187,7 +2189,23 @@ def build_site_detail_sheet(category_name, rows, project_name,
                     continue
                 param_names.append(key_text)
 
-    show_shuttering = bool(include_formwork)
+    # Reinforcement has its own length/weight contract and must never receive
+    # concrete formwork L/W/H or SHUTTERING columns.
+    show_shuttering = bool(include_formwork and category_name != "Rebar")
+
+    if category_name == "Rebar":
+        # Level is part of the P4 detail contract. It is normally suppressed
+        # from site detail sheets, so expose it explicitly for reinforcement.
+        if any(row.get("Level") not in ("", None) for row in data_rows):
+            param_names.insert(0, "Level")
+        for probe in data_rows[:1]:
+            for key in probe.keys():
+                try:
+                    key_text = str(key)
+                except:
+                    continue
+                if key_text.startswith("Rebar:") and key_text not in param_names:
+                    param_names.append(key_text)
 
     # Dimension columns (L/W/H) are always present when shuttering is shown
     dim_count = 3 if show_shuttering else 0
@@ -2345,7 +2363,8 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name,
         "Column": "COLUMN",
         "Structure Wall": "STRUCTURE WALL",
         "Slab": "SLAB",
-        "Foundation": "FOUNDATION"
+        "Foundation": "FOUNDATION",
+        "Rebar": "REBAR"
     }
 
     # Element rows in data_result still carry the metric columns even
@@ -2466,13 +2485,14 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
     Sheet plan mirrors the manual site BOQ:
       Summary                - element-count cover
-      Beam / Column / Slab /
-      Foundation             - one detail sheet per populated category
+      Beam / Column / Structure Wall / Slab / Foundation / Rebar
+                             - one detail sheet per populated category
                                with title blocks, one column per
                                user-selected parameter and (P3, v1.8.0)
                                an automatic SHUTTERING (SQM) column
-                               when include_formwork is True - no other
-                               automatic columns and no SUM totals row.
+                               when include_formwork is True. Rebar instead
+                               receives Level plus its P4 steel fields, with
+                               no formwork columns. No SUM totals row.
 
     Returns a plain {sheet_name: table} mapping (identical contract to
     write_basic_xlsx) covering Summary plus every populated category.

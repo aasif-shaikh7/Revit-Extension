@@ -74,7 +74,7 @@ Nudge tab ▶ Generate panel ▶ BOQ pushbutton
       │
       ▼
 RCC BOQ Parameter Manager
-      │  (choose Beam / Column / Structure Wall / Slab / Foundation parameters)
+      │  (choose Beam / Column / Structure Wall / Slab / Foundation / Rebar parameters)
       ▼
 Revit element data + metric quantities
       │
@@ -94,9 +94,13 @@ dependencies imported into the pyRevit host.
 
 **RCC BOQ Parameter Manager** (`BOQ.pushbutton`):
 
-- **One dialog, five structural categories** — Beam, Column, Structure Wall, Slab, Foundation.
+- **One dialog, six structural categories** — Beam, Column, Structure Wall, Slab, Foundation, Rebar.
 - **Structural-only wall collection.** The Structure Wall tab reads `OST_Walls` whose Revit
   **Structural** flag is enabled; architectural walls are excluded.
+- **P4 Rebar quantity takeoff.** A dedicated Rebar tab/sheet collects `OST_Rebar` and exports Bar
+  Mark, Diameter, Shape, Quantity, Bar Length, Total Length, Host ID/category, Level, Unit Weight
+  and Total Weight. These automatic fields are also visible in Rebar's Available Parameters list.
+  Steel unit weight uses the standard `d²/162 kg/m` rule.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -153,6 +157,7 @@ Revit-Extension/
 │       ├── settings_engine.py    <- persisted selections/options
 │       ├── quantity_engine.py    <- metric dimensions
 │       ├── formwork_engine.py    <- shuttering rules/formulas
+│       ├── rebar_engine.py      <- P4 rebar length/weight calculations
 │       ├── costing_engine.py     <- costing tables
 │       ├── export_engine.py      <- dependency-free Open XML XLSX writer
 │       ├── theme_manager.py      <- Revit Light/Dark theme detection + dictionary merging
@@ -230,7 +235,7 @@ P15 Model Change Detection
 P16 Structural Dashboard
 ```
 
-Only **structural** scope is in the roadmap (Beam/Column/Structure Wall/Slab/Foundation + concrete, reinforcement,
+Only **structural** scope is in the roadmap (Beam/Column/Structure Wall/Slab/Foundation/Rebar + concrete, reinforcement,
 formwork, rates, costing). Each phase starts only after the previous one is stable on a live Revit
 2025 project. Phases are rated (priority / benefit / complexity / ease) in [`PRD.md`](PRD.md) §13,
 and the current status is tracked in [`todo-list.md`](todo-list.md).
@@ -284,7 +289,6 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** P1 quantity,
 P2 grouping and P3 formwork are complete; the owner confirmed `v1.8.10` Slab/Foundation routing in
-Revit 2025 on 2026-09-03. Version `v1.9.3` adds the structural-only Structure Wall tab, selectable
-calculated Thickness/Count and correct Excel routing; the harness and live Revit verification both
-pass. Healthy routing audits and the known IP27 fallback are silent; detailed output appears only
-when an audit finds an anomaly. The popup fix is live-confirmed, and P4 Rebar Quantity Engine is next.
+Revit 2025 on 2026-09-03. Structure Wall `v1.9.3` is live-confirmed. Version `v1.10.1` continues P4
+with a dedicated Rebar tab, quantity/host fields and `d²/162` weight calculation; the harness passes
+and live Revit 2025 verification is pending.

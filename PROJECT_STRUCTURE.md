@@ -85,6 +85,7 @@ Nudge.extension/
     ├── settings_engine.py   <- JSON settings persistence (pure Python)
     ├── quantity_engine.py   <- unit conversion + dimension helpers (pure Python)
     ├── formwork_engine.py   <- P3 shuttering rules + formula builder (pure Python)
+    ├── rebar_engine.py      <- P4 rebar length + steel-weight calculations (pure Python)
     ├── costing_engine.py    <- per-element rate x quantity costing sheet (pure Python)
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
     └── Resources/
@@ -100,9 +101,9 @@ Nudge.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. Since the v1.8.6 module split it also hosts the five
+  dictionaries. Since P4 it also hosts six
   **pure-Python engine modules** (`settings_engine`, `quantity_engine`,
-  `formwork_engine`, `costing_engine`, `export_engine`) that the BOQ
+  `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`) that the BOQ
   pushbutton imports by plain module name — pyRevit puts the extension
   `lib/` folder on `sys.path` (the mechanism `theme_manager` already
   relied on). The engines must stay dependency-free: stdlib only, no
@@ -251,7 +252,7 @@ every phase:
   `validation_engine.py`, `costing_engine.py`, `export_engine.py`, `settings_engine.py`). A module
   is created only when a phase genuinely needs it and it improves maintainability. The first five
   engines were extracted to `Nudge.extension/lib/` in `v1.8.6` (pure-Python code only; Revit-bound
-  code stays in `script.py`); future engines (`rebar_engine.py`, `rule_engine.py`,
+  code stays in `script.py`); `rebar_engine.py` landed with P4 in `v1.10.0`. Future engines (`rule_engine.py`,
   `validation_engine.py`) follow the same pattern when their phase lands.
 
 ## Where each phase's code will go (planned)
@@ -261,7 +262,7 @@ every phase:
 | P1 Quantity Engine | `lib/quantity_engine.py` (**exists since v1.8.6**; Revit-bound reads stay in `script.py`) |
 | P2 Grouping | grouping/summary section of `script.py` (or a module when justified) |
 | P3 Formwork Engine | `lib/formwork_engine.py` (**exists since v1.8.6**) |
-| P4 Rebar Engine | `rebar_engine.py` |
+| P4 Rebar Engine | `lib/rebar_engine.py` (**exists since v1.10.0**; Revit reads stay in `script.py`) |
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | settings-driven configuration + export |
 | P7 Site items | settings + element sheets |

@@ -37,7 +37,7 @@ def build_costing_sheet(data_result):
     table = [headers]
 
     for category_name in (
-        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar"
     ):
 
         rows = data_result.get(category_name, [])
@@ -67,11 +67,17 @@ def build_costing_sheet(data_result):
                 break
 
         # Choose the primary quantity column when multiple metrics exist.
-        quantity_keys = [
-            "Qty: Volume (m3)",
-            "Qty: Area (m2)",
-            "Qty: Length (m)"
-        ]
+        if category_name == "Rebar":
+            quantity_keys = [
+                "Rebar: Total Weight (kg)",
+                "Rebar: Total Length (m)"
+            ]
+        else:
+            quantity_keys = [
+                "Qty: Volume (m3)",
+                "Qty: Area (m2)",
+                "Qty: Length (m)"
+            ]
 
         for row in rows:
 

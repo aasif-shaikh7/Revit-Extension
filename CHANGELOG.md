@@ -22,6 +22,39 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.10.1] - 2026-09-03
+
+### Fixed (harness)
+- Exposed every automatic P4 Rebar export field in the Rebar **Available Parameters** list: Level,
+  Bar Mark, Diameter, Shape, Quantity, Bar/Total Length, Unit/Total Weight and Host ID/category.
+- Treat selected Rebar calculated fields as calculated metadata instead of unresolved raw Revit
+  parameters, preventing false missing-value counts and blank selected columns.
+- Added a regression contract proving the complete automatic-field list is wired into Rebar.
+
+### Verification boundary
+- Python compile and the complete XLSX regression harness pass. Revit 2025 live verification remains
+  required before P4 is marked done.
+
+## [v1.10.0] - 2026-09-03
+
+### Added (harness)
+- Started P4 with a dedicated **Rebar** tab and `OST_Rebar` collection. Raw Revit parameters remain
+  selectable while the quantity engine automatically exports Bar Mark, Diameter, Shape, Quantity,
+  individual/total length, Host Element ID/category, Level, Unit Weight and Total Weight.
+- Added dependency-free `lib/rebar_engine.py`. Unit weight uses `d²/162 kg/m`; total weight is unit
+  weight × total length, with Total Length falling back to Bar Length × included Quantity.
+- Added Rebar sheets to Classic and Site workbooks. Site Rebar output intentionally omits concrete
+  L/W/H and SHUTTERING columns. Costing treats Total Weight as Rebar's primary quantity.
+- Added P4 regressions for calculations, sheet columns/order, Site layout, UI/category wiring and
+  retained all prior Wall/Slab/Foundation checks. Compilation and the full harness pass.
+
+### Verification boundary
+- Revit-facing Bar Diameter, TotalLength, ScheduleMark and GetHostId reads are guarded and based on
+  Autodesk's documented Rebar API/parameters. Their values remain unverified until compared with a
+  native schedule in Revit 2025. Variable-length/free-form/fabric reinforcement is not yet claimed.
+
+---
+
 ## [v1.9.3] - 2026-09-03
 
 ### Fixed (harness)

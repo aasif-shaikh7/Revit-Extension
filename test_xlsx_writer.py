@@ -44,6 +44,7 @@ ENGINE_MODULES = [
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "settings_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "quantity_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "formwork_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "rebar_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
 ]
@@ -92,6 +93,9 @@ FUNCTION_NAMES = [
     "get_formwork_factor",
     "is_formwork_enabled",
     "build_shuttering_formula",
+    "_positive_number",
+    "rebar_unit_weight_kg_per_m",
+    "build_rebar_quantity_values",
     "_site_sort_key",
     "_sort_site_rows",
     "_site_cell_value",
@@ -181,7 +185,7 @@ def main():
     for path, _ in texts:
         print("Source: {}".format(os.path.relpath(path, REPO_DIR)))
 
-    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
+    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
 
     import time
 
@@ -310,6 +314,24 @@ def main():
                 "Qty: Thickness (m)": 0.3,
                 "Qty: Count": 1
             }
+        ],
+        "Rebar": [
+            {
+                "Element ID": "400",
+                "Level": "Ground Floor",
+                "Mark": "R1",
+                "Rate": 72.0,
+                "Rebar: Bar Mark": "R1",
+                "Rebar: Diameter (mm)": 12.0,
+                "Rebar: Shape": "M_00",
+                "Rebar: Quantity": 4,
+                "Rebar: Bar Length (m)": 3.0,
+                "Rebar: Total Length (m)": 12.0,
+                "Rebar: Unit Weight (kg/m)": 0.8889,
+                "Rebar: Total Weight (kg)": 10.667,
+                "Rebar: Host Element ID": "200",
+                "Rebar: Host Category": "Structural Columns"
+            }
         ]
     }
 
@@ -397,7 +419,7 @@ def main():
         )
 
         check(
-            amount_formula_count == 5,
+            amount_formula_count == 6,
             "Every element row has a live Quantity x Rate formula"
         )
 
@@ -420,6 +442,15 @@ def main():
         check(
             "Qty: Thickness (m)" in foundation_table[0],
             "P1 Foundation Thickness (Parameter quantity) column present"
+        )
+
+        rebar_table = sheet_rows["Rebar"]
+        check(
+            "Rebar: Diameter (mm)" in rebar_table[0]
+            and "Rebar: Total Length (m)" in rebar_table[0]
+            and "Rebar: Total Weight (kg)" in rebar_table[0]
+            and "Rebar: Host Element ID" in rebar_table[0],
+            "P4 Rebar detail sheet contains core quantity and host columns"
         )
 
         check(
@@ -581,7 +612,7 @@ def main():
         listed = set(
             row[0] for row in summary_cover
             if row[0] in (
-                "Beam", "Column", "Structure Wall", "Foundation",
+                "Beam", "Column", "Structure Wall", "Foundation", "Rebar",
                 "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
             )
         )
@@ -589,7 +620,7 @@ def main():
         check(
             listed == set(
                 [
-                    "Beam", "Column", "Structure Wall", "Foundation",
+                    "Beam", "Column", "Structure Wall", "Foundation", "Rebar",
                     "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
                 ]
             ),
@@ -717,6 +748,20 @@ def main():
                 "Structure Wall", length_m=4.0, height_m=2.5
             ) == 20.0,
             "Structure Wall shuttering = 2LH (gross two-face area)"
+        )
+
+        rebar_values = namespace["build_rebar_quantity_values"](
+            diameter_mm=12.0,
+            quantity=4,
+            bar_length_m=3.0,
+            total_length_m=""
+        )
+        check(
+            namespace["rebar_unit_weight_kg_per_m"](12.0) == 0.8889
+            and rebar_values["Quantity"] == 4
+            and rebar_values["Total Length (m)"] == 12.0
+            and rebar_values["Total Weight (kg)"] == 10.667,
+            "P4 Rebar d^2/162 unit weight and total weight calculation"
         )
 
         check(
@@ -1171,7 +1216,7 @@ def main():
 
         expected_order = [
             "Summary", "Beam", "Column", "Structure Wall", "Foundation",
-            "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
+            "Rebar", "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
         ]
 
         check(
@@ -1331,7 +1376,24 @@ def main():
             }
         ],
         "Slab": [],
-        "Foundation": []
+        "Foundation": [],
+        "Rebar": [
+            {
+                "Element ID": "400",
+                "Level": "Level 1",
+                "Mark": "R1",
+                "Rebar: Bar Mark": "R1",
+                "Rebar: Diameter (mm)": 12.0,
+                "Rebar: Shape": "M_00",
+                "Rebar: Quantity": 4,
+                "Rebar: Bar Length (m)": 3.0,
+                "Rebar: Total Length (m)": 12.0,
+                "Rebar: Unit Weight (kg/m)": 0.8889,
+                "Rebar: Total Weight (kg)": 10.667,
+                "Rebar: Host Element ID": "200",
+                "Rebar: Host Category": "Structural Columns"
+            }
+        ]
     }
 
     namespace["write_site_xlsx"](
@@ -1344,7 +1406,8 @@ def main():
             "Beam": ["Mark"],
             "Structure Wall": [
                 "Mark", "Qty: Thickness (m)", "Qty: Count"
-            ]
+            ],
+            "Rebar": ["Mark"]
         }
     )
 
@@ -1379,7 +1442,7 @@ def main():
         )
 
         check(
-            sheet_order_site == ["Summary", "Beam", "Structure Wall"],
+            sheet_order_site == ["Summary", "Beam", "Structure Wall", "Rebar"],
             "Site workbook order: Summary then populated categories "
             "(got {})".format(sheet_order_site)
         )
@@ -1439,6 +1502,20 @@ def main():
             and ">QTY: COUNT<" in site_wall_xml
             and "<f>ROUND(2*" in site_wall_xml,
             "Structure Wall site detail retains selected Thickness/Count and 2LH formula"
+        )
+
+        site_rebar_xml = site_archive.read(
+            "xl/worksheets/sheet4.xml"
+        ).decode("utf-8")
+
+        check(
+            ">LEVEL<" in site_rebar_xml
+            and ">Level 1<" in site_rebar_xml
+            and ">REBAR: DIAMETER (MM)<" in site_rebar_xml
+            and ">REBAR: TOTAL WEIGHT (KG)<" in site_rebar_xml
+            and ">10.667<" in site_rebar_xml
+            and "SHUTTERING (SQM)" not in site_rebar_xml,
+            "P4 Site Rebar sheet exports Level/weight fields without formwork columns"
         )
 
         site_styles_xml = site_archive.read(
@@ -1699,8 +1776,30 @@ def main():
         "Structure Wall Available list includes calculated Thickness and Count"
     )
 
+    rebar_derived_names = (
+        "Level",
+        "Rebar: Bar Mark",
+        "Rebar: Diameter (mm)",
+        "Rebar: Shape",
+        "Rebar: Quantity",
+        "Rebar: Bar Length (m)",
+        "Rebar: Total Length (m)",
+        "Rebar: Unit Weight (kg/m)",
+        "Rebar: Total Weight (kg)",
+        "Rebar: Host Element ID",
+        "Rebar: Host Category"
+    )
+    rebar_available = namespace["get_parameters"](
+        [FakeParameterElement()],
+        rebar_derived_names
+    )
+    rebar_available_names = [item.Name for item in rebar_available]
+
     with io.open(UI_PATH, "r", encoding="utf-8-sig") as ui_handle:
         ui_text = ui_handle.read()
+    script_text = next(
+        source for path, source in texts if path == SCRIPT_PATH
+    )
     try:
         minidom.parseString(ui_text.encode("utf-8"))
         ui_valid = True
@@ -1717,6 +1816,23 @@ def main():
         and 'Header="Structure Wall"' in ui_text
         and all(name in ui_text for name in required_wall_controls),
         "Structure Wall XAML tab is valid and exposes every wired control"
+    )
+
+    required_rebar_controls = (
+        "RebarSearch", "RebarAvailable", "RebarSelected", "RebarAdd",
+        "RebarRemove", "RebarUp", "RebarDown", "RebarTop", "RebarBottom"
+    )
+    check(
+        'Header="Rebar"' in ui_text
+        and all(name in ui_text for name in required_rebar_controls)
+        and "DB.BuiltInCategory.OST_Rebar" in script_text
+        and "get_rebar_quantities(element)" in script_text,
+        "P4 Rebar tab, collection and quantity adapter are wired"
+    )
+    check(
+        all(name in rebar_available_names for name in rebar_derived_names)
+        and "derived_names = REBAR_DERIVED_PARAMETERS" in script_text,
+        "Rebar Available list includes every automatic P4 export column"
     )
 
     # -----------------------------------------------------------------
