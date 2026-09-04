@@ -22,6 +22,70 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.9.3] - 2026-09-03
+
+### Fixed (harness)
+- Successful exports no longer force-open the pyRevit output window. The known IP27 forms fallback
+  and healthy classification audits are silent.
+- Detailed per-element routing diagnostics remain available automatically when the audit is invalid
+  or contains source/destination duplicates, unclassified elements or controlled `Other` routes.
+- Added regressions proving a balanced clean audit is silent, audit findings still trigger
+  diagnostics, and known CP3123/IP27 engines do not call the output window.
+
+The project owner confirmed in Revit 2025 on 2026-09-03 that a healthy export no longer opens the
+unwanted output popup. T-10 and P3.5 are closed.
+
+---
+
+## [v1.9.2] - 2026-09-03
+
+### Fixed (harness)
+- Site-format detail sheets no longer discard selected calculated `Qty:` fields. The writer now
+  accepts the authoritative per-category UI selection and preserves Structure Wall
+  `Qty: Thickness (m)` and `Qty: Count`, while still excluding unselected automatic quantities.
+- Added an XLSX regression proving both selected headers reach the Structure Wall site sheet along
+  with its existing live `2LH` shuttering formula.
+
+The project owner confirmed the corrected Structure Wall Excel columns live in Revit 2025 on
+2026-09-03. P3.5 / T-09 is closed.
+
+---
+
+## [v1.9.1] - 2026-09-03
+
+### Fixed (harness)
+- Structure Wall's Available list now includes selectable calculated fields
+  `Qty: Thickness (m)` and `Qty: Count`. They were already calculated for export in v1.9.0 but
+  could not appear in parameter discovery because neither is an instance `element.Parameters`
+  entry (`Count` is derived and wall thickness is resolved through the quantity/type path).
+- Selected calculated fields use the quantity-engine values, keep calculated metadata and no longer
+  inflate the missing-parameter count. Added a discovery regression for the Wall Available pool.
+
+Live Revit 2025 recheck is pending.
+
+---
+
+## [v1.9.0] - 2026-09-03
+
+### Added (harness)
+- Added a fifth **Structure Wall** tab with independent search, parameter selection, reordering and
+  persisted metadata. Collection is limited to `OST_Walls` elements whose Revit Structural flag is
+  enabled, excluding architectural walls.
+- Routed Structure Wall through classic and site-format element sheets, BOQ Summary, Level/Grade
+  summaries and Costing. Sheet-name references are now quoted safely, so formulas targeting
+  `'Structure Wall'!` remain valid.
+- Added category-aware wall Length, Height and Thickness quantities plus gross two-face shuttering
+  value/formula `2 × Length × Height`. Opening/intersection deductions are intentionally deferred.
+- Expanded the regression harness with structural-flag, XAML wiring, wall dimension/formwork,
+  workbook order, site export and quoted-formula checks. `python -m py_compile` and the complete
+  harness pass; live Revit 2025 Wall verification remains pending.
+
+### Confirmed live
+- The project owner confirmed the `v1.8.10` Slab/Foundation classification is correct in Revit 2025
+  on 2026-09-03; T-08 is closed.
+
+---
+
 ## [v1.8.10] - 2026-09-03
 
 ### Fixed (harness)
@@ -52,8 +116,8 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   P1-P3 / `v1.8.10` status. `docs/reference/` remains frozen historical Kestrel material.
 
 Verification (re-run 2026-09-03): `python -m py_compile` passed for the harness, pushbutton and
-five engine modules;
-`python test_xlsx_writer.py` ends `RESULT: all checks passed`. Live Revit 2025 re-export is pending.
+five engine modules; `python test_xlsx_writer.py` ends `RESULT: all checks passed`. The project
+owner confirmed the corrected Slab/Foundation classification live in Revit 2025 on 2026-09-03.
 
 ---
 

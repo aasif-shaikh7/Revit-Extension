@@ -18,7 +18,7 @@ single supported runtime. IP27 (IronPython 2.7) is best-effort/untested.
 **Current state: one working tool pushbutton plus brand infrastructure.**
 `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton`
 contains `script.py` (the Revit/UI orchestration), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
-BOQ Parameter Manager for Beam/Column/Slab/Foundation, discovers real parameters, classifies slab/
+BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation, discovers real parameters, classifies slab/
 foundation subtypes, collects metric quantities, and writes a dependency-free XLSX workbook with a
 BOQ Summary and a Costing sheet. `Nudge.extension/lib/` contains the split pure-Python engines and
 the shared brand/theme system
@@ -74,17 +74,19 @@ reference only and does not describe this extension.
 
 `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton/`:
 
-- `script.py` — Revit imports/state, selection, safe parameter readers, category definitions, the
-  centralized Slab/Foundation classifier and audit, and XAML wiring/main entry.
+- `script.py` — Revit imports/state, selection, safe parameter readers, category definitions,
+  structural-wall filtering, the centralized Slab/Foundation classifier/audit, and XAML wiring/main entry.
 - `ui.xaml` — WPF window: header, per-category tabs, search, Available/Selected box, Add/Remove,
   filters, status, OK/Export/Close.
 - `icon.png` — button icon.
 
 The main element sheets come from `CATEGORY_INFO` (Beam→`OST_StructuralFraming`,
-Column→`OST_StructuralColumns`, Slab→`OST_Floors`, Foundation→`OST_StructuralFoundation`), plus a
+Column→`OST_StructuralColumns`, Structure Wall→structural-only `OST_Walls`, Slab→`OST_Floors`,
+Foundation→`OST_StructuralFoundation`), plus a
 single logical classifier for slab/foundation subtypes. Both Floor and Structural Foundation raw
 collections can route to either logical sheet; code `v1.8.10` audits counts and duplicate IDs before
-export. The dependency-free quantity/formwork/costing/export/settings engines live in `lib/`.
+export. Code `v1.9.0` adds Structure Wall Length/Height/Thickness and gross `2LH` shuttering. The
+dependency-free quantity/formwork/costing/export/settings engines live in `lib/`.
 
 ---
 

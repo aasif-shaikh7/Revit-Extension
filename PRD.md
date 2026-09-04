@@ -28,8 +28,8 @@ The product provides a single dialog — the **RCC BOQ Parameter Manager** — t
 3. send a real `.xlsx` workbook to a costing sheet or client,
 4. with metric quantities and costing already computed.
 
-This is **not a general Revit scheduling tool**. It is deliberately narrow: the four structural
-categories used in RCC takeoff — **Beam, Column, Slab, Foundation** — and a repeatable export of
+This is **not a general Revit scheduling tool**. It is deliberately narrow: the five structural
+categories used in RCC takeoff — **Beam, Column, Structure Wall, Slab, Foundation** — and a repeatable export of
 their parameter data and quantities.
 
 **Project direction.** The agreed, incremental direction is to evolve from
@@ -37,7 +37,7 @@ their parameter data and quantities.
 concrete, reinforcement, formwork, grouping, rate analysis, validation and a complete Excel BOQ —
 built one roadmap phase at a time **on top of the existing working project**, never as a rewrite.
 
-**Structural scope only.** Beam, Column, Slab, Foundation + RCC concrete, reinforcement, formwork,
+**Structural scope only.** Beam, Column, Structure Wall, Slab, Foundation + RCC concrete, reinforcement, formwork,
 binding wire, cover blocks, structural labour, materials, wastage, rate analysis, costing and BOQ
 export. Architecture, Doors, Windows, Plumbing, Electrical, HVAC and other MEP modules are **out of
 scope** for now.
@@ -51,7 +51,7 @@ scope** for now.
 1. Present the real parameters that exist on the current document's elements — a discovery-based
    list, never a hard-coded fixture.
 2. Let the user build a per-category **export selection** (which parameter columns to include).
-3. Keep Beam / Column / Slab / Foundation structurally separate tabs so a selection stays scoped.
+3. Keep Beam / Column / Structure Wall / Slab / Foundation separate tabs so a selection stays scoped.
 4. Classify Slab and Foundation elements logically by their real names/codes even when a floor is
    actually stored as a Structural Foundation (and vice-versa).
 5. Export a dependency-free, real `.xlsx` workbook — no Excel installed, no `openpyxl`.
@@ -81,7 +81,7 @@ This release will not try to:
 ### Primary user
 
 A structural engineer or quantity surveyor preparing an **RCC BOQ** from a Revit 2025+ project:
-someone who must repeatedly pull beams, columns, slabs, and foundations out of a model with the
+someone who must repeatedly pull beams, columns, structural walls, slabs, and foundations out of a model with the
 same columns, in a way that lands in Excel with quantities and a costing summary.
 
 ### Secondary user
@@ -116,7 +116,7 @@ The script targets the Revit `DB` API via pyRevit and the RevitPythonShell-style
 
 ### 5.1 Categories and discovery
 
-For each of **Beam, Column, Slab, Foundation**, the dialog discovers the actual parameters on the
+For each of **Beam, Column, Structure Wall, Slab, Foundation**, the dialog discovers the actual parameters on the
 elements of that category in the current document and lists them alphabetically as
 "Available Parameters". Selection is per-category; there is no cross-category column inheritance.
 
@@ -124,6 +124,7 @@ elements of that category in the current document and lists them alphabetically 
 | --- | --- |
 | Beam | `OST_StructuralFraming` |
 | Column | `OST_StructuralColumns` |
+| Structure Wall | `OST_Walls`, restricted to elements with Revit's Structural flag enabled |
 | Slab | `OST_Floors` (plus logical slabs stored as foundations) |
 | Foundation | `OST_StructuralFoundation` plus logical foundations stored as floors |
 
@@ -167,6 +168,10 @@ Qty: Length (m)
 Values are rounded to 4 decimals in metric, converted from Revit internal units via
 `UnitUtils.ConvertFromInternalUnits` (UnitTypeId, then DisplayUnitType), with deterministic
 foot-based constants as the final fallback.
+
+Structure Wall adds Length, Height and Thickness dimensions. Its initial formwork contract is gross
+two-face contact area `2 × Length × Height`; opening and intersection deductions remain future
+rule-engine work.
 
 ### 5.6 Excel workbook (dependency-free)
 
@@ -235,13 +240,13 @@ read/write the file are silent and never block the tool.
 
 The project is successful when an engineer can:
 
-> Open a Revit 2025+ RCC model, run BOQ, select the four categories' parameters, and receive a real
+> Open a Revit 2025+ RCC model, run BOQ, select the five categories' parameters, and receive a real
 > `.xlsx` workbook — with quantities and a costing summary — in a few clicks, with no Excel and no
 > external packages required.
 
 The first release milestone is not "a fancier dialog". It is:
 
-> **"I exported my beams, columns, slabs, and foundations into a correct workbook that my cost side
+> **"I exported my beams, columns, structural walls, slabs, and foundations into a correct workbook that my cost side
 > can use directly."**
 
 ---
@@ -270,8 +275,8 @@ organised. The AI development guide defines **how coding agents must change the 
 - **Which Revit-2025 APIs are guaranteed on both engines?** Some members (e.g.
   `ParameterUtils.IsBuiltInParameter`, `UnitTypeId`) are guarded; the exact floor of what
   pyRevit 6.10.0 exposes on each engine is a verification item.
-- **Where should categories live going forward?** The four hard-coded tabs are fine for RCC; widening
-  to more categories would need a data-driven category registry.
+- **Where should categories live going forward?** The five hard-coded tabs are workable for RCC;
+  further expansion should first introduce a data-driven category registry.
 
 ---
 
@@ -286,7 +291,7 @@ pyRevit 6.10.0+ (CP3123 target; IP27 best-effort forms fallback)
        ▼
 BOQ.pushbutton (script.py + ui.xaml)
        │
-       ├── Category collection (Beam/Column/Slab/Foundation)
+       ├── Category collection (Beam/Column/Structure Wall/Slab/Foundation)
        ├── Logical classification (Slab / Foundation subtypes)
        ├── Parameter discovery + selection
        ├── Metric quantity takeoff
@@ -375,7 +380,7 @@ Every candidate feature is evaluated on four axes with ⭐ ratings (⭐⭐⭐⭐
 | # | Feature | Priority | Benefit | Complexity | Ease |
 |---:|---|---|---|---|---|
 | 1 | Existing quantity engine enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
-| 2 | Beam/Column/Slab/Foundation BOQ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 2 | Beam/Column/Structure Wall/Slab/Foundation BOQ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
 | 3 | Parameter mapping enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
 | 4 | Existing Excel export enhancement | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
 | 5 | Level-wise BOQ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
@@ -448,7 +453,7 @@ first.
 
 # 17. Regression Protection
 
-After every change verify: WPF startup; Beam/Column/Slab/Foundation tabs; parameter loading,
+After every change verify: WPF startup; Beam/Column/Structure Wall/Slab/Foundation tabs; parameter loading,
 selection, multi-selection, Add/Remove, Up/Down/Top/Bottom; parameter order preservation; filter
 system; saved settings; export selected only; auto-open; include quantities; Excel export; BOQ
 Summary; Costing; XLSX formulas; the existing regression test. Do not sacrifice a working feature

@@ -134,9 +134,10 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
    live in `lib/quantity_engine.py` and `lib/formwork_engine.py`.
 7. **Export adapter** — output path selection and dispatch to the dependency-free Open XML writer
    in `lib/export_engine.py`; costing formulas live in `lib/costing_engine.py`.
-8. **Document + category definitions** — `CATEGORY_INFO` mapping the four tabs to Revit
+8. **Document + category definitions** — `CATEGORY_INFO` mapping the five tabs to Revit
    `BuiltInCategory` values.
-9. **Collection / classification** — raw Floor/Foundation collections remain separate;
+9. **Collection / classification** — Structure Wall filters `OST_Walls` by the Revit Structural
+   flag; raw Floor/Foundation collections remain separate;
    `classify_rcc_element` creates one structured logical result per element, from which exclusive
    Slab/Foundation collections, subtype filters, parameter pools and a pre-export audit derive.
 10. **XAML wiring + main entry** — loads `ui.xaml`, wires search/filter/Add-Remove/export events,
@@ -206,8 +207,8 @@ together:
 
 The docstring declares `__min_revit_ver__ = '2025'` (Revit **2025 and above**). CP3123
 (CPython 3.12.3) is the product target; IP27 is best-effort. On the currently inspected pyRevit
-build the forms backend is available only through IP27, so the guarded runtime warning remains
-until upstream supplies CPython-capable forms.
+build the forms backend is available only through IP27. The guard remains, but known CP3123/IP27
+runs are silent from `v1.9.3`; only an unexpected engine raises a warning.
 
 ## Bump rules (semver)
 

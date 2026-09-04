@@ -58,6 +58,19 @@ def xlsx_column_name(index):
     return result
 
 
+def xlsx_sheet_reference(sheet_name):
+    """Return an Excel-safe sheet token for use before the ! operator."""
+    try:
+        text = str(sheet_name or '')
+    except:
+        text = ''
+
+    if re.match(r'^[A-Za-z_][A-Za-z0-9_.]*$', text):
+        return text
+
+    return "'{0}'".format(text.replace("'", "''"))
+
+
 def xlsx_inline_string(value):
     """Create an Open XML inline string cell value."""
     if value is None:
@@ -978,7 +991,9 @@ def build_parameter_metadata_sheet(parameter_metadata):
     if not parameter_metadata:
         return table
 
-    for category in ("Beam", "Column", "Slab", "Foundation"):
+    for category in (
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+    ):
 
         records = parameter_metadata.get(
             category,
@@ -1125,6 +1140,7 @@ def build_missing_values_summary(data_result):
     for category in (
         "Beam",
         "Column",
+        "Structure Wall",
         "Slab",
         "Foundation"
     ):
@@ -1217,7 +1233,9 @@ def build_level_summary_table(data_result, summary_info):
     live SUMIF formula against that category sheet's Level column, so the
     report stays in sync with the underlying element data.
     """
-    category_order = ("Beam", "Column", "Slab", "Foundation")
+    category_order = (
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+    )
 
     level_order = []
     level_counts = {}
@@ -1299,12 +1317,13 @@ def build_level_summary_table(data_result, summary_info):
                 if metric_letter and level_col and data_end > 1:
 
                     criteria = '"{0}"'.format(level_key)
+                    sheet_reference = xlsx_sheet_reference(category_name)
 
                     formula = (
                         "SUMIF({0}!${1}$2:${1}${4},{2},"
                         "{0}!${3}$2:${3}${4})"
                     ).format(
-                        category_name,
+                        sheet_reference,
                         level_col,
                         criteria,
                         metric_letter,
@@ -1329,7 +1348,9 @@ def build_grade_summary_table(data_result, summary_info):
     is a live SUMIF formula against that category sheet's Grade column,
     so the report stays in sync with the underlying element data.
     """
-    category_order = ("Beam", "Column", "Slab", "Foundation")
+    category_order = (
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+    )
 
     grade_order = []
     grade_counts = {}
@@ -1411,12 +1432,13 @@ def build_grade_summary_table(data_result, summary_info):
                 if metric_letter and grade_col and data_end > 1:
 
                     criteria = '"{0}"'.format(grade_key)
+                    sheet_reference = xlsx_sheet_reference(category_name)
 
                     formula = (
                         "SUMIF({0}!${1}$2:${1}${4},{2},"
                         "{0}!${3}$2:${3}${4})"
                     ).format(
-                        category_name,
+                        sheet_reference,
                         grade_col,
                         criteria,
                         metric_letter,
@@ -1558,6 +1580,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         for category_name in (
             "Beam",
             "Column",
+            "Structure Wall",
             "Slab",
             "Foundation"
         )
@@ -1741,7 +1764,9 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         ]
     ]
 
-    for category_name in ("Beam", "Column", "Slab", "Foundation"):
+    for category_name in (
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+    ):
 
         info = summary_info.get(category_name)
 
@@ -1760,10 +1785,11 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             metric_column = info["columns"].get(metric_key)
 
             if metric_column:
+                sheet_reference = xlsx_sheet_reference(category_name)
                 reference = (
                     "FORMULA",
                     "{0}!{1}{2}".format(
-                        category_name,
+                        sheet_reference,
                         metric_column,
                         info["total_row"]
                     )
@@ -1947,7 +1973,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 # ============================================================
 
 # Manual category order drives sheet sequence everywhere below.
-SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")
+SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation")
 
 SITE_DETAIL_BAND_ROWS = (5, 6)
 SITE_DETAIL_DATA_START_ROW = 7
@@ -2108,7 +2134,8 @@ def _site_desc_text(value):
 
 
 def build_site_detail_sheet(category_name, rows, project_name,
-                            include_formwork=True, formwork_factor=1.0):
+                            include_formwork=True, formwork_factor=1.0,
+                            selected_parameter_names=None):
     """
     Site detail sheet, selection-only columns plus dimension columns
     (L/W/H) and a formula-based SHUTTERING column.
@@ -2134,17 +2161,31 @@ def build_site_detail_sheet(category_name, rows, project_name,
 
     param_names = []
 
-    for probe in data_rows[:1]:
-        for key in probe.keys():
+    if selected_parameter_names is not None:
+        # The Revit UI is authoritative when its Selected list is supplied.
+        # This permits calculated Qty fields chosen by the user while keeping
+        # every other automatic quantity out of the site detail layout.
+        for key in selected_parameter_names:
             try:
                 key_text = str(key)
             except:
                 continue
-            if key_text in skip_names:
-                continue
-            if key_text[:4] == "Qty:":
+            if key_text in skip_names or key_text in param_names:
                 continue
             param_names.append(key_text)
+    else:
+        # Backward-compatible fallback for engine-only/direct callers.
+        for probe in data_rows[:1]:
+            for key in probe.keys():
+                try:
+                    key_text = str(key)
+                except:
+                    continue
+                if key_text in skip_names:
+                    continue
+                if key_text[:4] == "Qty:":
+                    continue
+                param_names.append(key_text)
 
     show_shuttering = bool(include_formwork)
 
@@ -2302,6 +2343,7 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name,
     header_label_map = {
         "Beam": "BEAM",
         "Column": "COLUMN",
+        "Structure Wall": "STRUCTURE WALL",
         "Slab": "SLAB",
         "Foundation": "FOUNDATION"
     }
@@ -2418,7 +2460,7 @@ SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 
 def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
-                    include_formwork=True):
+                    include_formwork=True, selected_parameters=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2461,7 +2503,12 @@ def write_site_xlsx(file_path, data_result, project_name="",
             rows,
             project_name,
             include_formwork=include_formwork,
-            formwork_factor=get_formwork_factor(category_name)
+            formwork_factor=get_formwork_factor(category_name),
+            selected_parameter_names=(
+                (selected_parameters or {}).get(category_name)
+                if selected_parameters is not None
+                else None
+            )
         )
 
         sheet_names.append(category_name)

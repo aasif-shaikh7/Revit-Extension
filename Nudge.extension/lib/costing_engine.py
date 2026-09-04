@@ -36,7 +36,9 @@ def build_costing_sheet(data_result):
 
     table = [headers]
 
-    for category_name in ("Beam", "Column", "Slab", "Foundation"):
+    for category_name in (
+        "Beam", "Column", "Structure Wall", "Slab", "Foundation"
+    ):
 
         rows = data_result.get(category_name, [])
 

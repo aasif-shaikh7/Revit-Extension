@@ -18,9 +18,9 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.8.10'
+__version__ = '1.9.3'
 __min_revit_ver__ = '2025'
-__doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Slab / Foundation BOQ export'
+__doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation BOQ export'
 """
 
 from pyrevit import revit, forms
@@ -55,7 +55,14 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.8.10'
+SCRIPT_VERSION = '1.9.3'
+
+# Calculated fields are not exposed by Revit through element.Parameters,
+# but users still need to select them in the same Available -> Selected UI.
+STRUCTURE_WALL_DERIVED_PARAMETERS = (
+    "Qty: Thickness (m)",
+    "Qty: Count"
+)
 
 # ------------------------------------------------------------
 # ENGINE GUARD (todo-list.md T-03)
@@ -66,20 +73,11 @@ SCRIPT_VERSION = '1.8.10'
 # same stub, so NO upstream pyRevit build currently exposes a CPython-capable
 # pyrevit.forms. Therefore form-based pushbuttons (BOQ, Brand Showcase)
 # execute on the IP27 (IronPython 2.7) engine on this machine until a
-# CPython forms backend ships in pyRevit. This guard makes that engine reality
-# visible instead of silent: it logs the active engine to the pyRevit output
-# window (the T-03 runtime-verification hook) and, on non-CP3123
-# engines, surfaces a clear forms.alert warning rather than claiming a
-# CP3123-only runtime that isn't actually active.
+# CPython forms backend ships in pyRevit. IP27 is therefore a known forms
+# fallback and stays silent; only an unexpected third engine gets an alert.
 
 def _warn_if_not_cp3123():
-    """Make the active Python engine visible at startup (T-03 runtime check).
-
-    Logs to the pyRevit output window via pyrevit.script.get_output().print_html
-    (the live click-through verification hook); if the engine is not the supported
-    CP3123, shows a forms.alert warning instead of failing silently. Fully
-    guarded: a failure here must never block the dialog or the export.
-    """
+    """Alert only for an unexpected engine; known CP3123/IP27 paths are silent."""
     engine_label = 'CPython 3.x'
     is_ironpython = False
     is_cp3123 = False
@@ -98,23 +96,12 @@ def _warn_if_not_cp3123():
     except:
         pass
 
-    try:
-        from pyrevit import script as _pyrevit_script
-        _pyrevit_script.get_output().print_html(
-            '<b>RCC BOQ engine:</b> {0}'.format(engine_label,)
-        )
-    except:
-        pass
-
-    if not is_cp3123:
+    if not is_cp3123 and not is_ironpython:
         try:
             forms.alert(
-                'RCC BOQ is working, but the engine is {0}, not the supported '
-                'CP3123 (CPython 3.12.3). The installed pyRevit build stubs '
-                'pyrevit.forms for CPython, so this dialog runs on IronPython '
-                'until a CPython-capable forms backend ships in pyRevit. '
-                'Live verification: the pyRevit output window shows the active '
-                'engine each time the button runs. See todo-list.md T-03.'
+                'RCC BOQ detected unexpected engine {0}. Supported target is '
+                'CP3123; IP27 remains the known pyRevit forms fallback. '
+                'See todo-list.md T-03.'
             .format(engine_label,))
         except:
             pass
@@ -130,6 +117,7 @@ site_format_flag = True
 selected_parameters = {
     "Beam": [],
     "Column": [],
+    "Structure Wall": [],
     "Slab": [],
     "Foundation": []
 }
@@ -231,11 +219,12 @@ from settings_engine import (
 # PARAMETER METADATA ENGINE
 # ============================================================
 
-# Stores metadata in the same Beam / Column / Slab / Foundation
+# Stores metadata in the same Beam / Column / Structure Wall / Slab / Foundation
 # structure used by the existing parameter-selection system.
 parameter_metadata = {
     "Beam": [],
     "Column": [],
+    "Structure Wall": [],
     "Slab": [],
     "Foundation": []
 }
@@ -558,6 +547,7 @@ def build_parameter_metadata():
     metadata_result = {
         "Beam": [],
         "Column": [],
+        "Structure Wall": [],
         "Slab": [],
         "Foundation": []
     }
@@ -600,6 +590,33 @@ def build_parameter_metadata():
                     item,
                     "Unknown"
                 )
+
+            if (
+                element_name == "Structure Wall"
+                and parameter_name in STRUCTURE_WALL_DERIVED_PARAMETERS
+            ):
+                metadata_result[element_name].append(
+                    {
+                        "Parameter Name": parameter_name,
+                        "Instance / Type": "Calculated",
+                        "Shared": False,
+                        "Project Parameter": False,
+                        "Global Parameter": False,
+                        "Built-in Parameter": False,
+                        "Read Only": True,
+                        "Storage Type": "Double" if "Thickness" in parameter_name else "Integer",
+                        "Parameter ID": "Calculated",
+                        "Parameter Definition": {
+                            "Definition Type": "Calculated Quantity",
+                            "Definition Name": parameter_name,
+                            "Data Type": "Length" if "Thickness" in parameter_name else "Count",
+                            "Data Type TypeId": "N/A",
+                            "Group Type": "Quantities",
+                            "Group TypeId": "N/A"
+                        }
+                    }
+                )
+                continue
 
             found_parameter = None
             parameter_scope = "Unknown"
@@ -893,6 +910,14 @@ def read_metric_parameter(element, name_hint):
         candidates.append(element.get_Type())
     except:
         pass
+    try:
+        type_id = element.GetTypeId()
+        if type_id is not None and not type_id.Equals(
+            DB.ElementId.InvalidElementId
+        ):
+            candidates.append(doc.GetElement(type_id))
+    except:
+        pass
 
     for candidate in candidates:
         try:
@@ -937,6 +962,13 @@ def get_element_quantities(element, element_name=""):
         read from model parameters by name.
       - Count : one per element row (the TOTAL row sums to element count).
     """
+    length_parameter_id = DB.BuiltInParameter.INSTANCE_LENGTH_PARAM
+    if element_name == "Structure Wall":
+        try:
+            length_parameter_id = DB.BuiltInParameter.CURVE_ELEM_LENGTH
+        except:
+            pass
+
     quantity_sources = [
         (
             "Volume (m3)",
@@ -951,7 +983,7 @@ def get_element_quantities(element, element_name=""):
         (
             "Length (m)",
             "length",
-            DB.BuiltInParameter.INSTANCE_LENGTH_PARAM
+            length_parameter_id
         )
     ]
 
@@ -1018,6 +1050,15 @@ def get_element_quantities(element, element_name=""):
 
         param_height = read_metric_parameter(element, "Height")
         results.append(("Qty: Height (m)", param_height))
+
+    elif element_name == "Structure Wall":
+
+        param_height = read_metric_parameter(element, "Unconnected Height")
+        if param_height == "":
+            param_height = read_metric_parameter(element, "Height")
+        param_thickness = read_metric_parameter(element, "Width")
+        results.append(("Qty: Height (m)", param_height))
+        results.append(("Qty: Thickness (m)", param_thickness))
 
     elif element_name in ("Slab", "Foundation"):
 
@@ -1346,6 +1387,7 @@ def build_element_data():
     data_result = {
         "Beam": [],
         "Column": [],
+        "Structure Wall": [],
         "Slab": [],
         "Foundation": []
     }
@@ -1428,7 +1470,31 @@ def build_element_data():
             # sheet and feeds the BOQ by Grade sheet.
             row["Grade"] = resolve_concrete_grade(element)
 
+            quantity_values = []
+            quantity_by_name = {}
+
+            if quantities_flag:
+                quantity_values = get_element_quantities(
+                    element,
+                    element_name
+                )
+                quantity_by_name = dict(quantity_values)
+
             for parameter_name in selected_names:
+
+                # These Wall fields are calculated by the quantity engine,
+                # not stored Revit parameters. Insert them in the user's
+                # selected order and do not count them as missing metadata.
+                if (
+                    element_name == "Structure Wall"
+                    and parameter_name in STRUCTURE_WALL_DERIVED_PARAMETERS
+                ):
+                    if quantities_flag:
+                        row[parameter_name] = quantity_by_name.get(
+                            parameter_name,
+                            ""
+                        )
+                    continue
 
                 parameter = None
 
@@ -1456,9 +1522,7 @@ def build_element_data():
             # with the parameter completeness audit.
             if quantities_flag:
 
-                for column_label, quantity_value in (
-                    get_element_quantities(element, element_name)
-                ):
+                for column_label, quantity_value in quantity_values:
                     row[column_label] = quantity_value
 
             data_result[
@@ -1483,6 +1547,7 @@ def get_sample_values(data_result, max_rows=3):
     for element_name in (
         "Beam",
         "Column",
+        "Structure Wall",
         "Slab",
         "Foundation"
     ):
@@ -1620,6 +1685,8 @@ CATEGORY_INFO = {
 
     "Column": DB.BuiltInCategory.OST_StructuralColumns,
 
+    "Structure Wall": DB.BuiltInCategory.OST_Walls,
+
     "Slab": DB.BuiltInCategory.OST_Floors,
 
     "Foundation": DB.BuiltInCategory.OST_StructuralFoundation
@@ -1650,11 +1717,37 @@ def get_elements(category):
         return []
 
 
+def is_structural_wall(element):
+    """True only when the Revit wall's Structural instance flag is enabled."""
+    parameter = None
+
+    try:
+        parameter = element.get_Parameter(
+            DB.BuiltInParameter.WALL_STRUCTURAL_SIGNIFICANT
+        )
+    except:
+        parameter = None
+
+    if parameter is None:
+        try:
+            parameter = element.LookupParameter("Structural")
+        except:
+            parameter = None
+
+    if parameter is None:
+        return False
+
+    try:
+        return bool(parameter.AsInteger())
+    except:
+        return False
+
+
 # ============================================================
 # GET ALL PARAMETERS
 # ============================================================
 
-def get_parameters(elements):
+def get_parameters(elements, derived_names=None):
 
     parameter_names = set()
 
@@ -1687,6 +1780,10 @@ def get_parameters(elements):
         except:
 
             continue
+
+    for derived_name in (derived_names or ()):
+        if derived_name:
+            parameter_names.add(derived_name)
 
     result = []
 
@@ -2105,6 +2202,21 @@ def validate_classification_audit(audit):
     return valid, summary
 
 
+def classification_audit_has_findings(audit):
+    """True only when the routing audit needs user/developer attention."""
+    valid, _summary = validate_classification_audit(audit)
+    if not valid:
+        return True
+    if not audit:
+        return True
+    return bool(
+        audit.get('source_duplicate_ids', [])
+        or audit.get('destination_duplicate_ids', [])
+        or audit.get('unclassified', [])
+        or audit.get('other', [])
+    )
+
+
 def emit_classification_audit(audit, include_details=True):
     """Write counts and traceable per-element decisions to pyRevit output."""
     try:
@@ -2243,6 +2355,10 @@ def filter_elements(elements, logical_tab, filter_name):
 # without re-querying or destroying the original model collections.
 all_beam_elements = get_elements(CATEGORY_INFO['Beam'])
 all_column_elements = get_elements(CATEGORY_INFO['Column'])
+all_wall_elements = get_elements(CATEGORY_INFO['Structure Wall'])
+all_structural_wall_elements = [
+    element for element in all_wall_elements if is_structural_wall(element)
+]
 all_floor_elements = get_elements(CATEGORY_INFO['Slab'])
 all_foundation_elements = get_elements(CATEGORY_INFO['Foundation'])
 
@@ -2259,11 +2375,10 @@ for _classification_result in rcc_logical_collections['results']:
         _classification_result['routing_key']
     ] = _classification_result
 
-emit_classification_audit(classification_audit, include_details=False)
-
 category_elements = {
     'Beam': list(all_beam_elements),
     'Column': list(all_column_elements),
+    'Structure Wall': list(all_structural_wall_elements),
     'Slab': list(logical_slab_elements),
     'Foundation': list(logical_foundation_elements)
 }
@@ -2271,8 +2386,13 @@ category_elements = {
 category_parameters = {}
 
 for element_name in category_elements.keys():
+    derived_names = ()
+    if element_name == "Structure Wall":
+        derived_names = STRUCTURE_WALL_DERIVED_PARAMETERS
+
     category_parameters[element_name] = get_parameters(
-        category_elements[element_name]
+        category_elements[element_name],
+        derived_names
     )
 
 active_filters = {
@@ -2418,6 +2538,7 @@ try:
             for _sbox_name in (
                 "BeamSearch",
                 "ColumnSearch",
+                "StructureWallSearch",
                 "SlabSearch",
                 "FoundationSearch"
             ):
@@ -2700,6 +2821,18 @@ try:
                 "down": "ColumnDown",
                 "top": "ColumnTop",
                 "bottom": "ColumnBottom"
+            },
+
+            "Structure Wall": {
+                "available": "StructureWallAvailable",
+                "search": "StructureWallSearch",
+                "selected": "StructureWallSelected",
+                "add": "StructureWallAdd",
+                "remove": "StructureWallRemove",
+                "up": "StructureWallUp",
+                "down": "StructureWallDown",
+                "top": "StructureWallTop",
+                "bottom": "StructureWallBottom"
             },
 
             "Slab": {
@@ -4008,6 +4141,7 @@ try:
                         "Parameter metadata captured successfully.\n\n"
                         "Beam: {}\n"
                         "Column: {}\n"
+                        "Structure Wall: {}\n"
                         "Slab: {}\n"
                         "Foundation: {}\n\n"
                         "Metadata records: {}".format(
@@ -4018,6 +4152,10 @@ try:
 
                             len(
                                 parameter_metadata["Column"]
+                            ),
+
+                            len(
+                                parameter_metadata["Structure Wall"]
                             ),
 
                             len(
@@ -4202,10 +4340,13 @@ try:
                     routing_valid, routing_summary = (
                         validate_classification_audit(classification_audit)
                     )
-                    emit_classification_audit(
-                        classification_audit,
-                        include_details=True
-                    )
+                    if classification_audit_has_findings(
+                        classification_audit
+                    ):
+                        emit_classification_audit(
+                            classification_audit,
+                            include_details=True
+                        )
                     if not routing_valid:
                         raise Exception(
                             "Slab/Foundation classification audit failed: "
@@ -4234,7 +4375,7 @@ try:
                             )
 
                         forms.alert(
-                            "No Beam, Column, Slab, or Foundation "
+                            "No Beam, Column, Structure Wall, Slab, or Foundation "
                             "element rows were found to export.",
                             title="RCC BOQ - Excel Export"
                         )
@@ -4290,7 +4431,8 @@ try:
                                 )
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
-                            include_formwork=is_formwork_enabled()
+                            include_formwork=is_formwork_enabled(),
+                            selected_parameters=selected_parameters
                         )
 
                     else:
@@ -4315,6 +4457,7 @@ try:
                     for sheet_name in (
                         "Beam",
                         "Column",
+                        "Structure Wall",
                         "Slab",
                         "Foundation"
                     ):
@@ -4364,6 +4507,7 @@ try:
                     for category_name in (
                         "Beam",
                         "Column",
+                        "Structure Wall",
                         "Slab",
                         "Foundation"
                     ):
@@ -4452,6 +4596,10 @@ try:
             category_elements["Column"]
         )
 
+        wall_count = len(
+            category_elements["Structure Wall"]
+        )
+
         slab_count = len(
             category_elements["Slab"]
         )
@@ -4466,11 +4614,13 @@ try:
                 "Parameters loaded | "
                 "Beam: {} | "
                 "Column: {} | "
+                "Structure Wall: {} | "
                 "Slab: {} | "
                 "Foundation: {}".format(
 
                     len(category_elements.get('Beam', [])),
                     len(category_elements.get('Column', [])),
+                    len(category_elements.get('Structure Wall', [])),
                     len(category_elements.get('Slab', [])),
                     len(category_elements.get('Foundation', []))
                 )

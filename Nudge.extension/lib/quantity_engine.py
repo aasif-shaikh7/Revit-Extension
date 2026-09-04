@@ -161,6 +161,10 @@ def resolve_element_dimensions(
       Column     : H = Height | bbox vertical side
                    section pair = (Width x Depth) | bbox pair, sorted so
                    W <= L exactly like the manual sheet lists them
+      Structure Wall:
+                   L = calculated wall length | bbox long side
+                   W = wall type Width (thickness) | bbox short side
+                   H = Unconnected Height / Height | bbox vertical side
       Slab /
       Foundation : H = Thickness | bbox vertical side
                    plan pair from bbox sides
@@ -213,6 +217,14 @@ def resolve_element_dimensions(
                 result["width"] = round(bbox_pair[0], 4)
                 result["length"] = round(bbox_pair[1], 4)
 
+    elif category_name == "Structure Wall":
+
+        result["length"] = first_available(length_m, bbox_length_m)
+        result["width"] = first_available(
+            thickness_m, width_m, bbox_width_m
+        )
+        result["height"] = first_available(height_m, bbox_height_m)
+
     else:
 
         # Slab / Foundation: vertical dimension is the thickness, the
@@ -232,4 +244,3 @@ def resolve_element_dimensions(
             result[key] = ""
 
     return result
-

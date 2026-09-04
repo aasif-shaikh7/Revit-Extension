@@ -43,6 +43,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P1 | Structural Quantity Engine (extend, don't duplicate) | 5/5/3/4 | **done** (`v1.1.0`) |
 | P2 | Structural BOQ Grouping (level + concrete grade done) | 4/4/2/5 | **done** (`v1.6.0`) |
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
+| P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | `todo` |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `todo` |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | `todo` |
@@ -59,24 +60,10 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ---
 
-## Active production fix
+## Next roadmap phase
 
-### T-08 — Intelligent Slab/Foundation classification and Excel routing — `testing` (`v1.8.10`)
-**Built:** one centralized `classify_rcc_element()` pipeline now routes both Floors and Structural
-Foundations by logical identity. Foundation-priority codes/keywords, strict `F<number>` /
-`CF<number>` boundaries, `S<number>` / `GS`, Grade/Fold Slab and Chajja are covered. Filters,
-parameter pools and Excel export consume the same exclusive logical collections. A pre-export audit
-reconciles counts, reports duplicate/unclassified IDs and retains unknowns under `Other`.
-
-**Tested (harness, re-run 2026-09-03):** complete Category A, Category B and mixed-project matrices,
-strict-code negatives, Chajja, reliable `ID_UNMT` / `ITEM DES.` parameter identities, duplicate-ID
-de-duplication and count reconciliation all pass; full workbook suite ends
-`RESULT: all checks passed`; syntax compilation passes.
-
-**Remaining:** owner must reload `v1.8.10` in Revit 2025 and re-export the previously failing model.
-Confirm: F/CF/PCC/Raft appear only in Foundation; S/GS/Grade/Fold Slab/Chajja appear only in Slab;
-output-window audit shows duplicates 0 and unclassified 0. Until that confirmation this stays
-`testing`, not live-verified.
+P3.5 / T-10 is live-confirmed and closed. **P4 — Rebar Quantity Engine** is now the next
+implementation phase.
 
 ---
 
@@ -120,19 +107,16 @@ version/bump fixes this yet. **Consequence (stated, not guessed):** both form-ba
 support target, but it is **not** the actually-active runtime until a CPython `forms` backend
 ships in pyRevit.
 
-**Runtime verification hook (added in code `v1.8.6`):** `script.py` now calls
-`_warn_if_not_cp3123()` at startup (engine-guard block right after `SCRIPT_VERSION`) which:(a) writes
-`RCC BOQ engine: <IP27 or CPython 3.x>` to the pyRevit output window via
-`pyrevit.script.get_output().print_html(...)` each time the button runs — the live
-click-through check stated in T-03; and(b) if the engine is not CP3123, shows a clear
-`forms.alert(...)` warning instead of silently claiming the CP3123-only support. Fully guarded —
-a failure never blocks the dialog or export. **Verified:** `python -m py_compile` clean; the XLSX
-harness still ends `RESULT: all checks passed` (engine untouched).
+**Runtime verification hook (added in code `v1.8.6`):** `script.py` calls
+`_warn_if_not_cp3123()` at startup. The live engine check is complete, so from `v1.9.3` known
+CP3123/IP27 runs are silent and do not force-open pyRevit output; only an unexpected third engine
+raises `forms.alert(...)`. A detection failure never blocks the dialog or export.
 **Tested (live) 2026-09-02:** the owner clicked the BOQ button in Revit 2025 — the guard's
 `forms.alert` appeared with the expected IP27 wording, and the dialog opened, which also live-proves
 that the v1.8.6 module split (plain imports from `Nudge.extension/lib/`) loads on the IP27 engine.
-Still pending from the live click-through: the output-window `RCC BOQ engine: ...` line, a full
-export, and settings persistence.
+That historical one-time evidence is retained here; the recurring alert/output was removed in
+`v1.9.3` after it began interrupting otherwise healthy exports. Settings persistence remains a
+separate live verification item.
 
 ---
 
@@ -327,8 +311,10 @@ sums to the element count, and the BOQ Summary already reports the per-category 
 **Plan:** add a short config reference (keys, defaults, how to reset) near the docs.
 
 ### T-05 — Category registry — `draft`
-**State:** The four categories are hard-coded tabs.
-**Plan:** decide only when a fifth category is actually requested.
+**State:** The fifth Structure Wall category is integrated, but category definitions and XAML tabs
+remain hard-coded in several coordinated locations.
+**Plan:** before adding a sixth category, design one registry for collection, UI metadata, settings
+and export ordering; do not refactor the now live-proven five-category path without dedicated tests.
 
 ### T-06 — Rate database (supersedes the simple rate parameter) — `draft`
 **State:** Rates come from a single recognized parameter.

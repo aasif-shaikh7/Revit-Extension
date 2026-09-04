@@ -23,6 +23,7 @@ DEFAULT_FORMWORK_RULES = {
     "deduction_pct": {
         "Column": 0.0,
         "Beam": 0.0,
+        "Structure Wall": 0.0,
         "Slab": 0.0,
         "Foundation": 0.0
     }
@@ -52,6 +53,7 @@ def compute_shuttering_area(
                    = 2 * (L + W) * H
       Beam       : soffit width plus two side faces along the length
                    = (W + 2 * H) * L
+      Structure Wall: gross two-face contact area = 2 * L * H
       Slab       : soffit contact area = plan area
       Foundation : footing side faces = 2 * (L + W) * H
 
@@ -95,10 +97,16 @@ def compute_shuttering_area(
     if height_value is None:
         return ""
 
-    if length_value is None or width_value is None:
+    if length_value is None:
         return ""
 
-    if category_name == "Column":
+    if category_name == "Structure Wall":
+        shuttering = 2.0 * length_value * height_value
+
+    elif width_value is None:
+        return ""
+
+    elif category_name == "Column":
         shuttering = 2.0 * (length_value + width_value) * height_value
 
     elif category_name == "Beam":
@@ -158,7 +166,9 @@ def normalize_formwork_rules(raw_rules):
 
     if isinstance(raw_percentages, dict):
 
-        for category in ("Column", "Beam", "Slab", "Foundation"):
+        for category in (
+            "Column", "Beam", "Structure Wall", "Slab", "Foundation"
+        ):
 
             try:
                 value = float(
@@ -220,6 +230,7 @@ def build_shuttering_formula(category_name, l_col, w_col, h_col, factor):
     Formulas (matching compute_shuttering_area logic):
       Column:    2*(L+W)*H
       Beam:      (W+2*H)*L
+      Structure Wall: 2*L*H (gross two-face area)
       Slab:      L*W (soffit = plan area)
       Foundation: 2*(L+W)*H
 
@@ -239,9 +250,10 @@ def build_shuttering_formula(category_name, l_col, w_col, h_col, factor):
         return "=ROUND(2*({0}+{1})*{2}{3}, 2)".format(l_col, w_col, h_col, factor_str)
     elif category_name == "Beam":
         return "=ROUND(({1}+2*{2})*{0}{3}, 2)".format(l_col, w_col, h_col, factor_str)
+    elif category_name == "Structure Wall":
+        return "=ROUND(2*{0}*{2}{3}, 2)".format(l_col, w_col, h_col, factor_str)
     elif category_name == "Slab":
         return "=ROUND({0}*{1}{2}, 2)".format(l_col, w_col, factor_str)
     elif category_name == "Foundation":
         return "=ROUND(2*({0}+{1})*{2}{3}, 2)".format(l_col, w_col, h_col, factor_str)
     return ""
-

@@ -21,9 +21,9 @@ preview of the toolkit's brand/theme system that doubles as a Light/Dark visual 
 > **Engine caveat (T-03, confirmed 2026-09-01):** pyRevit still ships `pyrevit.forms` only
 > for IronPython — upstream master `6.5.5` carries the same CPython stub as the installed
 > build (`6.5.3`). So today the BOQ dialog **runs on IP27** despite the CP3123-only product
-> decision, until a CPython-capable `pyrevit.forms` ships upstream. The button logs the active
-> engine to the pyRevit output window each run (and warns via `forms.alert` when it isn't CP3123) —
-> see `todo-list.md` T-03.
+> decision, until a CPython-capable `pyrevit.forms` ships upstream. From `v1.9.3`, the known IP27
+> fallback is silent so a healthy run does not force-open pyRevit output; only an unexpected engine
+> raises a warning. See `todo-list.md` T-03/T-10.
 
 ---
 
@@ -50,7 +50,7 @@ See:
 ## Why RCC BOQ
 
 Structural engineers and quantity surveyors repeatedly select the same **parameters** and
-**quantities** from structural elements — beams, columns, slabs, and foundations — and send them to a
+**quantities** from structural elements — beams, columns, structural walls, slabs, and foundations — and send them to a
 costing sheet or a client workbook.
 
 Doing that by hand in Revit is slow, repetitive and error prone:
@@ -74,7 +74,7 @@ Nudge tab ▶ Generate panel ▶ BOQ pushbutton
       │
       ▼
 RCC BOQ Parameter Manager
-      │  (choose Beam / Column / Slab / Foundation parameters)
+      │  (choose Beam / Column / Structure Wall / Slab / Foundation parameters)
       ▼
 Revit element data + metric quantities
       │
@@ -94,7 +94,9 @@ dependencies imported into the pyRevit host.
 
 **RCC BOQ Parameter Manager** (`BOQ.pushbutton`):
 
-- **One dialog, four structural categories** — Beam, Column, Slab, Foundation.
+- **One dialog, five structural categories** — Beam, Column, Structure Wall, Slab, Foundation.
+- **Structural-only wall collection.** The Structure Wall tab reads `OST_Walls` whose Revit
+  **Structural** flag is enabled; architectural walls are excluded.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -105,8 +107,9 @@ dependencies imported into the pyRevit host.
   under a controlled `Other` subtype.
 - **Export scope** — optionally restrict output to exactly the elements selected in the current
   Revit view.
-- **Quantity takeoff** (toggleable) — numeric metric columns `Qty: Volume (m3)`, `Qty: Area (m2)`,
-  `Qty: Length (m)`, converted from internal Revit units.
+- **Quantity takeoff** (toggleable) — numeric metric volume/area/length columns plus category-aware
+  dimensions. Structure Wall exports Length, Height and Thickness and uses gross two-face
+  shuttering `2 × Length × Height` (openings/intersections are not deducted yet).
 - **Dependency-free XLSX writer** — builds the workbook from Open XML parts directly, so it runs
   inside the pyRevit environment without external packages.
 - **BOQ Summary sheet** — live cross-sheet `SUM()` formulas plus a `GRAND TOTAL` row.
@@ -141,14 +144,19 @@ Revit-Extension/
 │   ├── Nudge.tab/
 │   │   ├── Generate.panel/
 │   │   │   └── BOQ.pushbutton/
-│   │   │       ├── script.py     <- the whole tool (entry, UI wiring, XLSX engine)
+│   │   │       ├── script.py     <- Revit collection, classification and UI orchestration
 │   │   │       ├── ui.xaml        <- WPF window definition
 │   │   │       └── icon.png       <- pushbutton icon
 │   │   └── Brand.panel/
 │   │       └── BrandShowcase.pushbutton/   <- brand/theme live preview + Light/Dark QA
 │   └── lib/
-│       ├── theme_manager.py       <- Revit Light/Dark theme detection + dictionary merging
-│       └── Resources/             <- brand resource dictionaries (colors/typography/controls)
+│       ├── settings_engine.py    <- persisted selections/options
+│       ├── quantity_engine.py    <- metric dimensions
+│       ├── formwork_engine.py    <- shuttering rules/formulas
+│       ├── costing_engine.py     <- costing tables
+│       ├── export_engine.py      <- dependency-free Open XML XLSX writer
+│       ├── theme_manager.py      <- Revit Light/Dark theme detection + dictionary merging
+│       └── Resources/            <- brand resource dictionaries (colors/typography/controls)
 │
 ├── docs/
 │   └── reference/                 <- older Kestrel docs, kept for study
@@ -181,8 +189,8 @@ Standalone regression (test_xlsx_writer.py)
 In-Revit / on-project verification (manual, by the project owner)
 ```
 
-`test_xlsx_writer.py` extracts the pure-Python XLSX functions straight from the real
-`script.py`, builds a sample workbook, unzips it, and XML-validates every part (sheet order, SUM
+`test_xlsx_writer.py` extracts pure-Python functions from the real `lib/` engines plus bounded
+Revit-facing helpers from `script.py`, builds sample workbooks, and XML-validates every part (sheet order, SUM
 formulas, auto-filter range, styles, GRAND TOTAL). It runs in any Python 3.x:
 
 ```bash
@@ -206,6 +214,7 @@ time, never as a rewrite.
 P1  Quantity Engine (extend existing)
 P2  BOQ Grouping (level / material / concrete grade)
 P3  Formwork Engine
+P3.5 Structure Wall category integration
 P4  Rebar Quantity Engine
 P5  Rebar Summary / BBS
 P6  Structural BOQ Assembly
@@ -221,7 +230,7 @@ P15 Model Change Detection
 P16 Structural Dashboard
 ```
 
-Only **structural** scope is in the roadmap (Beam/Column/Slab/Foundation + concrete, reinforcement,
+Only **structural** scope is in the roadmap (Beam/Column/Structure Wall/Slab/Foundation + concrete, reinforcement,
 formwork, rates, costing). Each phase starts only after the previous one is stable on a live Revit
 2025 project. Phases are rated (priority / benefit / complexity / ease) in [`PRD.md`](PRD.md) §13,
 and the current status is tracked in [`todo-list.md`](todo-list.md).
@@ -274,6 +283,8 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** P1 quantity,
-P2 grouping and P3 formwork are complete. Code `v1.8.10` adds centralized Slab/Foundation routing
-and is harness-tested; its live Revit 2025 re-export remains pending. P4 Rebar Quantity Engine is
-the next major roadmap phase after that live confirmation.
+P2 grouping and P3 formwork are complete; the owner confirmed `v1.8.10` Slab/Foundation routing in
+Revit 2025 on 2026-09-03. Version `v1.9.3` adds the structural-only Structure Wall tab, selectable
+calculated Thickness/Count and correct Excel routing; the harness and live Revit verification both
+pass. Healthy routing audits and the known IP27 fallback are silent; detailed output appears only
+when an audit finds an anomaly. The popup fix is live-confirmed, and P4 Rebar Quantity Engine is next.

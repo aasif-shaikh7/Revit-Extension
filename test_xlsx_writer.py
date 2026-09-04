@@ -27,6 +27,14 @@ SCRIPT_PATH = os.path.join(
     "BOQ.pushbutton",
     "script.py"
 )
+UI_PATH = os.path.join(
+    REPO_DIR,
+    "Nudge.extension",
+    "Nudge.tab",
+    "Generate.panel",
+    "BOQ.pushbutton",
+    "ui.xaml"
+)
 
 # Engine modules under the extension lib/ folder (v1.8.6 module split,
 # PROJECT_STRUCTURE.md section 9). Functions are resolved from these
@@ -50,6 +58,7 @@ FUNCTION_NAMES = [
     # Pure cell/XML primitives
     "safe_text",
     "xlsx_column_name",
+    "xlsx_sheet_reference",
     "xlsx_inline_string",
     "try_export_as_number",
     "xlsx_cell",
@@ -72,6 +81,7 @@ FUNCTION_NAMES = [
     "build_default_output_name",
     "build_summary_cover_rows",
     "write_basic_xlsx",
+    "get_parameters",
     # Site-format (v1.4.x) builders - pure, Revit-free
     "meters_to_millimeters",
     "build_section_description",
@@ -171,7 +181,7 @@ def main():
     for path, _ in texts:
         print("Source: {}".format(os.path.relpath(path, REPO_DIR)))
 
-    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
+    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
 
     import time
 
@@ -223,6 +233,13 @@ def main():
             for fname, count in sorted(source_tally.items()))
     ))
 
+    check(
+        namespace["xlsx_sheet_reference"]("Beam") == "Beam"
+        and namespace["xlsx_sheet_reference"]("Structure Wall")
+        == "'Structure Wall'",
+        "Excel sheet references quote names containing spaces"
+    )
+
     data_result = {
         "Beam": [
             {
@@ -261,6 +278,21 @@ def main():
                 "Qty: Area (m2)": 0.16,
                 "Qty: Length (m)": 3.5,
                 "Qty: Height (m)": 3.5,
+                "Qty: Count": 1
+            }
+        ],
+        "Structure Wall": [
+            {
+                "Element ID": "250",
+                "Level": "Ground Floor",
+                "Grade": "M25",
+                "Mark": "SW1",
+                "Rate": 1350.0,
+                "Qty: Volume (m3)": 2.0,
+                "Qty: Area (m2)": 10.0,
+                "Qty: Length (m)": 4.0,
+                "Qty: Height (m)": 2.5,
+                "Qty: Thickness (m)": 0.2,
                 "Qty: Count": 1
             }
         ],
@@ -365,7 +397,7 @@ def main():
         )
 
         check(
-            amount_formula_count == 4,
+            amount_formula_count == 5,
             "Every element row has a live Quantity x Rate formula"
         )
 
@@ -377,6 +409,13 @@ def main():
         )
 
         foundation_table = sheet_rows["Foundation"]
+        wall_table = sheet_rows["Structure Wall"]
+
+        check(
+            "Qty: Height (m)" in wall_table[0]
+            and "Qty: Thickness (m)" in wall_table[0],
+            "Structure Wall Height and Thickness quantity columns present"
+        )
 
         check(
             "Qty: Thickness (m)" in foundation_table[0],
@@ -385,7 +424,8 @@ def main():
 
         check(
             "Qty: Count" in foundation_table[0]
-            and "Qty: Count" in column_table[0],
+            and "Qty: Count" in column_table[0]
+            and "Qty: Count" in wall_table[0],
             "P1 element Count column present on all populated sheets"
         )
 
@@ -425,9 +465,9 @@ def main():
         )
 
         check(
-            sumif_count == 9,
+            sumif_count == 12,
             "P2 live SUMIF per Level x Category x available-metric cell "
-            "(expected 9: Beam has no Area col, Foundation has no Length "
+            "(expected 12 including Structure Wall; Foundation has no Length "
             "col; got {})".format(sumif_count)
         )
 
@@ -475,10 +515,25 @@ def main():
         )
 
         check(
-            grade_sumif_count == 9,
+            grade_sumif_count == 12,
             "P2 live SUMIF per Grade x Category x available-metric cell "
-            "(expected 9: M25/Beam 2 + M30/Beam 2 + M30/Column 3 + "
-            "(No Grade)/Foundation 2; got {})".format(grade_sumif_count)
+            "(expected 12 including Structure Wall; got {})".format(
+                grade_sumif_count
+            )
+        )
+
+        wall_level_formulas = [
+            cell[1]
+            for row in level_table[1:]
+            if row[1] == "Structure Wall"
+            for cell in row[3:]
+            if isinstance(cell, tuple) and cell[0] == "FORMULA"
+        ]
+        check(
+            wall_level_formulas
+            and all("'Structure Wall'!" in formula
+                    for formula in wall_level_formulas),
+            "Structure Wall level formulas use quoted sheet references"
         )
 
         check(
@@ -526,7 +581,7 @@ def main():
         listed = set(
             row[0] for row in summary_cover
             if row[0] in (
-                "Beam", "Column", "Foundation",
+                "Beam", "Column", "Structure Wall", "Foundation",
                 "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
             )
         )
@@ -534,7 +589,7 @@ def main():
         check(
             listed == set(
                 [
-                    "Beam", "Column", "Foundation",
+                    "Beam", "Column", "Structure Wall", "Foundation",
                     "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
                 ]
             ),
@@ -629,6 +684,18 @@ def main():
             "Column dimensions fall back to the bounding box pair"
         )
 
+        wall_dims = namespace["resolve_element_dimensions"](
+            "Structure Wall",
+            length_m=4.0,
+            thickness_m=0.2,
+            height_m=2.5
+        )
+
+        check(
+            wall_dims == {"length": 4.0, "width": 0.2, "height": 2.5},
+            "Structure Wall dimensions resolve Length/Thickness/Height"
+        )
+
         compute_shuttering_area = namespace["compute_shuttering_area"]
 
         check(
@@ -643,6 +710,13 @@ def main():
                 "Beam", length_m=6.096, width_m=0.23, height_m=0.6
             ) == 8.72,
             "Beam shuttering = (W+2H)L (soffit plus two sides)"
+        )
+
+        check(
+            compute_shuttering_area(
+                "Structure Wall", length_m=4.0, height_m=2.5
+            ) == 20.0,
+            "Structure Wall shuttering = 2LH (gross two-face area)"
         )
 
         check(
@@ -683,6 +757,7 @@ def main():
             "deduction_pct": {
                 "Beam": 5,
                 "Column": "x",
+                "Structure Wall": 12.5,
                 "Slab": 150,
                 "Foundation": -3
             }
@@ -692,6 +767,7 @@ def main():
             cleaned_rules["enabled"] is False
             and cleaned_rules["deduction_pct"]["Beam"] == 5.0
             and cleaned_rules["deduction_pct"]["Column"] == 0.0
+            and cleaned_rules["deduction_pct"]["Structure Wall"] == 12.5
             and cleaned_rules["deduction_pct"]["Slab"] == 100.0
             and cleaned_rules["deduction_pct"]["Foundation"] == 0.0,
             "Deduction percentages are clamped to 0-100 and bad values reset"
@@ -776,6 +852,13 @@ def main():
             build_shuttering_formula("Beam", "F", "G", "H", 1.0)
             == "=ROUND((G+2*H)*F, 2)",
             "Beam shuttering formula: (W+2*H)*L"
+        )
+
+        check(
+            build_shuttering_formula(
+                "Structure Wall", "F", "G", "H", 1.0
+            ) == "=ROUND(2*F*H, 2)",
+            "Structure Wall shuttering formula: 2*L*H"
         )
 
         check(
@@ -1087,7 +1170,7 @@ def main():
         )
 
         expected_order = [
-            "Summary", "Beam", "Column", "Foundation",
+            "Summary", "Beam", "Column", "Structure Wall", "Foundation",
             "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
         ]
 
@@ -1150,12 +1233,19 @@ def main():
         )
 
         summary_xml = archive.read(
-            "xl/worksheets/sheet5.xml"
+            "xl/worksheets/sheet{0}.xml".format(
+                expected_order.index("BOQ Summary") + 1
+            )
         ).decode("utf-8")
 
         check(
             "<f>Beam!" in summary_xml,
             "BOQ Summary references category sheets by formula"
+        )
+
+        check(
+            "<f>'Structure Wall'!" in summary_xml,
+            "BOQ Summary safely references the Structure Wall sheet"
         )
 
         check(
@@ -1226,6 +1316,20 @@ def main():
             }
         ],
         "Column": [],
+        "Structure Wall": [
+            {
+                "Element ID": "250",
+                "Level": "Level 1",
+                "Mark": "SW1",
+                "Qty: Volume (m3)": 2.0,
+                "Qty: Thickness (m)": 0.2,
+                "Qty: Count": 1,
+                "Qty: Dim L (m)": 4.0,
+                "Qty: Dim W (m)": 0.2,
+                "Qty: Dim H (m)": 2.5,
+                "Qty: Shuttering (m2)": 20.0
+            }
+        ],
         "Slab": [],
         "Foundation": []
     }
@@ -1235,7 +1339,13 @@ def main():
         site_data,
         project_name="CHHANYADO HOSPITAL SURAT",
         tool_version="RCC BOQ Parameter Manager v1.4.0",
-        generated_stamp="2026-08-27 10:00"
+        generated_stamp="2026-08-27 10:00",
+        selected_parameters={
+            "Beam": ["Mark"],
+            "Structure Wall": [
+                "Mark", "Qty: Thickness (m)", "Qty: Count"
+            ]
+        }
     )
 
     site_archive = zipfile.ZipFile(site_output_path, "r")
@@ -1269,7 +1379,7 @@ def main():
         )
 
         check(
-            sheet_order_site == ["Summary", "Beam"],
+            sheet_order_site == ["Summary", "Beam", "Structure Wall"],
             "Site workbook order: Summary then populated categories "
             "(got {})".format(sheet_order_site)
         )
@@ -1296,6 +1406,7 @@ def main():
 
         check(
             ">BEAM<" in site_summary_xml
+            and ">STRUCTURE WALL<" in site_summary_xml
             and ">2<" in site_summary_xml,
             "Summary lists each populated category with its element count"
         )
@@ -1316,6 +1427,18 @@ def main():
             and "<f>ROUND" in site_beam_xml,
             "Detail element rows carry selected MARK values and "
             "SHUTTERING formula"
+        )
+
+        site_wall_xml = site_archive.read(
+            "xl/worksheets/sheet3.xml"
+        ).decode("utf-8")
+
+        check(
+            ">SW1<" in site_wall_xml
+            and ">QTY: THICKNESS (M)<" in site_wall_xml
+            and ">QTY: COUNT<" in site_wall_xml
+            and "<f>ROUND(2*" in site_wall_xml,
+            "Structure Wall site detail retains selected Thickness/Count and 2LH formula"
         )
 
         site_styles_xml = site_archive.read(
@@ -1509,6 +1632,94 @@ def main():
             pass
 
     # -----------------------------------------------------------------
+    # v1.9.0 Structure Wall collection/UI contract.
+    # -----------------------------------------------------------------
+    class FakeWallBuiltInParameter(object):
+        WALL_STRUCTURAL_SIGNIFICANT = "wall_structural"
+
+    class FakeWallDB(object):
+        BuiltInParameter = FakeWallBuiltInParameter
+
+    class FakeWallFlag(object):
+        def __init__(self, value):
+            self.value = value
+
+        def AsInteger(self):
+            return self.value
+
+    class FakeWall(object):
+        def __init__(self, value):
+            self.flag = (
+                None if value is None else FakeWallFlag(value)
+            )
+
+        def get_Parameter(self, _parameter_id):
+            return self.flag
+
+        def LookupParameter(self, _name):
+            return self.flag
+
+    wall_filter_ns = {"DB": FakeWallDB}
+    wall_filter_block, _ = extract_from_sources(
+        texts, "is_structural_wall"
+    )
+    exec(wall_filter_block, wall_filter_ns)
+    check(
+        wall_filter_ns["is_structural_wall"](FakeWall(1)) is True
+        and wall_filter_ns["is_structural_wall"](FakeWall(0)) is False
+        and wall_filter_ns["is_structural_wall"](FakeWall(None)) is False,
+        "Structure Wall collector accepts only Structural-flag walls"
+    )
+
+    class FakeParameterItem(object):
+        def __init__(self, name):
+            self.Name = name
+
+    class FakeDefinition(object):
+        def __init__(self, name):
+            self.Name = name
+
+    class FakeParameter(object):
+        def __init__(self, name):
+            self.Definition = FakeDefinition(name)
+
+    class FakeParameterElement(object):
+        Parameters = [FakeParameter("Mark")]
+
+    namespace["ParameterItem"] = FakeParameterItem
+    wall_available = namespace["get_parameters"](
+        [FakeParameterElement()],
+        ("Qty: Thickness (m)", "Qty: Count")
+    )
+    wall_available_names = [item.Name for item in wall_available]
+    check(
+        "Mark" in wall_available_names
+        and "Qty: Thickness (m)" in wall_available_names
+        and "Qty: Count" in wall_available_names,
+        "Structure Wall Available list includes calculated Thickness and Count"
+    )
+
+    with io.open(UI_PATH, "r", encoding="utf-8-sig") as ui_handle:
+        ui_text = ui_handle.read()
+    try:
+        minidom.parseString(ui_text.encode("utf-8"))
+        ui_valid = True
+    except Exception:
+        ui_valid = False
+    required_wall_controls = (
+        "StructureWallSearch", "StructureWallAvailable",
+        "StructureWallSelected", "StructureWallAdd",
+        "StructureWallRemove", "StructureWallUp", "StructureWallDown",
+        "StructureWallTop", "StructureWallBottom"
+    )
+    check(
+        ui_valid
+        and 'Header="Structure Wall"' in ui_text
+        and all(name in ui_text for name in required_wall_controls),
+        "Structure Wall XAML tab is valid and exposes every wired control"
+    )
+
+    # -----------------------------------------------------------------
     # v1.8.10 centralized RCC classification and routing regression.
     # This is the production acceptance matrix: both physical categories
     # can route to either logical sheet, codes use strict boundaries,
@@ -1543,6 +1754,7 @@ def main():
         "classify_rcc_element",
         "build_logical_rcc_collections",
         "validate_classification_audit",
+        "classification_audit_has_findings",
     ):
         block, _ = extract_from_sources(texts, classifier_name)
         exec(block, routing_ns)
@@ -1717,6 +1929,12 @@ def main():
             audit_summary
         )
     )
+    check(
+        not routing_ns["classification_audit_has_findings"](
+            mixed["audit"]
+        ),
+        "Healthy classification audit stays silent"
+    )
 
     duplicate = FakeElement("F1", "Floors", element_id=9999)
     duplicate_route = routing_ns["build_logical_rcc_collections"](
@@ -1727,6 +1945,21 @@ def main():
         and duplicate_route["audit"]["source_duplicate_ids"] == ["9999"]
         and not duplicate_route["audit"]["destination_duplicate_ids"],
         "Duplicate source ElementId is reported and exported exactly once"
+    )
+    check(
+        routing_ns["classification_audit_has_findings"](
+            duplicate_route["audit"]
+        ),
+        "Classification audit emits diagnostics when findings exist"
+    )
+
+    engine_guard_block, _ = extract_from_sources(
+        texts, "_warn_if_not_cp3123"
+    )
+    check(
+        "get_output" not in engine_guard_block
+        and "not is_cp3123 and not is_ironpython" in engine_guard_block,
+        "Known CP3123/IP27 engines do not force an output popup"
     )
 
     print("")

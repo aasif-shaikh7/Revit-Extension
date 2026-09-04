@@ -42,7 +42,7 @@
                     Style="{DynamicResource BrandHeaderText}"/>
 
                 <TextBlock
-                    Text="Structural Bill of Quantities — pick the parameters to export for Beam, Column, Slab and Foundation."
+                    Text="Structural Bill of Quantities — pick parameters for Beam, Column, Structure Wall, Slab and Foundation."
                     Style="{DynamicResource BrandBodyText}"
                     Margin="0,5,0,0"/>
 
@@ -317,6 +317,126 @@
                                 Background="{DynamicResource SurfaceBrush}"
                                 Foreground="{DynamicResource TextPrimaryBrush}"
                                 BorderBrush="{DynamicResource BorderBrush2}"/>
+
+                    </GroupBox>
+
+                </Grid>
+
+            </TabItem>
+
+
+            <!-- ================================================= -->
+            <!-- STRUCTURE WALL -->
+            <!-- ================================================= -->
+
+            <TabItem Header="Structure Wall">
+
+                <Grid Margin="10">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <GroupBox
+                        Grid.Column="0"
+                        Header="Available Parameters"
+                        Margin="0,0,8,0">
+
+                        <Grid>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="46"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox
+                                x:Name="StructureWallSearch"
+                                Grid.Row="0"
+                                Margin="5"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                Style="{DynamicResource BrandTextBox}"/>
+
+                            <ListBox
+                                x:Name="StructureWallAvailable"
+                                Grid.Row="1"
+                                Margin="5"
+                                SelectionMode="Extended"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+
+                        </Grid>
+
+                    </GroupBox>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Margin="8">
+
+                        <Button
+                            x:Name="StructureWallAdd"
+                            Content="Add &#x2192;"
+                            Height="38"
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
+
+                        <Button
+                            x:Name="StructureWallRemove"
+                            Content="&#x2190; Remove"
+                            Height="38"
+                            Margin="0,5"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
+
+                        <Separator Margin="0,8"/>
+
+                        <Button
+                            x:Name="StructureWallUp"
+                            Content="&#x2191; Up"
+                            Height="38"
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
+
+                        <Button
+                            x:Name="StructureWallDown"
+                            Content="&#x2193; Down"
+                            Height="38"
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
+
+                        <Button
+                            x:Name="StructureWallTop"
+                            Content="&#x21E7; Top"
+                            Height="38"
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
+
+                        <Button
+                            x:Name="StructureWallBottom"
+                            Content="&#x21E9; Bottom"
+                            Height="38"
+                            Margin="0,4"
+                            Style="{DynamicResource BrandSecondaryButton}"/>
+
+                    </StackPanel>
+
+                    <GroupBox
+                        Grid.Column="2"
+                        Header="Selected / Export Parameters"
+                        Margin="8,0,0,0">
+
+                        <ListBox
+                            x:Name="StructureWallSelected"
+                            Margin="5"
+                            SelectionMode="Extended"
+                            DisplayMemberPath="Name"
+                            Background="{DynamicResource SurfaceBrush}"
+                            Foreground="{DynamicResource TextPrimaryBrush}"
+                            BorderBrush="{DynamicResource BorderBrush2}"/>
 
                     </GroupBox>
 

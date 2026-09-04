@@ -979,14 +979,60 @@ Unknowns remain under `Other`. A pre-export audit reconciles counts, reports sou
 duplicates and unclassified rows, logs detailed decisions, and blocks inconsistent export.
 
 **How it is known.** `python -m py_compile` passes on the harness, pushbutton and five engine
-modules. The
-full workbook harness plus Category A/B/mixed routing matrices, strict-code negatives, Chajja,
-reliable project-parameter identities, duplicate-ID and reconciliation tests ends
-`RESULT: all checks passed`. **Live Revit verification
-is still pending**, so T-08 remains in `todo-list.md` as `testing`.
+modules. The full workbook harness plus Category A/B/mixed routing matrices, strict-code negatives,
+Chajja, reliable project-parameter identities, duplicate-ID and reconciliation tests ends
+`RESULT: all checks passed`. **The project owner confirmed the Slab/Foundation classification live
+in Revit 2025 on 2026-09-03**, so T-08 is closed.
 
 **Repository cleanup.** Thirteen untracked diagnostic/readback files and four generated
 `__pycache__` directories were purged; root scratch patterns were added to `.gitignore`.
+
+---
+
+## v1.9.0 — Structure Wall category — code complete, live QA pending
+
+**Asked.** Add a Structure Wall quantity tab before starting P4, after Slab/Foundation routing was
+confirmed correct.
+
+**What was built.** A fifth `Structure Wall` tab and export category now collects only `OST_Walls`
+whose Revit Structural flag is enabled. It has independent parameter selection/search/settings and
+flows through classic and site workbooks, BOQ Summary, Level/Grade summaries and Costing. Wall
+quantities resolve Length, Height and Thickness. Formwork uses gross two-face contact area `2LH`;
+openings and intersections are not deducted in this slice. Excel formula generation now safely
+quotes sheet names containing spaces, including `'Structure Wall'!` references.
+
+**How it is known.** `python -m py_compile` passes for the pushbutton, harness and five engines.
+`python test_xlsx_writer.py` ends `RESULT: all checks passed`, including structural-flag filtering,
+XAML controls, dimensions, shuttering, workbook routes/order and all prior routing regressions.
+Live Revit 2025 verification remains in `todo-list.md` as T-09.
+
+---
+
+## v1.9.2 — Structure Wall selectable quantities + Excel routing — **done**
+
+**Built.** `Qty: Thickness (m)` and `Qty: Count` are selectable calculated fields in the Structure
+Wall tab. Site-format export now uses the authoritative per-category Selected list, so both columns
+reach the Structure Wall worksheet without exposing unrelated automatic quantities. Classic export,
+gross `2LH` shuttering and all existing category routes remain intact.
+
+**How it is known.** Compilation and the complete XLSX/routing harness pass. The project owner
+confirmed the corrected Structure Wall Excel output live in Revit 2025 on **2026-09-03**. P3.5 / T-09
+is closed; P4 Rebar Quantity Engine is next.
+
+**Cost / limits.** Wall formwork remains gross two-face area; openings and intersections are not
+deducted in this slice.
+
+---
+
+## v1.9.3 — Healthy-run output popup removed — **done**
+
+**Built.** Known CP3123/IP27 runs and clean classification audits are silent. Detailed per-element
+routing output remains automatic only when an audit is invalid or contains duplicates,
+unclassified elements or controlled `Other` routes.
+
+**How it is known.** The complete harness passes, including clean-audit silence and anomaly-output
+contracts. The project owner confirmed in Revit 2025 that the unwanted output popup no longer
+appears on **2026-09-03**. T-10 and P3.5 are closed; P4 is next.
 
 ---
 
