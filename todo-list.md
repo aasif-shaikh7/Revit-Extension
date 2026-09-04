@@ -44,8 +44,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P2 | Structural BOQ Grouping (level + concrete grade done) | 4/4/2/5 | **done** (`v1.6.0`) |
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
 | P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
-| P4 | Rebar Quantity Engine | 5/5/3/3 | `testing` (`v1.10.1`) |
-| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `todo` |
+| P4 | Rebar Quantity Engine | 5/5/3/3 | `testing` (`v1.10.2`) |
+| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.11.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | `todo` |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
@@ -62,7 +62,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-### P4-01 — Rebar Quantity Engine first slice — `testing` (`v1.10.1`)
+### P4-01 — Rebar Quantity Engine first slice — `testing` (`v1.10.2`)
 
 **Built:** a dedicated Rebar tab collects `OST_Rebar`, discovers raw Revit parameters and writes a
 Rebar sheet in Classic and Site formats. Automatic fields are Bar Mark, Diameter, Shape, included
@@ -76,11 +76,30 @@ be moved into Selected / Export. Costing uses Total Weight first when a rate fie
 columns without formwork, costing integration, UI controls, `OST_Rebar` wiring and every prior
 regression pass. Syntax compilation passes.
 
-**Remaining live QA:** reload `v1.10.1` in Revit 2025 and check one single bar plus one rebar set.
+**Remaining live QA:** reload `v1.10.2` in Revit 2025 and check one single bar plus one rebar set.
 Confirm Diameter, Quantity, Bar Length, Total Length, Host ID/category, Level and Total Weight against
 a native Revit rebar schedule. Confirm Rebar has no L/W/H or SHUTTERING columns in Site format.
 Variable-length/free-form/fabric reinforcement remain outside this first slice until real-model data
-shows which additional API paths are required. P5 BBS does not start until P4 is live-confirmed.
+shows which additional API paths are required. The owner explicitly requested the P5 BBS slice from
+a successful real-project `v1.10.2` export while full P4 schedule comparison remains open.
+
+### P5-01 — Shape-aware BBS + diameter summary — `testing` (`v1.11.1`)
+
+**Built:** automatic A-H dimensions, Bend Diameter, start/end hooks and Cutting Length are read for
+each Rebar. Cutting Length intentionally uses Revit's shape-aware Bar Length instead of assuming one
+bend-deduction formula for L/C/stirrup/U-ring shapes. Classic and Site workbooks add `Rebar BBS` and
+`Rebar Summary`; compatible rows group by geometry/host/level and diameter totals report bars,
+length, kilograms and tonnes.
+
+The owner-exported `v1.11.0` workbook reconciled raw/detail, BBS and diameter totals exactly at
+11,903 bars, 25,439.37 m and 30,130.966 kg. Audit found every BBS Level blank and 26 grouped
+variable-length entries (280 bars) without an individual Bar Length. `v1.11.1` adds host-level
+fallback plus an explicit Average Bar Length / Length Status without fabricating a cutting length.
+
+**Remaining live QA:** reload `v1.11.1`, export the supplied BBS project and compare L-shape,
+C-shape, closed stirrup and hooked U-ring A-H/Cutting Length values with the native Revit schedule.
+Confirm Level now resolves from each host, variable sets are labelled correctly, both new sheets
+open without Excel repair and their quantity/weight totals still reconcile.
 
 ---
 

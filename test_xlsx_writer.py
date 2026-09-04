@@ -96,6 +96,10 @@ FUNCTION_NAMES = [
     "_positive_number",
     "rebar_unit_weight_kg_per_m",
     "build_rebar_quantity_values",
+    "_rebar_number",
+    "_rounded_total",
+    "build_rebar_bbs_table",
+    "build_rebar_diameter_summary_table",
     "_site_sort_key",
     "_sort_site_rows",
     "_site_cell_value",
@@ -104,6 +108,7 @@ FUNCTION_NAMES = [
     "_site_desc_text",
     "build_site_detail_sheet",
     "build_site_summary_sheet",
+    "build_site_tabular_sheet",
     "write_site_xlsx",
     "_finish_site_sheet",
     "enforce_uniform_grid_borders",
@@ -326,11 +331,16 @@ def main():
                 "Rebar: Shape": "M_00",
                 "Rebar: Quantity": 4,
                 "Rebar: Bar Length (m)": 3.0,
+                "Rebar: Cutting Length (m)": 3.0,
                 "Rebar: Total Length (m)": 12.0,
                 "Rebar: Unit Weight (kg/m)": 0.8889,
                 "Rebar: Total Weight (kg)": 10.667,
                 "Rebar: Host Element ID": "200",
-                "Rebar: Host Category": "Structural Columns"
+                "Rebar: Host Category": "Structural Columns",
+                "Rebar: A (mm)": 3000.0,
+                "Rebar: Bend Diameter (mm)": 48.0,
+                "Rebar: Hook at Start": "",
+                "Rebar: Hook at End": ""
             }
         ]
     }
@@ -451,6 +461,26 @@ def main():
             and "Rebar: Total Weight (kg)" in rebar_table[0]
             and "Rebar: Host Element ID" in rebar_table[0],
             "P4 Rebar detail sheet contains core quantity and host columns"
+        )
+
+        rebar_bbs_table = sheet_rows["Rebar BBS"]
+        rebar_summary_table = sheet_rows["Rebar Summary"]
+        check(
+            "A (mm)" in rebar_bbs_table[0]
+            and "Cutting Length (m)" in rebar_bbs_table[0]
+            and rebar_bbs_table[1][
+                rebar_bbs_table[0].index("A (mm)")
+            ] == 3000.0
+            and rebar_bbs_table[1][
+                rebar_bbs_table[0].index("Cutting Length (m)")
+            ] == 3.0,
+            "P5 BBS preserves A-H geometry and Revit cutting length"
+        )
+        check(
+            rebar_summary_table[1] == [
+                12.0, 4, 12.0, 0.8889, 10.667, 0.0107
+            ],
+            "P5 diameter summary aggregates count, length, kg and tonnes"
         )
 
         check(
@@ -762,6 +792,59 @@ def main():
             and rebar_values["Total Length (m)"] == 12.0
             and rebar_values["Total Weight (kg)"] == 10.667,
             "P4 Rebar d^2/162 unit weight and total weight calculation"
+        )
+
+        grouped_bbs = namespace["build_rebar_bbs_table"]([
+            {
+                "Rebar: Bar Mark": "L1", "Rebar: Shape": "L SHAPE",
+                "Rebar: Diameter (mm)": 20, "Rebar: A (mm)": "150 mm",
+                "Rebar: B (mm)": "8408 mm",
+                "Rebar: Cutting Length (m)": 8.5162,
+                "Rebar: Quantity": 2, "Rebar: Total Length (m)": 17.0324,
+                "Rebar: Unit Weight (kg/m)": 2.4691,
+                "Rebar: Total Weight (kg)": 42.056,
+                "Rebar: Host Element ID": "10", "Level": "Level 1"
+            },
+            {
+                "Rebar: Bar Mark": "L1", "Rebar: Shape": "L SHAPE",
+                "Rebar: Diameter (mm)": 20, "Rebar: A (mm)": 150,
+                "Rebar: B (mm)": 8408,
+                "Rebar: Cutting Length (m)": 8.5162,
+                "Rebar: Quantity": 3, "Rebar: Total Length (m)": 25.5486,
+                "Rebar: Unit Weight (kg/m)": 2.4691,
+                "Rebar: Total Weight (kg)": 63.084,
+                "Rebar: Host Element ID": "10", "Level": "Level 1"
+            }
+        ])
+        grouped_headers = grouped_bbs[0]
+        check(
+            len(grouped_bbs) == 2
+            and grouped_bbs[1][grouped_headers.index("A (mm)")] == 150.0
+            and grouped_bbs[1][grouped_headers.index("Quantity")] == 5
+            and grouped_bbs[1][grouped_headers.index("Total Length (m)")] == 42.581,
+            "P5 BBS groups matching shapes and parses Revit mm display text"
+        )
+        variable_bbs = namespace["build_rebar_bbs_table"]([
+            {
+                "Rebar: Bar Mark": "V1", "Rebar: Shape": "L SHAPE",
+                "Rebar: Diameter (mm)": 20, "Rebar: A (mm)": 400,
+                "Rebar: Quantity": 4, "Rebar: Total Length (m)": 14.5,
+                "Rebar: Unit Weight (kg/m)": 2.4691,
+                "Rebar: Total Weight (kg)": 35.801
+            }
+        ])
+        variable_headers = variable_bbs[0]
+        check(
+            variable_bbs[1][
+                variable_headers.index("Cutting Length (m)")
+            ] == ""
+            and variable_bbs[1][
+                variable_headers.index("Average Bar Length (m)")
+            ] == 3.625
+            and variable_bbs[1][
+                variable_headers.index("Length Status")
+            ] == "Variable set / average only",
+            "P5 variable sets expose an average without inventing a cutting length"
         )
 
         check(
@@ -1216,7 +1299,8 @@ def main():
 
         expected_order = [
             "Summary", "Beam", "Column", "Structure Wall", "Foundation",
-            "Rebar", "BOQ Summary", "BOQ by Level", "BOQ by Grade", "Costing"
+            "Rebar", "Rebar Summary", "Rebar BBS", "BOQ Summary",
+            "BOQ by Level", "BOQ by Grade", "Costing"
         ]
 
         check(
@@ -1387,11 +1471,16 @@ def main():
                 "Rebar: Shape": "M_00",
                 "Rebar: Quantity": 4,
                 "Rebar: Bar Length (m)": 3.0,
+                "Rebar: Cutting Length (m)": 3.0,
                 "Rebar: Total Length (m)": 12.0,
                 "Rebar: Unit Weight (kg/m)": 0.8889,
                 "Rebar: Total Weight (kg)": 10.667,
                 "Rebar: Host Element ID": "200",
-                "Rebar: Host Category": "Structural Columns"
+                "Rebar: Host Category": "Structural Columns",
+                "Rebar: A (mm)": 3000.0,
+                "Rebar: Bend Diameter (mm)": 48.0,
+                "Rebar: Hook at Start": "",
+                "Rebar: Hook at End": ""
             }
         ]
     }
@@ -1442,7 +1531,10 @@ def main():
         )
 
         check(
-            sheet_order_site == ["Summary", "Beam", "Structure Wall", "Rebar"],
+            sheet_order_site == [
+                "Summary", "Beam", "Structure Wall", "Rebar",
+                "Rebar Summary", "Rebar BBS"
+            ],
             "Site workbook order: Summary then populated categories "
             "(got {})".format(sheet_order_site)
         )
@@ -1516,6 +1608,28 @@ def main():
             and ">10.667<" in site_rebar_xml
             and "SHUTTERING (SQM)" not in site_rebar_xml,
             "P4 Site Rebar sheet exports Level/weight fields without formwork columns"
+        )
+
+        site_rebar_summary_xml = site_archive.read(
+            "xl/worksheets/sheet5.xml"
+        ).decode("utf-8")
+        site_rebar_bbs_xml = site_archive.read(
+            "xl/worksheets/sheet6.xml"
+        ).decode("utf-8")
+        check(
+            ">REBAR DIAMETER SUMMARY<" in site_rebar_summary_xml
+            and ">TOTAL WEIGHT (TON)<" in site_rebar_summary_xml
+            and ">0.0107<" in site_rebar_summary_xml,
+            "P5 Site workbook includes diameter-wise steel summary"
+        )
+        check(
+            ">REBAR BENDING SCHEDULE<" in site_rebar_bbs_xml
+            and ">A (MM)<" in site_rebar_bbs_xml
+            and ">CUTTING LENGTH (M)<" in site_rebar_bbs_xml
+            and ">LENGTH STATUS<" in site_rebar_bbs_xml
+            and (">3000<" in site_rebar_bbs_xml
+                 or ">3000.0<" in site_rebar_bbs_xml),
+            "P5 Site workbook includes shape dimensions and cutting length"
         )
 
         site_styles_xml = site_archive.read(
@@ -1783,11 +1897,17 @@ def main():
         "Rebar: Shape",
         "Rebar: Quantity",
         "Rebar: Bar Length (m)",
+        "Rebar: Cutting Length (m)",
         "Rebar: Total Length (m)",
         "Rebar: Unit Weight (kg/m)",
         "Rebar: Total Weight (kg)",
         "Rebar: Host Element ID",
-        "Rebar: Host Category"
+        "Rebar: Host Category",
+        "Rebar: A (mm)", "Rebar: B (mm)", "Rebar: C (mm)",
+        "Rebar: D (mm)", "Rebar: E (mm)", "Rebar: F (mm)",
+        "Rebar: G (mm)", "Rebar: H (mm)",
+        "Rebar: Bend Diameter (mm)",
+        "Rebar: Hook at Start", "Rebar: Hook at End"
     )
     rebar_available = namespace["get_parameters"](
         [FakeParameterElement()],
@@ -1835,6 +1955,55 @@ def main():
         "Rebar Available list includes every automatic P4 export column"
     )
 
+    class FakeLevelBuiltIns(object):
+        INSTANCE_REFERENCE_LEVEL_PARAM = "reference_level"
+        LEVEL_PARAM = "level"
+        SCHEDULE_LEVEL_PARAM = "schedule_level"
+
+    class FakeLevelStorage(object):
+        ElementId = "ElementId"
+
+    class FakeLevelDB(object):
+        BuiltInParameter = FakeLevelBuiltIns
+        StorageType = FakeLevelStorage
+
+    class FakeLevelId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeLevelElement(object):
+        def __init__(self, element_id, level_id=-1, host_id=-1, name=""):
+            self.Id = FakeLevelId(element_id)
+            self.LevelId = FakeLevelId(level_id)
+            self._host_id = FakeLevelId(host_id)
+            self.Name = name
+
+        def get_Parameter(self, _parameter_id):
+            return None
+
+        def GetHostId(self):
+            return self._host_id
+
+    level = FakeLevelElement(100, name="Level 1")
+    host = FakeLevelElement(200, level_id=100)
+    hosted_rebar = FakeLevelElement(400, host_id=200)
+
+    class FakeLevelDoc(object):
+        def GetElement(self, element_id):
+            return {
+                100: level,
+                200: host,
+                400: hosted_rebar,
+            }.get(element_id.IntegerValue)
+
+    level_ns = {"DB": FakeLevelDB, "doc": FakeLevelDoc()}
+    level_block, _ = extract_from_sources(texts, "get_element_level")
+    exec(level_block, level_ns)
+    check(
+        level_ns["get_element_level"](hosted_rebar) == "Level 1",
+        "P5 hosted Rebar inherits Level from its Beam/Column/Wall host"
+    )
+
     # -----------------------------------------------------------------
     # v1.8.10 centralized RCC classification and routing regression.
     # This is the production acceptance matrix: both physical categories
@@ -1871,6 +2040,7 @@ def main():
         "build_logical_rcc_collections",
         "validate_classification_audit",
         "classification_audit_has_findings",
+        "classification_audit_detail_results",
     ):
         block, _ = extract_from_sources(texts, classifier_name)
         exec(block, routing_ns)
@@ -2067,6 +2237,31 @@ def main():
             duplicate_route["audit"]
         ),
         "Classification audit emits diagnostics when findings exist"
+    )
+    duplicate_details = routing_ns[
+        "classification_audit_detail_results"
+    ](duplicate_route["audit"])
+    check(
+        len(duplicate_details) == 1
+        and duplicate_details[0]["element_id"] == "9999",
+        "Classification diagnostics include only the duplicate finding row"
+    )
+
+    one_other = routing_ns["build_logical_rcc_collections"](
+        [
+            FakeElement("S1", "Floors"),
+            FakeElement("UNMAPPED", "Floors"),
+            FakeElement("S2", "Floors"),
+        ],
+        [],
+    )
+    other_details = routing_ns[
+        "classification_audit_detail_results"
+    ](one_other["audit"])
+    check(
+        len(other_details) == 1
+        and other_details[0]["subtype"] == "Other",
+        "Classification diagnostics exclude healthy rows around an Other route"
     )
 
     engine_guard_block, _ = extract_from_sources(

@@ -1747,6 +1747,32 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 
         sheet_rows[sheet_name] = table
 
+    # P5: keep raw Rebar rows intact and add two review-ready schedules.
+    # Revit Bar Length is the cutting-length authority; the BBS displays
+    # A-H, bend diameter and hooks so every shape remains auditable.
+    rebar_source_rows = data_result.get("Rebar") or []
+    if rebar_source_rows:
+        from rebar_engine import (
+            build_rebar_bbs_table,
+            build_rebar_diameter_summary_table,
+        )
+
+        rebar_summary_table = build_rebar_diameter_summary_table(
+            rebar_source_rows
+        )
+        if len(rebar_summary_table) > 1:
+            sheet_names.append("Rebar Summary")
+            sheet_rows["Rebar Summary"] = rebar_summary_table
+            quantity_column_map["Rebar Summary"] = [1, 2, 3, 4, 5, 6]
+
+        rebar_bbs_table = build_rebar_bbs_table(rebar_source_rows)
+        if len(rebar_bbs_table) > 1:
+            sheet_names.append("Rebar BBS")
+            sheet_rows["Rebar BBS"] = rebar_bbs_table
+            quantity_column_map["Rebar BBS"] = (
+                list(range(3, 13)) + [15, 16] + list(range(18, 22))
+            )
+
     # Build the BOQ Summary sheet from the recorded category totals.
     # Each cell references its category TOTAL row directly, so Excel
     # keeps every figure in sync with the underlying element sheets.
@@ -2474,6 +2500,39 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name,
     return (out_rows, meta)
 
 
+def build_site_tabular_sheet(project_name, title, plain_table):
+    """Wrap a plain summary/BBS table in the site workbook title bands."""
+    table = list(plain_table or [])
+    if not table:
+        return ([], [])
+    headers = list(table[0])
+    out_rows = [
+        [str(project_name or "")],
+        ["RCC - REINFORCEMENT BBS"],
+        [str(title or "")],
+        [""],
+        [("MERGE_V", str(header).upper()) for header in headers],
+        ["" for _header in headers],
+    ]
+    for source_row in table[1:]:
+        out_rows.append(list(source_row))
+
+    widths = []
+    for header in headers:
+        header_text = str(header)
+        if header_text in ("Shape", "Host Category"):
+            widths.append(24)
+        elif header_text in ("Hook at Start", "Hook at End"):
+            widths.append(22)
+        elif header_text == "Level":
+            widths.append(18)
+        elif header_text == "Length Status":
+            widths.append(28)
+        else:
+            widths.append(14)
+    return (out_rows, widths)
+
+
 SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 
 
@@ -2545,6 +2604,36 @@ def write_site_xlsx(file_path, data_result, project_name="",
         }
 
         site_detail_meta[category_name] = meta
+
+    rebar_source_rows = data_result.get("Rebar") or []
+    if rebar_source_rows:
+        from rebar_engine import (
+            build_rebar_bbs_table,
+            build_rebar_diameter_summary_table,
+        )
+        p5_tables = (
+            (
+                "Rebar Summary",
+                "REBAR DIAMETER SUMMARY",
+                build_rebar_diameter_summary_table(rebar_source_rows),
+            ),
+            (
+                "Rebar BBS",
+                "REBAR BENDING SCHEDULE",
+                build_rebar_bbs_table(rebar_source_rows),
+            ),
+        )
+        for p5_sheet_name, p5_title, p5_plain_table in p5_tables:
+            if len(p5_plain_table) <= 1:
+                continue
+            p5_table, p5_widths = build_site_tabular_sheet(
+                project_name,
+                p5_title,
+                p5_plain_table
+            )
+            sheet_names.append(p5_sheet_name)
+            sheet_rows[p5_sheet_name] = p5_table
+            sheet_widths[p5_sheet_name] = p5_widths
 
     summary_table, summary_meta = build_site_summary_sheet(
         data_result,

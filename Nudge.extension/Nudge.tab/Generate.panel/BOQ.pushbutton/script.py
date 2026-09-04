@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.10.1'
+__version__ = '1.11.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.10.1'
+SCRIPT_VERSION = '1.11.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -74,11 +74,23 @@ REBAR_DERIVED_PARAMETERS = (
     "Rebar: Shape",
     "Rebar: Quantity",
     "Rebar: Bar Length (m)",
+    "Rebar: Cutting Length (m)",
     "Rebar: Total Length (m)",
     "Rebar: Unit Weight (kg/m)",
     "Rebar: Total Weight (kg)",
     "Rebar: Host Element ID",
-    "Rebar: Host Category"
+    "Rebar: Host Category",
+    "Rebar: A (mm)",
+    "Rebar: B (mm)",
+    "Rebar: C (mm)",
+    "Rebar: D (mm)",
+    "Rebar: E (mm)",
+    "Rebar: F (mm)",
+    "Rebar: G (mm)",
+    "Rebar: H (mm)",
+    "Rebar: Bend Diameter (mm)",
+    "Rebar: Hook at Start",
+    "Rebar: Hook at End"
 )
 
 # ------------------------------------------------------------
@@ -648,9 +660,19 @@ def build_parameter_metadata():
                     "Rebar: Diameter (mm)",
                     "Rebar: Quantity",
                     "Rebar: Bar Length (m)",
+                    "Rebar: Cutting Length (m)",
                     "Rebar: Total Length (m)",
                     "Rebar: Unit Weight (kg/m)",
-                    "Rebar: Total Weight (kg)"
+                    "Rebar: Total Weight (kg)",
+                    "Rebar: A (mm)",
+                    "Rebar: B (mm)",
+                    "Rebar: C (mm)",
+                    "Rebar: D (mm)",
+                    "Rebar: E (mm)",
+                    "Rebar: F (mm)",
+                    "Rebar: G (mm)",
+                    "Rebar: H (mm)",
+                    "Rebar: Bend Diameter (mm)"
                 )
                 metadata_result[element_name].append(
                     {
@@ -1276,8 +1298,33 @@ def _rebar_integer(element, enum_name, property_name, lookup_name):
         return 1
 
 
+def _rebar_text(element, lookup_names):
+    """Read the first non-empty Rebar instance/type display value."""
+    candidates = [element]
+    try:
+        type_id = element.GetTypeId()
+        if type_id is not None and not type_id.Equals(DB.ElementId.InvalidElementId):
+            type_element = doc.GetElement(type_id)
+            if type_element is not None:
+                candidates.append(type_element)
+    except:
+        pass
+
+    for candidate in candidates:
+        for lookup_name in lookup_names:
+            try:
+                value = safe_parameter_value(
+                    candidate.LookupParameter(lookup_name)
+                )
+            except:
+                value = ""
+            if value:
+                return value
+    return ""
+
+
 def get_rebar_quantities(element):
-    """P4 Revit adapter: extract one Rebar/set into stable metric fields."""
+    """P4/P5 adapter: quantity plus shape dimensions for an auditable BBS."""
     diameter_m = _rebar_double(
         element,
         ("REBAR_INSTANCE_BAR_DIAMETER", "REBAR_BAR_DIAMETER"),
@@ -1326,6 +1373,43 @@ def get_rebar_quantities(element):
         total_length_m
     )
 
+    shape_dimensions_mm = {}
+    for dimension_name in tuple("ABCDEFGH"):
+        dimension_m = _rebar_double(
+            element,
+            (),
+            (dimension_name,),
+            "length"
+        )
+        try:
+            shape_dimensions_mm[dimension_name] = round(
+                float(dimension_m) * 1000.0,
+                3
+            )
+        except:
+            shape_dimensions_mm[dimension_name] = ""
+
+    bend_diameter_m = _rebar_double(
+        element,
+        (),
+        ("Bend Diameter",),
+        "length"
+    )
+    bend_diameter_mm = ""
+    try:
+        bend_diameter_mm = round(float(bend_diameter_m) * 1000.0, 3)
+    except:
+        pass
+
+    hook_at_start = _rebar_text(
+        element,
+        ("Hook At Start", "Hook at Start")
+    )
+    hook_at_end = _rebar_text(
+        element,
+        ("Hook At End", "Hook at End")
+    )
+
     mark = ""
     try:
         mark = safe_text(element.ScheduleMark, "")
@@ -1366,11 +1450,23 @@ def get_rebar_quantities(element):
         ("Rebar: Shape", shape),
         ("Rebar: Quantity", calculated.get("Quantity", 1)),
         ("Rebar: Bar Length (m)", calculated.get("Bar Length (m)", "")),
+        ("Rebar: Cutting Length (m)", calculated.get("Bar Length (m)", "")),
         ("Rebar: Total Length (m)", calculated.get("Total Length (m)", "")),
         ("Rebar: Unit Weight (kg/m)", calculated.get("Unit Weight (kg/m)", "")),
         ("Rebar: Total Weight (kg)", calculated.get("Total Weight (kg)", "")),
         ("Rebar: Host Element ID", host_id_text),
         ("Rebar: Host Category", host_category),
+        ("Rebar: A (mm)", shape_dimensions_mm.get("A", "")),
+        ("Rebar: B (mm)", shape_dimensions_mm.get("B", "")),
+        ("Rebar: C (mm)", shape_dimensions_mm.get("C", "")),
+        ("Rebar: D (mm)", shape_dimensions_mm.get("D", "")),
+        ("Rebar: E (mm)", shape_dimensions_mm.get("E", "")),
+        ("Rebar: F (mm)", shape_dimensions_mm.get("F", "")),
+        ("Rebar: G (mm)", shape_dimensions_mm.get("G", "")),
+        ("Rebar: H (mm)", shape_dimensions_mm.get("H", "")),
+        ("Rebar: Bend Diameter (mm)", bend_diameter_mm),
+        ("Rebar: Hook at Start", hook_at_start),
+        ("Rebar: Hook at End", hook_at_end),
     ]
 
 
@@ -1437,6 +1533,19 @@ def get_element_level(element):
         level_element = doc.GetElement(element.LevelId)
         if level_element is not None and level_element.Name:
             return str(level_element.Name)
+    except:
+        pass
+
+    # Rebar commonly has no direct LevelId even though its Beam/Column/Wall
+    # host does. Resolve that host level for the BBS instead of exporting an
+    # entirely blank Level column. Guard against invalid/self host IDs.
+    try:
+        host_id = element.GetHostId()
+        if host_id is not None and host_id.IntegerValue != -1:
+            if host_id.IntegerValue != element.Id.IntegerValue:
+                host_element = doc.GetElement(host_id)
+                if host_element is not None:
+                    return get_element_level(host_element)
     except:
         pass
 
@@ -2472,6 +2581,47 @@ def classification_audit_has_findings(audit):
     )
 
 
+def classification_audit_detail_results(audit):
+    """Return only routing rows that explain an audit finding.
+
+    A project may contain thousands of correctly classified elements and only
+    one controlled ``Other`` route. Emitting every healthy row in that case
+    makes pyRevit's output window expensive enough to stall the export. Keep
+    the diagnostic trace focused on unclassified, Other, and duplicate rows.
+    """
+    if not audit:
+        return []
+
+    duplicate_ids = set(
+        safe_text(value, '') for value in (
+            list(audit.get('source_duplicate_ids', []))
+            + list(audit.get('destination_duplicate_ids', []))
+        )
+    )
+    finding_keys = set()
+
+    for result in (
+        list(audit.get('unclassified', []))
+        + list(audit.get('other', []))
+    ):
+        finding_keys.add(result.get('routing_key'))
+
+    details = []
+    seen = set()
+    for result in audit.get('results', []):
+        routing_key = result.get('routing_key')
+        element_id = safe_text(result.get('element_id', ''), '')
+        if routing_key not in finding_keys and element_id not in duplicate_ids:
+            continue
+        unique_key = routing_key or ('ElementId', element_id)
+        if unique_key in seen:
+            continue
+        seen.add(unique_key)
+        details.append(result)
+
+    return details
+
+
 def emit_classification_audit(audit, include_details=True):
     """Write counts and traceable per-element decisions to pyRevit output."""
     try:
@@ -2484,7 +2634,9 @@ def emit_classification_audit(audit, include_details=True):
             )
         )
         if include_details:
-            for result in audit.get('results', []):
+            detail_results = classification_audit_detail_results(audit)
+            detail_limit = 100
+            for result in detail_results[:detail_limit]:
                 values = [
                     result.get('element_id', 'N/A'),
                     result.get('source_category', ''),
@@ -2510,6 +2662,14 @@ def emit_classification_audit(audit, include_details=True):
                     'ITEM DES.={6} | CODE_UNIMONT={7} | Identity={8} | '
                     'Logical Type={9} | BOQ Sheet={10} | Reason={11}</span>'
                     .format(*escaped)
+                )
+            if len(detail_results) > detail_limit:
+                output.print_html(
+                    '<span style="color:#888">{0} additional finding rows '
+                    'omitted. Refine the model identities before retrying the '
+                    'audit.</span>'.format(
+                        len(detail_results) - detail_limit
+                    )
                 )
     except:
         pass
@@ -4625,14 +4785,14 @@ try:
                     routing_valid, routing_summary = (
                         validate_classification_audit(classification_audit)
                     )
-                    if classification_audit_has_findings(
+                    routing_has_findings = classification_audit_has_findings(
                         classification_audit
-                    ):
+                    )
+                    if not routing_valid:
                         emit_classification_audit(
                             classification_audit,
                             include_details=True
                         )
-                    if not routing_valid:
                         raise Exception(
                             "Slab/Foundation classification audit failed: "
                             + routing_summary
@@ -4821,7 +4981,7 @@ try:
                         list(sheet_rows.keys())
                     )
 
-                    forms.alert(
+                    completion_message = (
                         "Version: {} · RCC BOQ\n\n"
                         "Everything's exported — here's your workbook.\n\n"
                         "File: {}\n"
@@ -4837,7 +4997,15 @@ try:
                             non_empty_sheets,
                             quantity_columns,
                             sheets_listing
-                        ),
+                        )
+                    )
+                    if routing_has_findings:
+                        completion_message += (
+                            "\n\nRouting note: {}".format(routing_summary)
+                        )
+
+                    forms.alert(
+                        completion_message,
                         title="RCC BOQ - Excel Export"
                     )
 

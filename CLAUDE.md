@@ -85,7 +85,7 @@ Column→`OST_StructuralColumns`, Structure Wall→structural-only `OST_Walls`, 
 Foundation→`OST_StructuralFoundation`), plus a
 single logical classifier for slab/foundation subtypes. Both Floor and Structural Foundation raw
 collections can route to either logical sheet; code `v1.8.10` audits counts and duplicate IDs before
-export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. P4 `v1.10.1` adds
+export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. P4 `v1.10.2` adds
 `OST_Rebar` detail rows plus `d²/162` steel weight through `lib/rebar_engine.py`. The dependency-free
 engines live in `lib/`.
 

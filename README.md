@@ -101,6 +101,10 @@ dependencies imported into the pyRevit host.
   Mark, Diameter, Shape, Quantity, Bar Length, Total Length, Host ID/category, Level, Unit Weight
   and Total Weight. These automatic fields are also visible in Rebar's Available Parameters list.
   Steel unit weight uses the standard `d²/162 kg/m` rule.
+- **P5 shape-aware BBS.** `Rebar BBS` exports A-H dimensions, Bend Diameter, hooks and Revit's
+  authoritative Bar Length as Cutting Length, then aggregates Quantity/Length/Weight for matching
+  geometry and hosts. Variable sets expose Average Bar Length with an explicit status instead of
+  inventing a cutting length. `Rebar Summary` totals bars, length, kilograms and tonnes by diameter.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -289,6 +293,6 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** P1 quantity,
 P2 grouping and P3 formwork are complete; the owner confirmed `v1.8.10` Slab/Foundation routing in
-Revit 2025 on 2026-09-03. Structure Wall `v1.9.3` is live-confirmed. Version `v1.10.1` continues P4
-with a dedicated Rebar tab, quantity/host fields and `d²/162` weight calculation; the harness passes
-and live Revit 2025 verification is pending.
+Revit 2025 on 2026-09-03. Structure Wall `v1.9.3` is live-confirmed. Version `v1.11.1` adds the P5
+shape-aware Rebar BBS and diameter summary on top of the P4 quantity/weight engine; the harness
+passes and live Revit 2025 verification of the new sheets is pending.

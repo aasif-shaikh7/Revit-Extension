@@ -324,15 +324,18 @@ project.
 - **Phase 3 — Formwork Engine.** Dedicated, configurable per-category rules: Beam (bottom, sides,
   ends where applicable), Column (four sides), Slab (bottom, edge where applicable), Foundation
   (sides where applicable). Rules must be configurable — no one universal formula.
-- **Phase 4 — Rebar Quantity Engine (`v1.10.1` testing).** A dedicated `OST_Rebar` tab/sheet extracts
+- **Phase 4 — Rebar Quantity Engine (`v1.10.2` testing).** A dedicated `OST_Rebar` tab/sheet extracts
   Bar Mark, Diameter, Shape, Quantity, Bar Length, Total Length, Host Element/Category/ID and Level.
   All automatic fields are exposed in Rebar's Available Parameters list. The pure engine computes
   Unit Weight with `d²/162 kg/m` and Total Weight. Initial code/harness is
   complete; live comparison with a native Revit 2025 rebar schedule is required before closure.
-- **Phase 5 — Rebar Summary / BBS.** Diameter-wise summary (Diameter, Total Length, Total Weight,
-  Number of Bars, Total in Ton), then BBS (Bar Mark, Shape, Diameter, Quantity, A/B/C/D, Cutting
-  Length, Total Length, Unit Weight, Total Weight, Host, Level). High-value/high-complexity; only
-  after the Rebar Engine is stable.
+- **Phase 5 — Rebar Summary / BBS (`v1.11.1` testing).** Diameter-wise summary includes Diameter,
+  Number of Bars, Total Length, Unit Weight and Total Weight in kg/ton. The BBS includes Bar Mark,
+  Shape, Diameter, A-H, Bend Diameter, start/end hooks, Quantity, Cutting Length, Total Length,
+  Unit/Total Weight, Host and Level. Revit Bar Length is authoritative for cutting length because
+  its shape definition owns repeated segments, bend radii and hooks; no universal deduction is
+  guessed. Variable sets keep Cutting Length blank and expose a clearly labelled average; Rebar
+  Level falls back to its host. Code/harness are complete and live patch verification is pending.
 - **Phase 6 — Structural BOQ Assembly.** Configurable assemblies e.g. RCC Beam → Concrete,
   Reinforcement, Formwork, Binding Wire, Cover Blocks, Labour (similarly for columns, slabs,
   foundations), with support for future custom components.

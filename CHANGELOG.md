@@ -22,6 +22,46 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.11.1] - 2026-09-04
+
+### Fixed (harness + owner workbook audit)
+- Rebar Level now falls back to the host element's level when the Rebar itself has no direct level.
+- BBS rows with no Revit Bar Length are explicitly labelled `Variable set / average only`; they
+  retain blank Cutting Length and show `Total Length / Quantity` separately as Average Bar Length.
+  This prevents a varying set average from being misrepresented as a fabrication cutting length.
+- The owner's `v1.11.0` workbook reconciled exactly across raw Rebar, BBS and diameter summary:
+  11,903 bars, 25,439.37 m and 30,130.966 kg. It also exposed 26 grouped variable-length entries
+  (280 bars), which drove this patch. Live verification of the new level/status fields is pending.
+
+## [v1.11.0] - 2026-09-04
+
+### Added (harness)
+- Started P5 with automatic Rebar shape fields `A` through `H`, Bend Diameter, Hook at Start/End
+  and a dedicated Cutting Length field. Revit's shape-aware Bar Length remains the authoritative
+  cutting length; the exporter does not apply a guessed universal bend-deduction formula.
+- Added `Rebar BBS` in Classic and Site workbooks. Rows group compatible Bar Mark/shape/diameter/
+  dimensions/cutting-length/host/level records and aggregate Quantity, Total Length and Weight.
+- Added `Rebar Summary` with diameter-wise Number of Bars, Total Length, Unit Weight, Total Weight
+  in kilograms and tonnes.
+
+### Verification boundary
+- Python compilation and the complete XLSX regression harness pass. Real-project rows supplied by
+  the owner established that L/C/stirrup/U-ring shapes use different dimension repetition, hook and
+  bend rules. Live Revit 2025 export of the two new sheets remains pending.
+
+## [v1.10.2] - 2026-09-04
+
+### Fixed (harness)
+- Prevented a controlled Slab/Foundation `Other` route from dumping every correctly classified
+  project element into the pyRevit output window before the Save dialog.
+- Routing diagnostics now contain only the rows responsible for findings, capped at 100 details.
+- Non-blocking findings are summarized in the normal success message without opening pyRevit
+  output, so they cannot prevent or hide the file-save flow. Invalid audits still stop export with
+  focused diagnostics.
+
+### Verification boundary
+- Python compilation and the XLSX regression harness pass. Live Revit 2025 confirmation is pending.
+
 ## [v1.10.1] - 2026-09-03
 
 ### Fixed (harness)
