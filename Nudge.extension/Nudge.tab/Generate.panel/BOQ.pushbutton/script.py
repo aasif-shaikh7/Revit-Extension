@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.11.1'
+__version__ = '1.13.3'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.11.1'
+SCRIPT_VERSION = '1.13.3'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -78,6 +78,7 @@ REBAR_DERIVED_PARAMETERS = (
     "Rebar: Total Length (m)",
     "Rebar: Unit Weight (kg/m)",
     "Rebar: Total Weight (kg)",
+    "Rebar: Element ID",
     "Rebar: Host Element ID",
     "Rebar: Host Category",
     "Rebar: A (mm)",
@@ -180,7 +181,10 @@ from formwork_engine import (
 )
 
 # P4 pure calculation engine; Revit-bound reads remain below.
-from rebar_engine import build_rebar_quantity_values
+from rebar_engine import (
+    build_rebar_quantity_values,
+    normalize_rebar_dimension_mm,
+)
 
 
 def get_selection_ids():
@@ -565,6 +569,110 @@ def find_parameter_with_scope(element, parameter_name):
         None,
         "Unknown"
     )
+
+
+def build_element_parameter_context(element, type_cache=None):
+    """
+    Index instance/type parameters once for fast repeated export lookups.
+
+    Revit ParameterSet iteration crosses the Python/.NET boundary. Doing it
+    once per selected field is extremely expensive on large models, so the
+    export path builds one lowercase-name dictionary per instance and reuses
+    one dictionary per type. First-seen parameters preserve the old lookup
+    behavior when duplicate display names exist.
+    """
+    def build_index(candidate):
+        index = {}
+        if candidate is None:
+            return index
+        try:
+            parameters = candidate.Parameters
+        except:
+            parameters = []
+        for parameter in parameters:
+            try:
+                definition = parameter.Definition
+                name = str(definition.Name).lower() if definition else ""
+            except:
+                name = ""
+            if name and name not in index:
+                index[name] = parameter
+        return index
+
+    context = {
+        "instance": build_index(element),
+        "type": {},
+        "type_element": None
+    }
+    cache = type_cache if isinstance(type_cache, dict) else {}
+    type_key = None
+    type_element = None
+
+    try:
+        type_id = element.GetTypeId()
+        if (
+            type_id is not None
+            and not type_id.Equals(DB.ElementId.InvalidElementId)
+        ):
+            try:
+                type_key = int(type_id.IntegerValue)
+            except:
+                type_key = str(type_id)
+    except:
+        type_id = None
+
+    if type_key is not None and type_key in cache:
+        cached = cache[type_key]
+        context["type_element"] = cached.get("element")
+        context["type"] = cached.get("parameters", {})
+        return context
+
+    if type_id is not None:
+        try:
+            type_element = doc.GetElement(type_id)
+        except:
+            type_element = None
+
+    if type_element is None:
+        try:
+            type_element = element.Symbol
+        except:
+            type_element = None
+
+    type_index = build_index(type_element)
+    context["type_element"] = type_element
+    context["type"] = type_index
+
+    if type_key is not None:
+        cache[type_key] = {
+            "element": type_element,
+            "parameters": type_index
+        }
+
+    return context
+
+
+def find_parameter_in_context(parameter_context, parameter_name):
+    """Return an indexed parameter with Instance-before-Type precedence."""
+    try:
+        key = str(parameter_name or "").lower()
+    except:
+        key = ""
+    if not key or not isinstance(parameter_context, dict):
+        return None, "Unknown"
+    try:
+        parameter = parameter_context.get("instance", {}).get(key)
+    except:
+        parameter = None
+    if parameter is not None:
+        return parameter, "Instance"
+    try:
+        parameter = parameter_context.get("type", {}).get(key)
+    except:
+        parameter = None
+    if parameter is not None:
+        return parameter, "Type"
+    return None, "Unknown"
 
 
 def build_parameter_metadata():
@@ -965,15 +1073,21 @@ from quantity_engine import (
 )
 
 
-def read_metric_parameter(element, name_hint):
+def read_metric_parameter(
+        element,
+        name_hint,
+        built_in_parameter_names=(),
+        parameter_context=None):
     """
-    Read a single metric (metres) double parameter by name from an element.
+    Read one metric (metres) double parameter from an element or its type.
 
     This is a Parameter Quantity (a dimension the user set in the model),
     unlike the geometry-computed Volume / Area / Length. Searches the
-    element's own parameters and its type parameters via LookupParameter,
-    then converts the value to metres. Returns "" when absent so the
-    column is pruned from the sheet.
+    Built-in identifiers are tried first when supplied, then the ordered
+    name aliases are checked exactly and case-insensitively. Built-in enum
+    members are obtained with getattr so older/different Revit APIs safely
+    skip identifiers they do not expose. Returns "" when absent so the
+    caller can fail closed instead of substituting unrelated geometry.
     """
     def has_metric_value(param):
         try:
@@ -987,33 +1101,103 @@ def read_metric_parameter(element, name_hint):
 
     param = None
 
+    if isinstance(name_hint, (list, tuple)):
+        name_hints = [str(name) for name in name_hint if name]
+    else:
+        name_hints = [str(name_hint)] if name_hint else []
+
     candidates = [element]
 
-    try:
-        candidates.append(element.Symbol)
-    except:
-        pass
-    try:
-        candidates.append(element.get_Type())
-    except:
-        pass
-    try:
-        type_id = element.GetTypeId()
-        if type_id is not None and not type_id.Equals(
-            DB.ElementId.InvalidElementId
-        ):
-            candidates.append(doc.GetElement(type_id))
-    except:
-        pass
-
-    for candidate in candidates:
+    if parameter_context is not None:
         try:
-            candidate_param = candidate.LookupParameter(name_hint)
+            type_element = parameter_context.get("type_element")
+            if type_element is not None:
+                candidates.append(type_element)
         except:
-            candidate_param = None
-        if has_metric_value(candidate_param):
-            param = candidate_param
+            pass
+    else:
+        try:
+            candidates.append(element.Symbol)
+        except:
+            pass
+        try:
+            type_id = element.GetTypeId()
+            if type_id is not None and not type_id.Equals(
+                DB.ElementId.InvalidElementId
+            ):
+                candidates.append(doc.GetElement(type_id))
+        except:
+            pass
+
+    # Prefer stable, language-independent Revit built-in identifiers.
+    for built_in_name in built_in_parameter_names or ():
+        try:
+            built_in_id = getattr(DB.BuiltInParameter, built_in_name, None)
+        except:
+            built_in_id = None
+
+        if built_in_id is None:
+            continue
+
+        for candidate in candidates:
+            try:
+                candidate_param = candidate.get_Parameter(built_in_id)
+            except:
+                candidate_param = None
+            if has_metric_value(candidate_param):
+                param = candidate_param
+                break
+
+        if has_metric_value(param):
             break
+
+    # Family/shared parameters (such as BEAM WIDTH) do not have a useful
+    # BuiltInParameter id, so keep a deterministic ordered alias fallback.
+    if not has_metric_value(param):
+        for name in name_hints:
+            if parameter_context is not None:
+                try:
+                    candidate_param, _scope = find_parameter_in_context(
+                        parameter_context,
+                        name
+                    )
+                except:
+                    candidate_param = None
+                if has_metric_value(candidate_param):
+                    param = candidate_param
+            else:
+                for candidate in candidates:
+                    try:
+                        candidate_param = candidate.LookupParameter(name)
+                    except:
+                        candidate_param = None
+                    if has_metric_value(candidate_param):
+                        param = candidate_param
+                        break
+            if has_metric_value(param):
+                break
+
+    # Last name-based attempt: tolerate capitalization differences without
+    # allowing partial matches (Width must never accidentally match a
+    # bounding-box or another similarly named dimension).
+    if not has_metric_value(param) and parameter_context is None:
+        lowered_hints = [name.lower() for name in name_hints]
+        for candidate in candidates:
+            try:
+                candidate_parameters = candidate.Parameters
+            except:
+                candidate_parameters = []
+            for candidate_param in candidate_parameters:
+                try:
+                    definition_name = candidate_param.Definition.Name
+                    matches = str(definition_name).lower() in lowered_hints
+                except:
+                    matches = False
+                if matches and has_metric_value(candidate_param):
+                    param = candidate_param
+                    break
+            if has_metric_value(param):
+                break
 
     if not has_metric_value(param):
         return ""
@@ -1035,7 +1219,10 @@ def read_metric_parameter(element, name_hint):
 # above).
 
 
-def get_element_quantities(element, element_name=""):
+def get_element_quantities(
+        element,
+        element_name="",
+        parameter_context=None):
     """
     Collect quantity takeoff values for one element, category-aware.
 
@@ -1127,54 +1314,63 @@ def get_element_quantities(element, element_name=""):
     # into L/W/H metres, then derive the SHUTTERING formwork area. The
     # pure decision logic lives in resolve_element_dimensions /
     # compute_shuttering_area so the harness can test it without Revit.
-    param_width = read_metric_parameter(element, "Width")
-    param_depth = read_metric_parameter(element, "Depth")
-
+    param_width = ""
+    param_depth = ""
     param_height = ""
     param_thickness = ""
 
-    if element_name == "Column":
+    if element_name == "Beam":
+        # Cross-section dimensions must come from the family/type, never
+        # from the axis-aligned model bounding box. A rotated beam's bbox
+        # short side is not its physical width and grossly inflates
+        # L * (W + 2H) shuttering.
+        param_width = read_metric_parameter(
+            element,
+            ("BEAM WIDTH", "Beam Width", "Width", "b"),
+            ("STRUCTURAL_SECTION_COMMON_WIDTH",),
+            parameter_context
+        )
+        param_depth = read_metric_parameter(
+            element,
+            ("BEAM DEPTH", "Beam Depth", "Depth", "Height", "h"),
+            ("STRUCTURAL_SECTION_COMMON_HEIGHT",),
+            parameter_context
+        )
 
-        param_height = read_metric_parameter(element, "Height")
+    elif element_name == "Column":
+
+        param_width = read_metric_parameter(
+            element, "Width", (), parameter_context
+        )
+        param_depth = read_metric_parameter(
+            element, "Depth", (), parameter_context
+        )
+        param_height = read_metric_parameter(
+            element, "Height", (), parameter_context
+        )
         results.append(("Qty: Height (m)", param_height))
 
     elif element_name == "Structure Wall":
 
-        param_height = read_metric_parameter(element, "Unconnected Height")
+        param_height = read_metric_parameter(
+            element, "Unconnected Height", (), parameter_context
+        )
         if param_height == "":
-            param_height = read_metric_parameter(element, "Height")
-        param_thickness = read_metric_parameter(element, "Width")
+            param_height = read_metric_parameter(
+                element, "Height", (), parameter_context
+            )
+        param_thickness = read_metric_parameter(
+            element, "Width", (), parameter_context
+        )
         results.append(("Qty: Height (m)", param_height))
         results.append(("Qty: Thickness (m)", param_thickness))
 
     elif element_name in ("Slab", "Foundation"):
 
-        param_thickness = read_metric_parameter(element, "Thickness")
+        param_thickness = read_metric_parameter(
+            element, "Thickness", (), parameter_context
+        )
         results.append(("Qty: Thickness (m)", param_thickness))
-
-    bbox_long = bbox_short = bbox_vertical = ""
-
-    try:
-        bbox = element.get_BoundingBox(None)
-
-        if bbox is not None:
-            delta_x = abs(bbox.Max.X - bbox.Min.X)
-            delta_y = abs(bbox.Max.Y - bbox.Min.Y)
-
-            bbox_long = convert_quantity_value(
-                max(delta_x, delta_y),
-                "length"
-            )
-            bbox_short = convert_quantity_value(
-                min(delta_x, delta_y),
-                "length"
-            )
-            bbox_vertical = convert_quantity_value(
-                abs(bbox.Max.Z - bbox.Min.Z),
-                "length"
-            )
-    except:
-        bbox_long = bbox_short = bbox_vertical = ""
 
     calculated_length = ""
     calculated_area = ""
@@ -1185,6 +1381,52 @@ def get_element_quantities(element, element_name=""):
             calculated_length = stored_value
         elif label == "Qty: Area (m2)":
             calculated_area = stored_value
+
+    # Revit geometry/bounding-box access is relatively expensive. Only ask
+    # for it when the category actually needs a geometry fallback. Most
+    # Beams, Columns and Walls already have authoritative dimensions.
+    needs_bbox = element_name in ("Slab", "Foundation")
+    if element_name == "Beam":
+        needs_bbox = calculated_length in ("", None)
+    elif element_name == "Column":
+        needs_bbox = any(
+            value in ("", None)
+            for value in (param_width, param_depth, param_height)
+        )
+    elif element_name == "Structure Wall":
+        needs_bbox = any(
+            value in ("", None)
+            for value in (
+                calculated_length,
+                param_thickness,
+                param_height
+            )
+        )
+
+    bbox_long = bbox_short = bbox_vertical = ""
+
+    if needs_bbox:
+        try:
+            bbox = element.get_BoundingBox(None)
+
+            if bbox is not None:
+                delta_x = abs(bbox.Max.X - bbox.Min.X)
+                delta_y = abs(bbox.Max.Y - bbox.Min.Y)
+
+                bbox_long = convert_quantity_value(
+                    max(delta_x, delta_y),
+                    "length"
+                )
+                bbox_short = convert_quantity_value(
+                    min(delta_x, delta_y),
+                    "length"
+                )
+                bbox_vertical = convert_quantity_value(
+                    abs(bbox.Max.Z - bbox.Min.Z),
+                    "length"
+                )
+        except:
+            bbox_long = bbox_short = bbox_vertical = ""
 
     element_dims = resolve_element_dimensions(
         element_name,
@@ -1298,6 +1540,56 @@ def _rebar_integer(element, enum_name, property_name, lookup_name):
         return 1
 
 
+def _rebar_shape_dimension_mm(element, dimension_name):
+    """Read one A-H dimension while preserving Revit's <varies> state."""
+    candidates = []
+    try:
+        candidates.append(element.LookupParameter(dimension_name))
+    except:
+        pass
+    try:
+        type_id = element.GetTypeId()
+        if type_id is not None and not type_id.Equals(
+            DB.ElementId.InvalidElementId
+        ):
+            type_element = doc.GetElement(type_id)
+            if type_element is not None:
+                candidates.append(type_element.LookupParameter(dimension_name))
+    except:
+        pass
+
+    for parameter in candidates:
+        if parameter is None:
+            continue
+        try:
+            display_value = parameter.AsValueString()
+        except:
+            display_value = ""
+        try:
+            has_value = bool(parameter.HasValue)
+        except:
+            has_value = True
+        numeric_mm = ""
+        try:
+            raw_value = parameter.AsDouble()
+            if raw_value > 0:
+                numeric_mm = convert_quantity_value(
+                    raw_value, "length"
+                ) * 1000.0
+        except:
+            pass
+
+        value = normalize_rebar_dimension_mm(
+            display_value,
+            numeric_mm,
+            has_value
+        )
+        if value != "":
+            return value
+
+    return ""
+
+
 def _rebar_text(element, lookup_names):
     """Read the first non-empty Rebar instance/type display value."""
     candidates = [element]
@@ -1375,19 +1667,10 @@ def get_rebar_quantities(element):
 
     shape_dimensions_mm = {}
     for dimension_name in tuple("ABCDEFGH"):
-        dimension_m = _rebar_double(
+        shape_dimensions_mm[dimension_name] = _rebar_shape_dimension_mm(
             element,
-            (),
-            (dimension_name,),
-            "length"
+            dimension_name
         )
-        try:
-            shape_dimensions_mm[dimension_name] = round(
-                float(dimension_m) * 1000.0,
-                3
-            )
-        except:
-            shape_dimensions_mm[dimension_name] = ""
 
     bend_diameter_m = _rebar_double(
         element,
@@ -1435,6 +1718,14 @@ def get_rebar_quantities(element):
 
     host_id_text = ""
     host_category = ""
+    rebar_element_id = ""
+    try:
+        rebar_element_id = str(element.Id.IntegerValue)
+    except:
+        try:
+            rebar_element_id = str(element.Id.Value)
+        except:
+            pass
     try:
         host_id = element.GetHostId()
         host_id_text = str(host_id.IntegerValue)
@@ -1454,6 +1745,7 @@ def get_rebar_quantities(element):
         ("Rebar: Total Length (m)", calculated.get("Total Length (m)", "")),
         ("Rebar: Unit Weight (kg/m)", calculated.get("Unit Weight (kg/m)", "")),
         ("Rebar: Total Weight (kg)", calculated.get("Total Weight (kg)", "")),
+        ("Rebar: Element ID", rebar_element_id),
         ("Rebar: Host Element ID", host_id_text),
         ("Rebar: Host Category", host_category),
         ("Rebar: A (mm)", shape_dimensions_mm.get("A", "")),
@@ -1470,7 +1762,7 @@ def get_rebar_quantities(element):
     ]
 
 
-def get_element_level(element):
+def get_element_level(element, level_cache=None):
     """
     Return the element's associated level name for level-wise grouping.
 
@@ -1478,6 +1770,42 @@ def get_element_level(element):
     then falls back to the element's own LevelId. Returns "" when no level
     can be resolved so the cell stays empty rather than failing the export.
     """
+    cache = level_cache if isinstance(level_cache, dict) else {}
+
+    try:
+        element_key = ("element", int(element.Id.IntegerValue))
+    except:
+        element_key = None
+
+    if element_key is not None and element_key in cache:
+        return cache[element_key]
+
+    def remember(value):
+        if element_key is not None:
+            cache[element_key] = value
+        return value
+
+    def level_name_from_id(level_id):
+        try:
+            if level_id is None or level_id.IntegerValue == -1:
+                return ""
+            cache_key = ("level", int(level_id.IntegerValue))
+        except:
+            return ""
+        if cache_key in cache:
+            return cache[cache_key]
+        try:
+            level_element = doc.GetElement(level_id)
+            value = (
+                str(level_element.Name)
+                if level_element is not None and level_element.Name
+                else ""
+            )
+        except:
+            value = ""
+        cache[cache_key] = value
+        return value
+
     level_parameter_ids = []
 
     try:
@@ -1520,19 +1848,14 @@ def get_element_level(element):
         if level_id is None:
             continue
 
-        try:
-            if level_id.IntegerValue == -1:
-                continue
-            level_element = doc.GetElement(level_id)
-            if level_element is not None and level_element.Name:
-                return str(level_element.Name)
-        except:
-            continue
+        level_name = level_name_from_id(level_id)
+        if level_name:
+            return remember(level_name)
 
     try:
-        level_element = doc.GetElement(element.LevelId)
-        if level_element is not None and level_element.Name:
-            return str(level_element.Name)
+        level_name = level_name_from_id(element.LevelId)
+        if level_name:
+            return remember(level_name)
     except:
         pass
 
@@ -1545,11 +1868,13 @@ def get_element_level(element):
             if host_id.IntegerValue != element.Id.IntegerValue:
                 host_element = doc.GetElement(host_id)
                 if host_element is not None:
-                    return get_element_level(host_element)
+                    return remember(
+                        get_element_level(host_element, cache)
+                    )
     except:
         pass
 
-    return ""
+    return remember("")
 
 
 # ============================================================
@@ -1663,7 +1988,7 @@ def find_grade_parameter(element, hint):
     return None
 
 
-def resolve_concrete_grade(element):
+def resolve_concrete_grade(element, parameter_context=None):
     """
     P2: resolve one element's concrete grade for grade-wise grouping.
 
@@ -1680,7 +2005,13 @@ def resolve_concrete_grade(element):
     """
     for hint in CONCRETE_GRADE_PARAMETER_HINTS:
 
-        parameter = find_grade_parameter(element, hint)
+        if parameter_context is not None:
+            parameter, _scope = find_parameter_in_context(
+                parameter_context,
+                hint
+            )
+        else:
+            parameter = find_grade_parameter(element, hint)
 
         if parameter is None:
             continue
@@ -1693,7 +2024,13 @@ def resolve_concrete_grade(element):
             return grade
 
     try:
-        material_parameter = element.LookupParameter("Material")
+        if parameter_context is not None:
+            material_parameter, _scope = find_parameter_in_context(
+                parameter_context,
+                "Material"
+            )
+        else:
+            material_parameter = element.LookupParameter("Material")
 
         material_id = material_parameter.AsElementId()
 
@@ -1710,7 +2047,7 @@ def resolve_concrete_grade(element):
 
     try:
         grade = normalize_concrete_grade(
-            get_element_identity_text(element)
+            get_element_identity_text(element, parameter_context)
         )
 
         if grade:
@@ -1721,7 +2058,7 @@ def resolve_concrete_grade(element):
     return "(No Grade)"
 
 
-def build_element_data():
+def build_element_data(include_grade=True):
     """
     Read actual values from the parameters currently selected in the UI.
     The current Selected / Export order is preserved.
@@ -1737,6 +2074,10 @@ def build_element_data():
 
     missing_values = 0
     total_rows = 0
+    # Type parameters are identical for every instance of a Revit type.
+    # Reuse their index across the complete export.
+    type_parameter_cache = {}
+    level_cache = {}
 
     for element_name in control_map.keys():
 
@@ -1793,6 +2134,29 @@ def build_element_data():
 
         for element in elements:
 
+            needs_parameter_context = (
+                (include_grade and element_name != "Rebar")
+                or (quantities_flag and element_name != "Rebar")
+                or any(
+                    name not in REBAR_DERIVED_PARAMETERS
+                    for name in selected_names
+                )
+            )
+            if needs_parameter_context:
+                parameter_context = build_element_parameter_context(
+                    element,
+                    type_parameter_cache
+                )
+            else:
+                # A derived-only Rebar export obtains every value through
+                # get_rebar_quantities; indexing all raw Rebar parameters
+                # would be pure overhead.
+                parameter_context = {
+                    "instance": {},
+                    "type": {},
+                    "type_element": None
+                }
+
             try:
                 row = {
                     "Element ID": str(
@@ -1806,12 +2170,15 @@ def build_element_data():
 
             # P2: level grouping column, written directly after Element ID so
             # it sits in a deterministic column (B) on every element sheet.
-            row["Level"] = get_element_level(element)
+            row["Level"] = get_element_level(element, level_cache)
 
             # Concrete grade does not apply to reinforcement. Rebar keeps
             # Element ID + Level followed by its selected/P4 quantity fields.
-            if element_name != "Rebar":
-                row["Grade"] = resolve_concrete_grade(element)
+            if include_grade and element_name != "Rebar":
+                row["Grade"] = resolve_concrete_grade(
+                    element,
+                    parameter_context
+                )
 
             quantity_values = []
             quantity_by_name = {}
@@ -1822,7 +2189,8 @@ def build_element_data():
                 else:
                     quantity_values = get_element_quantities(
                         element,
-                        element_name
+                        element_name,
+                        parameter_context
                     )
                 quantity_by_name = dict(quantity_values)
 
@@ -1861,8 +2229,8 @@ def build_element_data():
 
                 try:
                     parameter, parameter_scope = (
-                        find_parameter_with_scope(
-                            element,
+                        find_parameter_in_context(
+                            parameter_context,
                             parameter_name
                         )
                     )
@@ -2205,7 +2573,35 @@ def _contains_rcc_identity_signal(value):
     )
 
 
-def get_element_identity_text(element):
+def _built_in_parameter_text(element, enum_names):
+    """Read the first available built-in parameter as display text."""
+    if element is None:
+        return ''
+
+    for enum_name in enum_names or ():
+        try:
+            built_in_id = getattr(DB.BuiltInParameter, enum_name, None)
+        except:
+            built_in_id = None
+        if built_in_id is None:
+            continue
+
+        try:
+            parameter = element.get_Parameter(built_in_id)
+        except:
+            parameter = None
+
+        try:
+            value = safe_parameter_value(parameter)
+        except:
+            value = ''
+        if value:
+            return str(value)
+
+    return ''
+
+
+def get_element_identity_text(element, parameter_context=None):
     """
     Build a safe search string from the actual Revit element/type/family
     information. No project-specific parameter is required.
@@ -2224,13 +2620,29 @@ def get_element_identity_text(element):
     except:
         pass
 
+    # System-family instances (notably Floors) can expose a generic instance
+    # Name while the Properties palette shows the useful type through the
+    # built-in Type parameter. Read that stable id before localized aliases.
+    add_part(
+        _built_in_parameter_text(
+            element,
+            ('ELEM_TYPE_PARAM', 'SYMBOL_NAME_PARAM', 'ALL_MODEL_TYPE_NAME')
+        )
+    )
+
     type_element = None
-    try:
-        type_id = element.GetTypeId()
-        if type_id is not None and not type_id.Equals(DB.ElementId.InvalidElementId):
-            type_element = doc.GetElement(type_id)
-    except:
-        type_element = None
+    if parameter_context is not None:
+        try:
+            type_element = parameter_context.get("type_element")
+        except:
+            type_element = None
+    else:
+        try:
+            type_id = element.GetTypeId()
+            if type_id is not None and not type_id.Equals(DB.ElementId.InvalidElementId):
+                type_element = doc.GetElement(type_id)
+        except:
+            type_element = None
 
     if type_element is not None:
         try:
@@ -2241,6 +2653,18 @@ def get_element_identity_text(element):
             add_part(type_element.FamilyName)
         except:
             pass
+        add_part(
+            _built_in_parameter_text(
+                type_element,
+                ('SYMBOL_NAME_PARAM', 'ALL_MODEL_TYPE_NAME')
+            )
+        )
+        add_part(
+            _built_in_parameter_text(
+                type_element,
+                ('SYMBOL_FAMILY_NAME_PARAM', 'ALL_MODEL_FAMILY_NAME')
+            )
+        )
 
     try:
         symbol = element.Symbol
@@ -2264,13 +2688,18 @@ def get_element_identity_text(element):
 
     for parameter_name in common_parameter_names:
         try:
-            parameter, _scope = find_parameter_with_scope(
-                element, parameter_name
-            )
-            if parameter is None:
-                parameter = find_parameter_on_element(
-                    element, parameter_name, case_sensitive=False
+            if parameter_context is not None:
+                parameter, _scope = find_parameter_in_context(
+                    parameter_context, parameter_name
                 )
+            else:
+                parameter, _scope = find_parameter_with_scope(
+                    element, parameter_name
+                )
+                if parameter is None:
+                    parameter = find_parameter_on_element(
+                        element, parameter_name, case_sensitive=False
+                    )
             if parameter is not None:
                 value = safe_parameter_value(parameter)
                 if value:
@@ -2284,7 +2713,14 @@ def get_element_identity_text(element):
     # hardcoded list above would otherwise miss.
     try:
         token_hits = []
-        for parameter in element.Parameters:
+        if parameter_context is not None:
+            parameters = list(parameter_context.get("instance", {}).values())
+            parameters.extend(
+                list(parameter_context.get("type", {}).values())
+            )
+        else:
+            parameters = element.Parameters
+        for parameter in parameters:
             try:
                 definition = parameter.Definition
                 if not definition:
@@ -2381,6 +2817,21 @@ def _element_family_type_names(element):
         except:
             pass
 
+    # Revit system families may not expose ElementType.Name reliably through
+    # the live IronPython wrapper. The built-in instance/type display values
+    # are the same stable values shown in the Properties palette.
+    if not type_name:
+        type_name = _built_in_parameter_text(
+            element,
+            ('ELEM_TYPE_PARAM', 'SYMBOL_NAME_PARAM', 'ALL_MODEL_TYPE_NAME')
+        )
+    if not family_name:
+        family_name = _built_in_parameter_text(
+            element,
+            ('ELEM_FAMILY_PARAM', 'SYMBOL_FAMILY_NAME_PARAM',
+             'ALL_MODEL_FAMILY_NAME')
+        )
+
     return family_name, type_name
 
 
@@ -2450,6 +2901,9 @@ def classify_rcc_element(element, source_category=''):
     ):
         logical_group, subtype = 'Slab', 'Slab'
         reason = 'Chajja is a logical slab'
+    elif re.search(r'(?<![a-z0-9])(?:lobby|ramp)(?![a-z0-9])', text):
+        logical_group, subtype = 'Slab', 'Slab'
+        reason = 'Lobby/Ramp floor type is a logical slab'
     elif 'foundation' in normalized_source:
         logical_group, subtype = 'Foundation', 'Other'
         reason = 'Unknown identity retained under source Foundation as Other'
@@ -2620,6 +3074,70 @@ def classification_audit_detail_results(audit):
         details.append(result)
 
     return details
+
+
+def build_compact_classification_findings(audit, max_items=10):
+    """Build a small user-facing list of only problematic routing rows."""
+    def compact(value, fallback="-"):
+        text = safe_text(value, fallback).strip()
+        if not text:
+            text = fallback
+        if len(text) > 60:
+            text = text[:57] + "..."
+        return text
+
+    details = classification_audit_detail_results(audit)
+    try:
+        limit = max(1, int(max_items))
+    except:
+        limit = 10
+
+    lines = []
+    for result in details[:limit]:
+        family_type = "{} / {}".format(
+            compact(result.get("family")),
+            compact(result.get("type_name"))
+        )
+        identity_parts = []
+        for label, key in (
+            ("Mark", "mark"),
+            ("ID_UNMT", "id_unmt"),
+            ("ITEM DES.", "item_description"),
+            ("CODE_UNIMONT", "code_unimont")
+        ):
+            value = compact(result.get(key), "")
+            if value:
+                identity_parts.append("{}={}".format(label, value))
+        if not identity_parts:
+            identity_parts.append("Identity=-")
+
+        lines.append(
+            "ID {} | {} | {} | {} | {}".format(
+                compact(result.get("element_id"), "N/A"),
+                compact(result.get("source_category")),
+                family_type,
+                "; ".join(identity_parts),
+                compact(result.get("reason"))
+            )
+        )
+
+    if len(details) > limit:
+        lines.append("...and {} more finding(s)".format(len(details) - limit))
+
+    duplicate_ids = list(audit.get("source_duplicate_ids", [])) if audit else []
+    duplicate_ids.extend(
+        list(audit.get("destination_duplicate_ids", [])) if audit else []
+    )
+    represented_ids = set(
+        compact(result.get("element_id"), "N/A")
+        for result in details[:limit]
+    )
+    for duplicate_id in duplicate_ids:
+        duplicate_text = compact(duplicate_id, "N/A")
+        if duplicate_text not in represented_ids:
+            lines.append("ID {} | Duplicate routing source".format(duplicate_text))
+
+    return "\n".join(lines)
 
 
 def emit_classification_audit(audit, include_details=True):
@@ -3834,7 +4352,11 @@ try:
             checkbox options to the JSON settings file so the next run
             restores them automatically.
             """
-            settings = {}
+            # Merge into the existing document rather than rebuilding from
+            # scratch. This preserves last_dir and any future settings keys.
+            settings = load_app_settings()
+            if not isinstance(settings, dict):
+                settings = {}
 
             # Re-sync every category from its visible ListBox first.
             for element_name in control_map.keys():
@@ -4025,6 +4547,14 @@ try:
             except:
                 pass
 
+            # Persist immediately after every successful list mutation.
+            # A pyRevit reload or Revit shutdown can then never discard the
+            # user's newly selected parameters or their visible order.
+            try:
+                capture_and_save_settings()
+            except:
+                pass
+
 
         # ====================================================
         # REMOVE PARAMETERS
@@ -4121,6 +4651,11 @@ try:
             except:
                 pass
 
+            try:
+                capture_and_save_settings()
+            except:
+                pass
+
 
         # ====================================================
         # MOVE UP
@@ -4179,6 +4714,11 @@ try:
             sync_selected_parameters(
                 element_name
             )
+
+            try:
+                capture_and_save_settings()
+            except:
+                pass
 
 
         # ====================================================
@@ -4243,6 +4783,11 @@ try:
             sync_selected_parameters(
                 element_name
             )
+
+            try:
+                capture_and_save_settings()
+            except:
+                pass
 
 
         # ====================================================
@@ -4316,6 +4861,11 @@ try:
                 element_name
             )
 
+            try:
+                capture_and_save_settings()
+            except:
+                pass
+
 
         # ====================================================
         # MOVE BOTTOM
@@ -4387,6 +4937,11 @@ try:
             sync_selected_parameters(
                 element_name
             )
+
+            try:
+                capture_and_save_settings()
+            except:
+                pass
 
 
         # ====================================================
@@ -4539,6 +5094,11 @@ try:
                 args
             ):
 
+                try:
+                    capture_and_save_settings()
+                except:
+                    pass
+
                 total = 0
 
                 for name in selected_parameters.keys():
@@ -4661,16 +5221,20 @@ try:
                 args
             ):
 
-                try:
-                    capture_and_save_settings()
-                except:
-                    pass
-
                 window.Close()
 
             close_button.Click += (
                 close_window
             )
+
+        # Also cover the title-bar X, Alt+F4 and host-driven dialog closure.
+        def save_before_window_close(sender, args):
+            try:
+                capture_and_save_settings()
+            except:
+                pass
+
+        window.Closing += save_before_window_close
 
 
         # ====================================================
@@ -4687,6 +5251,11 @@ try:
                 sender,
                 args
             ):
+
+                try:
+                    capture_and_save_settings()
+                except:
+                    pass
 
                 total = 0
 
@@ -4798,18 +5367,41 @@ try:
                             + routing_summary
                         )
 
-                    # Always rebuild metadata before export so the
-                    # workbook reflects the current selection/order.
-                    global parameter_metadata
-                    parameter_metadata = (
-                        build_parameter_metadata()
+                    # Resolve the workbook format before data collection.
+                    # Site format does not contain the Classic parameter
+                    # metadata sheet, so do not perform that unused Revit
+                    # scan on every Site export.
+                    use_site_format = site_format_flag
+                    site_check = window.FindName(
+                        "SiteFormatCheck"
                     )
+                    if site_check:
+                        try:
+                            use_site_format = bool(
+                                site_check.IsChecked
+                            )
+                        except:
+                            use_site_format = site_format_flag
 
+                    global parameter_metadata
+                    metadata_started = time.time()
+                    if use_site_format:
+                        parameter_metadata = {}
+                    else:
+                        parameter_metadata = (
+                            build_parameter_metadata()
+                        )
+                    metadata_seconds = time.time() - metadata_started
+
+                    data_started = time.time()
                     (
                         element_data,
                         total_rows,
                         missing_values
-                    ) = build_element_data()
+                    ) = build_element_data(
+                        include_grade=not use_site_format
+                    )
+                    data_seconds = time.time() - data_started
 
                     if total_rows == 0:
 
@@ -4843,25 +5435,7 @@ try:
                     if not output_path.lower().endswith(".xlsx"):
                         output_path += ".xlsx"
 
-                    # v1.4.0 site-format export, user-selectable since
-                    # v1.6.1 through the footer "Site format" checkbox.
-                    # The module flag stays as the fallback default and
-                    # the classic workbook engine remains available as
-                    # the off state.
-                    use_site_format = site_format_flag
-
-                    site_check = window.FindName(
-                        "SiteFormatCheck"
-                    )
-
-                    if site_check:
-                        try:
-                            use_site_format = bool(
-                                site_check.IsChecked
-                            )
-                        except:
-                            use_site_format = site_format_flag
-
+                    workbook_started = time.time()
                     if use_site_format:
 
                         sheet_rows = write_site_xlsx(
@@ -4896,6 +5470,8 @@ try:
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M")
                         )
+
+                    workbook_seconds = time.time() - workbook_started
 
                     non_empty_sheets = 0
 
@@ -4989,6 +5565,8 @@ try:
                         "Element data rows: {}\n"
                         "Sheets with element data: {}\n"
                         "Quantity columns: {}\n\n"
+                        "Processing time: {:.1f} sec "
+                        "(metadata {:.1f} + Revit data {:.1f} + workbook {:.1f})\n\n"
                         "Workbook sheets: {}".format(
                             SCRIPT_VERSION,
                             output_path,
@@ -4996,6 +5574,10 @@ try:
                             total_rows,
                             non_empty_sheets,
                             quantity_columns,
+                            metadata_seconds + data_seconds + workbook_seconds,
+                            metadata_seconds,
+                            data_seconds,
+                            workbook_seconds,
                             sheets_listing
                         )
                     )
@@ -5003,6 +5585,17 @@ try:
                         completion_message += (
                             "\n\nRouting note: {}".format(routing_summary)
                         )
+                        compact_findings = build_compact_classification_findings(
+                            classification_audit,
+                            max_items=10
+                        )
+                        if compact_findings:
+                            completion_message += (
+                                "\n\nReview these Revit elements "
+                                "(Manage > Select by ID):\n{}".format(
+                                    compact_findings
+                                )
+                            )
 
                     forms.alert(
                         completion_message,

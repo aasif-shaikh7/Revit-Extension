@@ -33,6 +33,19 @@ Revit-Extension/
 ├── CHANGELOG.md
 ├── done-list.md
 ├── todo-list.md
+├── scripts/
+│   ├── install_rest_bridge.ps1  <- build/publish/install the Revit bridge
+│   └── rcc_boq_rest_client.py   <- dependency-free local Gateway client
+├── RccBoq.RestBridge/
+│   ├── RccBoq.RestBridge.addin.template
+│   └── src/
+│       ├── RccBoq.RestCore/       <- token, contracts and pipe protocol
+│       ├── RccBoq.RestCore.Tests/ <- dependency-free Core test executable
+│       ├── RccBoq.RestGateway/    <- localhost ASP.NET Core process
+│       ├── RccBoq.RestMcp/        <- dependency-free STDIO MCP adapter
+│       ├── RccBoq.RestMcp.Tests/  <- dependency-free MCP protocol tests
+│       └── RccBoq.RestRevit/      <- Revit 2025 ExternalEvent/pipe add-in
+├── test_rest_api.py             <- REST auth/serialization harness (pure Python)
 ├── test_xlsx_writer.py         <- standalone regression harness (pure Python)
 └── __pycache__/                <- local bytecode cache (git-ignored, not tracked)
 ```
@@ -66,6 +79,7 @@ Revit.
 ```text
 Nudge.extension/
 │
+├── startup.disabled.py       <- disabled legacy pyRevit Routes prototype
 ├── Nudge.tab/
 │   ├── Generate.panel/
 │   │   └── BOQ.pushbutton/
@@ -86,6 +100,7 @@ Nudge.extension/
     ├── quantity_engine.py   <- unit conversion + dimension helpers (pure Python)
     ├── formwork_engine.py   <- P3 shuttering rules + formula builder (pure Python)
     ├── rebar_engine.py      <- P4 rebar length + steel-weight calculations (pure Python)
+    ├── rest_api.py          <- legacy prototype serializers retained for regression coverage
     ├── costing_engine.py    <- per-element rate x quantity costing sheet (pure Python)
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
     └── Resources/
@@ -113,6 +128,13 @@ Nudge.extension/
   the engine modules must never import UI/Revit code.
 
 Two pushbuttons exist today; nesting stays intentionally flat.
+
+The pyRevit Routes prototype is deliberately disabled because live host testing was unstable. The
+supported integration lives in `RccBoq.RestBridge`: a localhost-only out-of-process Gateway talks to
+a Revit 2025 add-in over a current-user-only Named Pipe. The add-in marshals its fixed read-only
+allow-list through `ExternalEvent`; it must never expose evaluation, arbitrary method names,
+transactions, document paths or token values. `RccBoq.RestMcp` exposes the same five reads as STDIO
+MCP tools and calls this Gateway rather than duplicating Revit reads.
 
 ---
 
@@ -174,8 +196,10 @@ this extension, and must not drive decisions here.
 
 # 6. Test placement
 
-`test_xlsx_writer.py` lives at the repository root so it runs with a plain `python
-test_xlsx_writer.py`. It imports nothing from Revit; it extracts the source of the XLSX engine
+`test_rest_api.py` and `test_xlsx_writer.py` live at the repository root and import nothing from
+Revit. The REST harness validates the Python client contract and bounded serialization. The .NET
+Core test executable validates Bearer-token handling and pipe framing. The XLSX harness runs
+with a plain `python test_xlsx_writer.py`; it extracts the source of the XLSX engine
 functions from the real `script.py` and validates the generated workbook by unzipping it.
 
 ---

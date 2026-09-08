@@ -83,6 +83,9 @@ FUNCTION_NAMES = [
     "build_summary_cover_rows",
     "write_basic_xlsx",
     "get_parameters",
+    "read_metric_parameter",
+    "build_element_parameter_context",
+    "find_parameter_in_context",
     # Site-format (v1.4.x) builders - pure, Revit-free
     "meters_to_millimeters",
     "build_section_description",
@@ -98,6 +101,7 @@ FUNCTION_NAMES = [
     "build_rebar_quantity_values",
     "_rebar_number",
     "_rounded_total",
+    "normalize_rebar_dimension_mm",
     "build_rebar_bbs_table",
     "build_rebar_diameter_summary_table",
     "_site_sort_key",
@@ -717,6 +721,192 @@ def main():
             "Beam dimension resolution keeps L/W/H as given"
         )
 
+        angled_beam_dims = namespace["resolve_element_dimensions"](
+            "Beam",
+            length_m=3.277,
+            depth_m=0.725,
+            bbox_width_m=1.273,
+            bbox_height_m=0.725
+        )
+
+        check(
+            angled_beam_dims["width"] == ""
+            and angled_beam_dims["height"] == 0.725,
+            "Beam dimensions reject rotated bounding-box width when actual section width is missing"
+        )
+
+        class FakeMetricStorageType(object):
+            Double = "double"
+
+        class FakeMetricBuiltInParameter(object):
+            STRUCTURAL_SECTION_COMMON_WIDTH = "section_width"
+
+        class FakeMetricDB(object):
+            StorageType = FakeMetricStorageType
+            BuiltInParameter = FakeMetricBuiltInParameter
+
+        class FakeMetricDefinition(object):
+            def __init__(self, name):
+                self.Name = name
+
+        class FakeMetricParameter(object):
+            HasValue = True
+            StorageType = FakeMetricStorageType.Double
+
+            def __init__(self, name, internal_feet):
+                self.Definition = FakeMetricDefinition(name)
+                self.internal_feet = internal_feet
+
+            def AsDouble(self):
+                return self.internal_feet
+
+        class FakeMetricCandidate(object):
+            def __init__(self, built_in=None, named=None):
+                self.built_in = built_in
+                self.named = named or {}
+                self.Parameters = list(self.named.values())
+
+            def get_Parameter(self, _parameter_id):
+                return self.built_in
+
+            def LookupParameter(self, name):
+                return self.named.get(name)
+
+        class FakeMetricElement(FakeMetricCandidate):
+            def __init__(self, symbol):
+                FakeMetricCandidate.__init__(self)
+                self.Symbol = symbol
+
+        metric_namespace = {
+            "DB": FakeMetricDB,
+            "doc": None,
+            # Revit stores lengths internally in feet.
+            "convert_quantity_value": lambda value, _kind: round(
+                float(value) * 0.3048, 4
+            )
+        }
+        metric_source, _ = extract_from_sources(texts, "read_metric_parameter")
+        exec(metric_source, metric_namespace)
+        read_metric = metric_namespace["read_metric_parameter"]
+
+        built_in_width = FakeMetricParameter("Width", 0.9842519685)
+        alias_width = FakeMetricParameter("BEAM WIDTH", 1.312335958)
+        built_in_symbol = FakeMetricCandidate(
+            built_in=built_in_width,
+            named={"BEAM WIDTH": alias_width}
+        )
+        detected_width = read_metric(
+            FakeMetricElement(built_in_symbol),
+            ("BEAM WIDTH", "Width"),
+            ("STRUCTURAL_SECTION_COMMON_WIDTH", "NOT_IN_THIS_API")
+        )
+
+        alias_symbol = FakeMetricCandidate(
+            named={"BEAM WIDTH": FakeMetricParameter("BEAM WIDTH", 0.9842519685)}
+        )
+        aliased_width = read_metric(
+            FakeMetricElement(alias_symbol),
+            ("Beam Width", "Width"),
+            ("NOT_IN_THIS_API",)
+        )
+
+        check(
+            abs(detected_width - 0.3) < 0.0001
+            and abs(aliased_width - 0.3) < 0.0001,
+            "Beam width feature detection prefers Revit built-in and supports BEAM WIDTH alias"
+        )
+
+        class FakeInvalidElementId(object):
+            pass
+
+        class FakeCacheElementId(object):
+            InvalidElementId = FakeInvalidElementId()
+
+        class FakeCacheDB(object):
+            ElementId = FakeCacheElementId
+
+        class FakeTypeId(object):
+            def __init__(self, value):
+                self.IntegerValue = value
+
+            def Equals(self, other):
+                return False
+
+        class CountingParameterOwner(object):
+            def __init__(self, parameters):
+                self._parameters = parameters
+                self.parameter_reads = 0
+
+            @property
+            def Parameters(self):
+                self.parameter_reads += 1
+                return self._parameters
+
+        type_mark = FakeMetricParameter("Type Mark", 1.0)
+        cached_type = CountingParameterOwner([type_mark])
+
+        class FakeCacheDocument(object):
+            def __init__(self):
+                self.reads = 0
+
+            def GetElement(self, _type_id):
+                self.reads += 1
+                return cached_type
+
+        class FakeCacheInstance(CountingParameterOwner):
+            def __init__(self, mark):
+                CountingParameterOwner.__init__(
+                    self,
+                    [FakeMetricParameter("Mark", mark)]
+                )
+
+            def GetTypeId(self):
+                return FakeTypeId(42)
+
+        cache_document = FakeCacheDocument()
+        cache_namespace = {
+            "DB": FakeCacheDB,
+            "doc": cache_document
+        }
+        for helper_name in (
+            "build_element_parameter_context",
+            "find_parameter_in_context"
+        ):
+            helper_source, _ = extract_from_sources(texts, helper_name)
+            exec(helper_source, cache_namespace)
+
+        shared_type_cache = {}
+        first_instance = FakeCacheInstance(1.0)
+        second_instance = FakeCacheInstance(2.0)
+        first_context = cache_namespace["build_element_parameter_context"](
+            first_instance,
+            shared_type_cache
+        )
+        second_context = cache_namespace["build_element_parameter_context"](
+            second_instance,
+            shared_type_cache
+        )
+        first_mark, first_scope = cache_namespace["find_parameter_in_context"](
+            first_context,
+            "Mark"
+        )
+        cached_type_mark, type_scope = cache_namespace["find_parameter_in_context"](
+            second_context,
+            "Type Mark"
+        )
+
+        check(
+            first_mark is not None
+            and first_scope == "Instance"
+            and cached_type_mark is type_mark
+            and type_scope == "Type"
+            and first_instance.parameter_reads == 1
+            and second_instance.parameter_reads == 1
+            and cached_type.parameter_reads == 1
+            and cache_document.reads == 1,
+            "Fast export indexes each instance once and reuses one parameter index per Revit type"
+        )
+
         column_dims = namespace["resolve_element_dimensions"](
             "Column",
             width_m=0.45,
@@ -803,6 +993,7 @@ def main():
                 "Rebar: Quantity": 2, "Rebar: Total Length (m)": 17.0324,
                 "Rebar: Unit Weight (kg/m)": 2.4691,
                 "Rebar: Total Weight (kg)": 42.056,
+                "Rebar: Element ID": "101",
                 "Rebar: Host Element ID": "10", "Level": "Level 1"
             },
             {
@@ -813,6 +1004,7 @@ def main():
                 "Rebar: Quantity": 3, "Rebar: Total Length (m)": 25.5486,
                 "Rebar: Unit Weight (kg/m)": 2.4691,
                 "Rebar: Total Weight (kg)": 63.084,
+                "Rebar: Element ID": "102",
                 "Rebar: Host Element ID": "10", "Level": "Level 1"
             }
         ])
@@ -821,30 +1013,74 @@ def main():
             len(grouped_bbs) == 2
             and grouped_bbs[1][grouped_headers.index("A (mm)")] == 150.0
             and grouped_bbs[1][grouped_headers.index("Quantity")] == 5
-            and grouped_bbs[1][grouped_headers.index("Total Length (m)")] == 42.581,
+            and grouped_bbs[1][grouped_headers.index("Total Length (m)")] == 42.581
+            and grouped_bbs[1][
+                grouped_headers.index("Rebar Element ID")
+            ] == "101, 102"
+            and len(grouped_bbs[1]) == len(grouped_headers),
             "P5 BBS groups matching shapes and parses Revit mm display text"
         )
         variable_bbs = namespace["build_rebar_bbs_table"]([
             {
                 "Rebar: Bar Mark": "V1", "Rebar: Shape": "L SHAPE",
-                "Rebar: Diameter (mm)": 20, "Rebar: A (mm)": 400,
-                "Rebar: Quantity": 4, "Rebar: Total Length (m)": 14.5,
+                "Rebar: Diameter (mm)": 20, "Rebar: A (mm)": "Varies",
+                "Rebar: B (mm)": 492,
+                "Rebar: Quantity": 3, "Rebar: Total Length (m)": 33.51,
                 "Rebar: Unit Weight (kg/m)": 2.4691,
-                "Rebar: Total Weight (kg)": 35.801
+                "Rebar: Total Weight (kg)": 82.74,
+                "Rebar: Element ID": "501",
+                "Rebar: Host Element ID": "200", "Level": "Level 1"
+            },
+            {
+                "Rebar: Bar Mark": "V1", "Rebar: Shape": "L SHAPE",
+                "Rebar: Diameter (mm)": 20, "Rebar: A (mm)": "Varies",
+                "Rebar: B (mm)": 492,
+                "Rebar: Quantity": 3, "Rebar: Total Length (m)": 28.95,
+                "Rebar: Unit Weight (kg/m)": 2.4691,
+                "Rebar: Total Weight (kg)": 71.48,
+                "Rebar: Element ID": "502",
+                "Rebar: Host Element ID": "200", "Level": "Level 1"
             }
         ])
         variable_headers = variable_bbs[0]
         check(
-            variable_bbs[1][
+            len(variable_bbs) == 3
+            and variable_bbs[1][
                 variable_headers.index("Cutting Length (m)")
             ] == ""
             and variable_bbs[1][
                 variable_headers.index("Average Bar Length (m)")
-            ] == 3.625
+            ] == 11.17
             and variable_bbs[1][
                 variable_headers.index("Length Status")
-            ] == "Variable set / average only",
-            "P5 variable sets expose an average without inventing a cutting length"
+            ] == "Variable set / average only"
+            and variable_bbs[1][
+                variable_headers.index("Rebar Element ID")
+            ] == "501"
+            and variable_bbs[1][
+                variable_headers.index("A (mm)")
+            ] == "Varies"
+            and variable_bbs[2][
+                variable_headers.index("Average Bar Length (m)")
+            ] == 9.65
+            and sum(
+                row[variable_headers.index("Quantity")]
+                for row in variable_bbs[1:]
+            ) == 6
+            and round(sum(
+                row[variable_headers.index("Total Length (m)")]
+                for row in variable_bbs[1:]
+            ), 4) == 62.46,
+            "P5 keeps varying sets separate with traceable averages"
+        )
+        check(
+            namespace["normalize_rebar_dimension_mm"](
+                "<varies>", "", False
+            ) == "Varies"
+            and namespace["normalize_rebar_dimension_mm"](
+                "492 mm", 492.0, True
+            ) == 492.0,
+            "P5 preserves varying A-H dimensions and normalizes fixed mm"
         )
 
         check(
@@ -1475,6 +1711,7 @@ def main():
                 "Rebar: Total Length (m)": 12.0,
                 "Rebar: Unit Weight (kg/m)": 0.8889,
                 "Rebar: Total Weight (kg)": 10.667,
+                "Rebar: Element ID": "400",
                 "Rebar: Host Element ID": "200",
                 "Rebar: Host Category": "Structural Columns",
                 "Rebar: A (mm)": 3000.0,
@@ -1901,6 +2138,7 @@ def main():
         "Rebar: Total Length (m)",
         "Rebar: Unit Weight (kg/m)",
         "Rebar: Total Weight (kg)",
+        "Rebar: Element ID",
         "Rebar: Host Element ID",
         "Rebar: Host Category",
         "Rebar: A (mm)", "Rebar: B (mm)", "Rebar: C (mm)",
@@ -1953,6 +2191,67 @@ def main():
         all(name in rebar_available_names for name in rebar_derived_names)
         and "derived_names = REBAR_DERIVED_PARAMETERS" in script_text,
         "Rebar Available list includes every automatic P4 export column"
+    )
+
+    def nested_handler_source(name):
+        match = re.search(
+            r"^(?P<indent>[ \t]+)def {0}\(".format(re.escape(name)),
+            script_text,
+            re.M
+        )
+        if match is None:
+            raise AssertionError("Could not find nested handler: {}".format(name))
+        tail = script_text[match.end():]
+        next_handler = re.search(
+            r"^{0}def ".format(re.escape(match.group("indent"))),
+            tail,
+            re.M
+        )
+        end = (
+            match.end() + next_handler.start()
+            if next_handler is not None
+            else len(script_text)
+        )
+        return script_text[match.start():end]
+
+    persistent_selection_handlers = (
+        "add_parameters", "remove_parameters",
+        "move_up", "move_down", "move_top", "move_bottom",
+        "apply_parameters", "export_to_excel"
+    )
+    check(
+        all(
+            "capture_and_save_settings()" in nested_handler_source(name)
+            for name in persistent_selection_handlers
+        )
+        and "window.Closing += save_before_window_close" in script_text
+        and "capture_and_save_settings()" in nested_handler_source(
+            "save_before_window_close"
+        ),
+        "Selected parameter choices/order autosave after edits, actions and window close"
+    )
+    capture_source = nested_handler_source("capture_and_save_settings")
+    check(
+        "settings = load_app_settings()" in capture_source
+        and capture_source.index("settings = load_app_settings()")
+        < capture_source.index('settings["selected"] = {}'),
+        "Selection autosave preserves unrelated settings such as last export folder"
+    )
+    export_handler_source = nested_handler_source("export_to_excel")
+    check(
+        "if use_site_format:" in export_handler_source
+        and "parameter_metadata = {}" in export_handler_source
+        and "include_grade=not use_site_format" in export_handler_source
+        and "metadata_seconds" in export_handler_source
+        and "data_seconds" in export_handler_source
+        and "workbook_seconds" in export_handler_source,
+        "Fast Site export skips Classic metadata/grade work and reports phase timings"
+    )
+    check(
+        'needs_bbox = element_name in ("Slab", "Foundation")' in script_text
+        and "level_cache = {}" in script_text
+        and "get_element_level(element, level_cache)" in script_text,
+        "Fast Revit data path caches levels and avoids unnecessary framing bounding boxes"
     )
 
     class FakeLevelBuiltIns(object):
@@ -2030,6 +2329,7 @@ def main():
         "normalize_label",
         "code_token_match",
         "_contains_rcc_identity_signal",
+        "_built_in_parameter_text",
         "get_element_identity_text",
         "_read_identity_parameter",
         "_element_source_category",
@@ -2041,6 +2341,7 @@ def main():
         "validate_classification_audit",
         "classification_audit_has_findings",
         "classification_audit_detail_results",
+        "build_compact_classification_findings",
     ):
         block, _ = extract_from_sources(texts, classifier_name)
         exec(block, routing_ns)
@@ -2063,11 +2364,25 @@ def main():
             self.value = value
             self.HasValue = value not in (None, "")
 
+    class FakeBuiltInParameter(object):
+        ELEM_TYPE_PARAM = "ELEM_TYPE_PARAM"
+        SYMBOL_NAME_PARAM = "SYMBOL_NAME_PARAM"
+        ALL_MODEL_TYPE_NAME = "ALL_MODEL_TYPE_NAME"
+        ELEM_FAMILY_PARAM = "ELEM_FAMILY_PARAM"
+        SYMBOL_FAMILY_NAME_PARAM = "SYMBOL_FAMILY_NAME_PARAM"
+        ALL_MODEL_FAMILY_NAME = "ALL_MODEL_FAMILY_NAME"
+
+    class FakeDB(object):
+        BuiltInParameter = FakeBuiltInParameter
+
+    routing_ns["DB"] = FakeDB
+
     class FakeElement(object):
         next_id = 1000
 
         def __init__(
-            self, name, category, element_id=None, parameter_values=None
+            self, name, category, element_id=None, parameter_values=None,
+            built_in_values=None
         ):
             self.Name = name
             self.Category = FakeCategory(category)
@@ -2081,6 +2396,14 @@ def main():
                     parameter_name, value
                 )
             self.Parameters = list(self.parameter_map.values())
+            self.built_in_map = {}
+            for parameter_name, value in (built_in_values or {}).items():
+                self.built_in_map[parameter_name] = FakeParameter(
+                    parameter_name, value
+                )
+
+        def get_Parameter(self, parameter_id):
+            return self.built_in_map.get(parameter_id)
 
     def classify_name(name, category):
         return routing_ns["classify_rcc_element"](
@@ -2099,6 +2422,8 @@ def main():
         ("GRADE-SLAB", "Structural Foundations", "Slab", "Grade Slab"),
         ("FOLD_SLAB", "Structural Foundations", "Slab", "Fold Slab"),
         ("RCC Chajja", "Structural Foundations", "Slab", "Slab"),
+        ("LOBBY", "Floors", "Slab", "Slab"),
+        ("ramp", "Floors", "Slab", "Slab"),
     )
     for name, category, expected_group, expected_subtype in direct_cases:
         result = classify_name(name, category)
@@ -2145,6 +2470,26 @@ def main():
     check(
         parameter_chajja["logical_group"] == "Slab",
         "Reliable ITEM DES. routes Foundation-stored Chajja to Slab"
+    )
+
+    system_floor = routing_ns["classify_rcc_element"](
+        FakeElement(
+            "Floor",
+            "Floors",
+            element_id=3201775,
+            built_in_values={
+                "ELEM_TYPE_PARAM": "ramp",
+                "ELEM_FAMILY_PARAM": "Floor",
+            }
+        ),
+        "Floors"
+    )
+    check(
+        system_floor["logical_group"] == "Slab"
+        and system_floor["subtype"] == "Slab"
+        and system_floor["family"] == "Floor"
+        and system_floor["type_name"] == "ramp",
+        "System Floor built-in Type fallback routes and reports ramp"
     )
 
     case_a_foundation_names = (
@@ -2262,6 +2607,17 @@ def main():
         len(other_details) == 1
         and other_details[0]["subtype"] == "Other",
         "Classification diagnostics exclude healthy rows around an Other route"
+    )
+    compact_other = routing_ns["build_compact_classification_findings"](
+        one_other["audit"]
+    )
+    check(
+        "ID {}".format(other_details[0]["element_id"]) in compact_other
+        and "Floors" in compact_other
+        and "Unknown identity retained" in compact_other
+        and "S1" not in compact_other
+        and "S2" not in compact_other,
+        "Completion popup compactly identifies only Other routing elements"
     )
 
     engine_guard_block, _ = extract_from_sources(

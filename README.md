@@ -103,8 +103,9 @@ dependencies imported into the pyRevit host.
   Steel unit weight uses the standard `d²/162 kg/m` rule.
 - **P5 shape-aware BBS.** `Rebar BBS` exports A-H dimensions, Bend Diameter, hooks and Revit's
   authoritative Bar Length as Cutting Length, then aggregates Quantity/Length/Weight for matching
-  geometry and hosts. Variable sets expose Average Bar Length with an explicit status instead of
-  inventing a cutting length. `Rebar Summary` totals bars, length, kilograms and tonnes by diameter.
+  geometry and hosts. Variable sets remain separate by Rebar Element ID, preserve `Varies` in A-H,
+  and expose their own Average Bar Length with an explicit status instead of inventing a cutting
+  length. `Rebar Summary` totals bars, length, kilograms and tonnes by diameter.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -140,6 +141,65 @@ dependencies imported into the pyRevit host.
 
 ---
 
+## Local REST + MCP Integration (`v1.14.1`)
+
+The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
+`http://127.0.0.1:48884/rcc-boq`. Revit API reads are marshalled through `ExternalEvent` and a
+current-user-only Named Pipe. The fixed endpoint allow-list cannot modify the model or execute an
+arbitrary Revit API call. The earlier pyRevit Routes prototype is disabled and must stay disabled.
+
+Close Revit 2025, then build and install the bridge for the current Windows user:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
+```
+
+The installer publishes the Gateway and STDIO MCP server below
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v1.14.1` and creates
+`%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
+
+The first extension startup creates a random token at
+`%LOCALAPPDATA%\RCC_BOQ\rest_token.txt`. Do not copy or publish this file. The supplied client reads
+it automatically and sends an authenticated local `GET` request:
+
+```powershell
+python scripts/rcc_boq_rest_client.py status
+python scripts/rcc_boq_rest_client.py document
+python scripts/rcc_boq_rest_client.py selection
+python scripts/rcc_boq_rest_client.py element 3411763
+python scripts/rcc_boq_rest_client.py rebar 3411763
+```
+
+Available REST endpoints are `GET /status`, `/document`, `/selection`,
+`/elements/<element_id>` and `/rebar/<element_id>` below the `/rcc-boq` root. Selection output is
+limited to 100 elements and parameter output to 250 values per element. The document title may be
+returned, but its filesystem path and the API token are never returned.
+
+Register the installed read-only MCP server with Codex, then restart Codex:
+
+```powershell
+codex mcp add rcc-boq -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v1.14.1\Mcp\RccBoq.RestMcp.exe"
+codex mcp list
+```
+
+The MCP tools are `rcc_boq_status`, `rcc_boq_document`, `rcc_boq_selection`,
+`rcc_boq_element` and `rcc_boq_rebar`. The MCP process reads the same per-user token itself; the
+token is not stored in Codex configuration or emitted in tool results. All tools are annotated
+read-only and route only to the fixed REST allow-list.
+
+Host-free verification:
+
+```powershell
+dotnet build RccBoq.RestBridge\src\RccBoq.RestGateway\RccBoq.RestGateway.csproj -c Release
+dotnet build RccBoq.RestBridge\src\RccBoq.RestRevit\RccBoq.RestRevit.csproj -c Release
+dotnet run --project RccBoq.RestBridge\src\RccBoq.RestCore.Tests\RccBoq.RestCore.Tests.csproj -c Release
+dotnet run --project RccBoq.RestBridge\src\RccBoq.RestMcp.Tests\RccBoq.RestMcp.Tests.csproj -c Release
+python test_rest_api.py
+python test_xlsx_writer.py
+```
+
+---
+
 ## Installation / Layout
 
 A pyRevit extension is read from a folder named `*.extension` with a `*.tab`, a `*.panel`, and
@@ -149,6 +209,7 @@ one or more `*.pushbutton` folders:
 Revit-Extension/
 │
 ├── Nudge.extension/
+│   ├── startup.disabled.py                <- disabled legacy pyRevit Routes prototype
 │   ├── Nudge.tab/
 │   │   ├── Generate.panel/
 │   │   │   └── BOQ.pushbutton/
@@ -162,6 +223,7 @@ Revit-Extension/
 │       ├── quantity_engine.py    <- metric dimensions
 │       ├── formwork_engine.py    <- shuttering rules/formulas
 │       ├── rebar_engine.py      <- P4 rebar length/weight calculations
+│       ├── rest_api.py          <- token/authentication + bounded serializers
 │       ├── costing_engine.py     <- costing tables
 │       ├── export_engine.py      <- dependency-free Open XML XLSX writer
 │       ├── theme_manager.py      <- Revit Light/Dark theme detection + dictionary merging
@@ -178,7 +240,11 @@ Revit-Extension/
 ├── CHANGELOG.md
 ├── done-list.md
 ├── todo-list.md
-└── test_xlsx_writer.py           <- standalone regression harness (pure Python)
+├── scripts/rcc_boq_rest_client.py <- local REST smoke-test/client utility
+├── scripts/install_rest_bridge.ps1 <- build/install the Revit add-in, Gateway and MCP server
+├── RccBoq.RestBridge/              <- .NET Core, Gateway, MCP and Revit add-in projects
+├── test_rest_api.py              <- REST security/serialization regression tests
+└── test_xlsx_writer.py           <- standalone XLSX regression harness (pure Python)
 ```
 
 Register the root folder as an **extension search path** in pyRevit settings, then reload. Further
@@ -291,8 +357,30 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** P1 quantity,
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.14.1`
+adds a dependency-free, read-only STDIO MCP adapter over the token-protected localhost .NET Gateway
+and Revit add-in. Revit 2025 live
+testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
+varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension
+marker. `v1.13.3` mirrors the BOQ rule by mapping a dimension with `HasValue=false` to `Varies`.
+The owner live-verified the corrected `Varies` payload and non-empty selection in `v1.13.3`;
+the single-owner mutex and clean owner/Gateway shutdown are also live-verified. Raw STDIO MCP tool
+discovery and live status/document/selection calls pass; registered Codex discovery needs a fresh
+session after installation. The previous pyRevit Routes prototype stays
+disabled. P1 quantity,
 P2 grouping and P3 formwork are complete; the owner confirmed `v1.8.10` Slab/Foundation routing in
-Revit 2025 on 2026-09-03. Structure Wall `v1.9.3` is live-confirmed. Version `v1.11.1` adds the P5
+Revit 2025 on 2026-09-03. Structure Wall `v1.9.3` is live-confirmed. Version `v1.12.4` keeps varying
+Rebar sets separate and traceable in BBS (owner workbook live-confirmed); it retains the robust
+system-Floor type detection and
+verified LOBBY/ramp routing from `v1.12.3`, plus the compact
+Element ID details from `v1.12.2` and the live-verified `v1.12.1` performance pass,
+which builds on the
+`v1.12.0` indexed export path by skipping Classic-only Grade work in Site exports, caching Level
+lookups and avoiding unnecessary framing bounding boxes. It
+retains the `v1.11.3` fix for angled
+Beam shuttering by using actual family/type section width instead of bounding-box width, and retains
+the `v1.11.2` behavior that keeps every
+Available -> Selected parameter choice and its order across dialog close, pyRevit reload and Revit
+restart. It retains the `v1.11.1` P5
 shape-aware Rebar BBS and diameter summary on top of the P4 quantity/weight engine; the harness
 passes and live Revit 2025 verification of the new sheets is pending.

@@ -22,6 +22,240 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.14.1] - 2026-09-08
+
+### Fixed (installed STDIO smoke-test follow-up)
+- Accept a leading UTF-8 BOM on an MCP input line, matching the behavior observed through a native
+  Windows PowerShell pipeline.
+- Do not accept `notifications/initialized` unless a valid `initialize` request was processed first.
+- Added the BOM case to the dependency-free MCP protocol regression.
+
+### Verification boundary
+- The corrected `v1.14.1` executable is installed and registered as the enabled global Codex STDIO
+  server `rcc-boq`.
+- Its installed handshake and live status/document calls pass, including the PowerShell BOM path.
+  Revit still reports the already-loaded `v1.13.3` assembly; fresh Revit and Codex sessions are
+  required to verify the new add-in version and registered tool discovery.
+
+## [v1.14.0] - 2026-09-08
+
+### Added (host-free + raw STDIO live verification; Codex restart pending)
+- Added a dependency-free .NET 8 STDIO MCP adapter over the proven token-protected localhost REST
+  boundary. It exposes status, active document, selection, element and Rebar as five read-only tools.
+- Added bounded JSON-RPC input, MCP initialization/instructions, fixed tool schemas, positive Revit
+  element-ID validation, read-only/non-destructive annotations and safe tool-level Gateway errors.
+- Extended the installer to publish the MCP executable side-by-side and print the exact Codex
+  registration command.
+- Added dependency-free MCP regressions covering initialization, notification handling, tool
+  discovery, annotations, endpoint mapping and invalid arguments.
+
+### Verification boundary
+- MCP and Core projects build with zero warnings/errors; MCP protocol regressions pass.
+- A raw STDIO MCP session successfully listed all five tools and called status, document and
+  selection against the live Revit project. Registered-tool discovery still requires install plus a
+  fresh Codex session.
+
+## [v1.13.3] - 2026-09-08
+
+### Fixed (live Revit 2025 + automated tests)
+- Varying Rebar dimensions now use the same proven rule as the BOQ exporter: an existing dimension
+  parameter with `HasValue=false` is exported as `Varies`. The REST serializer no longer depends on
+  Revit returning a literal `<varies>` display string.
+- Moved the normalization into shared `RebarValueRules` and added Core regressions for false
+  `HasValue`, literal varying display text and fixed dimension preservation.
+
+### Verification boundary
+- Revit `25.0.2.419` loaded `v1.13.3`; authenticated status reported the connected bridge and a
+  non-empty selection returned Rebar `3411763`.
+- The Rebar payload now returns A `Varies`, B `492 mm`, Quantity `3`, blank individual Bar Length,
+  Total Bar Length `33510 mm` and `has_variable_length_bars=true`. Revit and Gateway remained
+  responsive and the bridge log contained no new error.
+- With two Revit processes running, exactly one Gateway remained active; the second add-in logged
+  that it was inactive while the authenticated API stayed connected.
+- Closing the owner Revit normally stopped its Gateway and wrote a clean bridge-stopped log entry.
+  A fresh Revit launch then restored exactly one Gateway with `revit_connected=true`. The REST
+  integration gates are complete; the MCP layer is the next phase.
+
+## [v1.13.2] - 2026-09-08
+
+### Fixed (owner live payload + automated tests; restart verification pending)
+- Revit varying-dimension display text is now read before the `Parameter.HasValue` early exit. This
+  preserves native markers such as `<varies>` that Revit exposes while reporting no scalar value.
+- Added a regression for a false `HasValue` combined with a valid varying display value.
+
+### Verification boundary
+- The defect was found through the live `v1.13.1` payload for Rebar `3411763`: native varying-set
+  identity and totals were correct, but dimension A was blank. Projects build and host-free tests
+  pass; `v1.13.2` requires one restart and the same Rebar endpoint check before closure.
+
+## [v1.13.1] - 2026-09-08
+
+### Fixed (automated tests; live verification completed in v1.13.3)
+- Added a per-user/session mutex so only one Revit process owns the fixed localhost port, Named Pipe
+  and Gateway. Additional Revit processes remain inactive instead of competing for the pipe.
+- Added a one-second backoff after unexpected pipe-server failures, preventing the tight error loop
+  observed when two Revit processes loaded the initial bridge simultaneously.
+- Missing Revit now returns `503 Bridge unavailable` in about one second instead of waiting 15
+  seconds and returning `504`. Status remains outside the Revit `ExternalEvent` queue.
+- The installer now derives its semantic version from `Directory.Build.props`, enabling side-by-side
+  patch deployment when a running Revit process has the previous add-in assembly locked.
+
+### Verified (live Revit 2025 + automated tests)
+- Revit `25.0.2.419` loaded `v1.13.1` and launched the installed Gateway without a new bridge-log
+  error. Both processes remained responsive through the endpoint checks.
+- An unauthenticated status request returned `401`; authenticated status returned API `1.0.0`,
+  extension `1.13.1` and `revit_connected=true`. Document and empty-selection reads succeeded.
+- Generic element and native Rebar reads succeeded for varying Rebar ID `3411763`: Quantity `3`,
+  blank Bar Length, Total Bar Length `33510 mm`, Distribution Type `Varying length` and
+  `has_variable_length_bars=true`. A non-Rebar request returned `422`; a missing ID returned `404`.
+- Gateway and Revit projects build with zero warnings/errors; .NET token/pipe, Python REST and full
+  XLSX tests pass.
+
+### Live boundary completed in v1.13.3
+- Non-empty selection, second-instance mutex behavior and clean owner/Gateway shutdown were all
+  subsequently verified with the `v1.13.3` deployment.
+
+## [v1.13.0] - 2026-09-07
+
+### Added (code + automated tests; live Revit verification pending)
+- Added an out-of-process ASP.NET Core Gateway bound only to `127.0.0.1`, plus a Revit 2025 add-in
+  that performs approved reads through `ExternalEvent` and a current-user-only Named Pipe. The fixed
+  allow-list contains status, active-document, selection, element and Rebar inspection; it exposes
+  no transaction, arbitrary method or code-execution operation.
+- Added a 256-bit per-user Bearer token under `%LOCALAPPDATA%\RCC_BOQ`, `no-store` responses, bounded
+  request/response sizes, parent-process monitoring and a one-second unavailable-Revit response.
+  Document paths and token values are never returned.
+- Added `scripts/install_rest_bridge.ps1`, a Revit add-in manifest template, the dependency-free
+  `scripts/rcc_boq_rest_client.py`, .NET Core contract tests and Python client/serialization tests.
+- The earlier pyRevit Routes prototype remains renamed to `startup.disabled.py` after live host
+  instability. It is not part of the installed bridge and must not be re-enabled for this phase.
+
+### Security boundary
+- Gateway and Revit add-in projects build with zero warnings/errors. Token/pipe tests, Python REST
+  tests and the complete XLSX harness pass. A host-free smoke test returned `401` without a token
+  and `503` in about one second with a valid token but no Revit pipe. Installation, Revit restart
+  and live endpoint calls remain owner-verified gates before this phase is marked live-tested.
+
+## [v1.12.4] - 2026-09-07
+
+### Fixed (owner live evidence + harness)
+- Variable-length Rebar sets no longer merge merely because Bar Length and the varying A-H
+  dimension are blank. Each varying Revit set now keeps its own BBS row and computes its own
+  `Total Length / Quantity` average; fixed-length bars retain the existing geometry/host grouping.
+- `Rebar Element ID` is available/exported for traceability, including the BBS. When Revit reports
+  an A-H value as `<varies>`, the workbook now shows `Varies` instead of an ambiguous blank.
+- The owner's example (`33510 mm / 3 bars`) is therefore represented as a blank Cutting Length,
+  `11.17 m` Average Bar Length and `Variable set / average only` rather than being folded into the
+  earlier `12 bars / 10.41 m` aggregate.
+
+### Verified (owner live workbook + harness)
+- In the owner's fresh `v1.12.4` workbook, the two `33510 mm / 3 bar` sets appear as separate BBS
+  rows with Rebar Element IDs `3411763` and `3411765`. Both show `A=Varies`, `B=492 mm`, blank
+  Cutting Length, `11.17 m` Average Bar Length and `Variable set / average only`.
+- The old combined `12 bars / 124.92 m / 10.41 m average` row is absent. BBS and Rebar Summary
+  reconcile exactly at 11,903 bars, 25,439.37 m and 30,130.966 kg.
+- Compilation and the complete harness pass, including fixed-group retention, variable-set
+  separation, Element ID traceability and `Varies` preservation.
+
+## [v1.12.3] - 2026-09-07
+
+### Fixed (owner live evidence + harness)
+- System-family Floors now feature-detect Revit's built-in `Type` / `Type Name` and `Family`
+  parameters when the live wrapper does not return `ElementType.Name`. Routing diagnostics therefore
+  report the Properties-palette type instead of `-`.
+- The owner's Element IDs `3182833` (`LOBBY`) and `3201775` (`ramp`) now route to `Slab / Slab`
+  instead of the controlled `Other` bucket. Foundation/PCC/footing rules still take priority.
+
+### Verification boundary
+- The supplied Revit Properties screenshots establish both element identities. The owner's fresh
+  `v1.12.3` export completed with no routing findings, and direct workbook inspection found `LOBBY`
+  and `ramp` once each in Slab and zero times in Foundation. Compilation and the complete harness
+  pass.
+
+## [v1.12.2] - 2026-09-07
+
+### Added (harness)
+- When routing has `Other`, unclassified or duplicate findings, the export completion popup now
+  lists only the affected Revit Element IDs with source category, family/type, available identity
+  fields and routing reason.
+- The compact list is capped at 10 rows and directs the user to Revit's `Manage > Select by ID`;
+  healthy classification rows are not printed, avoiding the earlier oversized diagnostics window.
+
+### Verification boundary
+- Compilation and the complete harness pass. Live confirmation is required on the owner's two
+  current `Other` elements.
+
+## [v1.12.1] - 2026-09-07
+
+### Performance (live timing + harness)
+- The owner's `v1.12.0` Site export established a 46.0-second baseline: metadata 0.0 seconds,
+  Revit data 40.1 seconds and workbook writing 5.9 seconds for 9,632 rows / 45 selected fields.
+- Site format no longer resolves the automatic Classic-only Grade grouping for every concrete
+  element. Level element names are cached, and Beam/Column/Wall bounding boxes are read only when
+  an authoritative dimension needed by formwork is missing.
+
+### Verified (owner live timing + harness)
+- The same 9,632-row / 45-field Site export completed in 19.1 seconds: Revit data 15.1 seconds and
+  workbook writing 4.0 seconds. This is 58.5% faster than the 46.0-second baseline.
+- Compilation and the complete harness pass, including guards for Grade-skip, Level caching and
+  conditional bounding-box reads.
+
+## [v1.12.0] - 2026-09-07
+
+### Performance (harness)
+- Replaced repeated full Revit `ParameterSet` scans for every selected field with one lowercase-name
+  index per element. Selected parameter reads are now constant-time dictionary lookups.
+- Added a shared type-parameter cache, so thousands of instances of the same Revit type reuse one
+  `doc.GetElement(typeId)` result and one type-parameter index.
+- Concrete-grade and identity fallbacks reuse the same indexes instead of rescanning instance/type
+  parameters for every grade hint and common identity field.
+- Quantity dimension reads reuse that context too; each category now requests only the dimensions
+  it actually needs, eliminating repeated type fetches and irrelevant Width/Depth reads on slabs
+  and foundations.
+- Site-format export skips the unused Classic parameter-metadata scan. The completion dialog now
+  reports separate metadata, Revit-data and workbook-writing durations for live verification.
+- Derived-only Rebar exports skip the general raw-parameter index because their BBS/weight values
+  already come from the dedicated Rebar quantity adapter.
+
+### Verification boundary
+- Compilation and the complete workbook harness pass. A fake-Revit regression proves two instances
+  of one type scan each instance once, scan the shared type once, and resolve both instance/type
+  values correctly. Real elapsed-time improvement remains to be measured in Revit on the owner's
+  project because Python tests cannot benchmark Revit API calls.
+
+## [v1.11.3] - 2026-09-07
+
+### Fixed (owner workbook audit + harness)
+- Beam shuttering now reads the actual family/type section width through Revit's
+  `STRUCTURAL_SECTION_COMMON_WIDTH` built-in parameter when available, then controlled aliases such
+  as `BEAM WIDTH`. The matching section-height built-in/aliases are used for beam depth.
+- Rotated/angled beam bounding-box width and height are no longer accepted as cross-section
+  dimensions. Missing section dimensions now leave shuttering blank instead of exporting an
+  inflated result.
+- The supplied corrected workbook exposed the defect: original Beam shuttering was 37,531.28 m2
+  versus 22,488.481276 m2 using `BEAM WIDTH / 1000`, with 3,858 of 4,031 rows differing by more
+  than 10 mm. With the exporter's existing two-decimal rounding on every row, the fresh-export
+  comparison target is 22,488.94 m2.
+
+### Verification boundary
+- Compilation and the complete harness pass, including built-in feature detection, custom
+  `BEAM WIDTH` fallback and rotated-bounding-box rejection. A fresh Revit export is still required
+  to confirm the project total against the corrected workbook.
+
+## [v1.11.2] - 2026-09-07
+
+### Fixed (harness)
+- Available -> Selected parameter choices and their visible order now save immediately after add,
+  remove, move-up/down and move-top/bottom actions.
+- The same state is saved before Apply, before Export, and whenever the dialog closes through its
+  Close button, title-bar X, Alt+F4 or host-driven window closure.
+- Saving parameter selections now merges into the existing settings document, preserving the last
+  Excel export folder and future unrelated preferences.
+
+### Verification boundary
+- Python compilation and the XLSX regression harness verify the persistence wiring. Reload/restart
+  behavior still requires one live Revit 2025 confirmation by the project owner.
+
 ## [v1.11.1] - 2026-09-04
 
 ### Fixed (harness + owner workbook audit)

@@ -156,8 +156,8 @@ def resolve_element_dimensions(
 
     Source priority per category:
       Beam       : L = calculated length | bbox long side
-                   W = Width | bbox short side
-                   H = Depth | Height | bbox vertical side
+                   W = actual section Width only
+                   H = actual section Depth | Height only
       Column     : H = Height | bbox vertical side
                    section pair = (Width x Depth) | bbox pair, sorted so
                    W <= L exactly like the manual sheet lists them
@@ -196,10 +196,12 @@ def resolve_element_dimensions(
     if category_name == "Beam":
 
         result["length"] = first_available(length_m, bbox_length_m)
-        result["width"] = first_available(width_m, bbox_width_m)
-        result["height"] = first_available(
-            depth_m, height_m, bbox_height_m
-        )
+        # An axis-aligned bounding box does not represent cross-section
+        # width/depth for rotated, angled or sloped framing. If the actual
+        # family dimensions are unavailable, leave shuttering blank rather
+        # than export a confidently wrong quantity.
+        result["width"] = first_available(width_m)
+        result["height"] = first_available(depth_m, height_m)
 
     elif category_name == "Column":
 

@@ -82,6 +82,22 @@ def _rounded_total(value, digits):
     return round(number, digits) if number is not None else ""
 
 
+def normalize_rebar_dimension_mm(display_value="", numeric_mm="",
+                                 has_value=True):
+    """Keep a varying Rebar shape dimension explicit; normalize fixed mm."""
+    try:
+        display_text = str(display_value or "").strip().lower()
+    except:
+        display_text = ""
+    if "varies" in display_text or has_value is False:
+        return "Varies"
+
+    number = _rebar_number(numeric_mm)
+    if number is None or number <= 0:
+        return ""
+    return round(number, 3)
+
+
 def build_rebar_bbs_table(rebar_rows):
     """Group Revit rebar/set rows into a shape-aware cutting schedule.
 
@@ -98,15 +114,23 @@ def build_rebar_bbs_table(rebar_rows):
             "Cutting Length (m)", "Average Bar Length (m)",
             "Length Status", "Quantity", "Total Length (m)",
             "Unit Weight (kg/m)", "Total Weight (kg)",
-            "Host Category", "Host Element ID", "Level"
+            "Rebar Element ID", "Host Category", "Host Element ID", "Level"
         ]
     )
     grouped = {}
     order = []
 
-    for row in rebar_rows or []:
+    for row_index, row in enumerate(rebar_rows or []):
         dimensions = tuple(
-            _rounded_total(row.get("Rebar: {0} (mm)".format(name), ""), 3)
+            (
+                "Varies"
+                if "varies" in str(
+                    row.get("Rebar: {0} (mm)".format(name), "") or ""
+                ).lower()
+                else _rounded_total(
+                    row.get("Rebar: {0} (mm)".format(name), ""), 3
+                )
+            )
             for name in dimension_names
         )
         cutting_length = _rounded_total(
@@ -120,6 +144,26 @@ def build_rebar_bbs_table(rebar_rows):
         )
         if not shape_name and diameter == "" and cutting_length == "":
             continue
+        quantity = _rebar_number(row.get("Rebar: Quantity", ""))
+        total_length = _rebar_number(
+            row.get("Rebar: Total Length (m)", "")
+        )
+        total_weight = _rebar_number(
+            row.get("Rebar: Total Weight (kg)", "")
+        )
+        rebar_element_id = str(
+            row.get("Rebar: Element ID", row.get("Element ID", "")) or ""
+        )
+        is_variable_set = cutting_length == "" and total_length is not None
+        # Variable sets with identical shape metadata can still contain
+        # different bar distributions and averages. Keep each Revit set
+        # separate. Fixed bars deliberately retain the existing grouping.
+        variable_group_id = ""
+        if is_variable_set:
+            variable_group_id = (
+                rebar_element_id
+                or "__variable_row_{0}".format(row_index)
+            )
         key = (
             str(row.get("Rebar: Bar Mark", "") or ""),
             shape_name,
@@ -133,16 +177,24 @@ def build_rebar_bbs_table(rebar_rows):
             str(row.get("Rebar: Host Category", "") or ""),
             str(row.get("Rebar: Host Element ID", "") or ""),
             str(row.get("Level", "") or ""),
+            variable_group_id,
         )
         if key not in grouped:
-            grouped[key] = {"quantity": 0, "length": 0.0, "weight": 0.0}
+            grouped[key] = {
+                "quantity": 0,
+                "length": 0.0,
+                "weight": 0.0,
+                "rebar_element_ids": [],
+            }
             order.append(key)
-        quantity = _rebar_number(row.get("Rebar: Quantity", ""))
-        total_length = _rebar_number(row.get("Rebar: Total Length (m)", ""))
-        total_weight = _rebar_number(row.get("Rebar: Total Weight (kg)", ""))
         grouped[key]["quantity"] += int(quantity) if quantity is not None else 0
         grouped[key]["length"] += total_length if total_length is not None else 0.0
         grouped[key]["weight"] += total_weight if total_weight is not None else 0.0
+        if (
+            rebar_element_id
+            and rebar_element_id not in grouped[key]["rebar_element_ids"]
+        ):
+            grouped[key]["rebar_element_ids"].append(rebar_element_id)
 
     table = [headers]
     for key in order:
@@ -164,7 +216,9 @@ def build_rebar_bbs_table(rebar_rows):
             + [key[4], key[5], key[6], key[7], average_length,
                length_status, values["quantity"],
                round(values["length"], 4), key[8],
-               round(values["weight"], 3), key[9], key[10], key[11]]
+               round(values["weight"], 3),
+               ", ".join(values["rebar_element_ids"]),
+               key[9], key[10], key[11]]
         )
         table.append(row_values)
     return table

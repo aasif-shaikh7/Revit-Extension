@@ -139,7 +139,8 @@ Add → / Remove buttons to move parameters between **Available** and **Selected
 Floors and Structural Foundations are kept as separate raw collections, then passed through one
 central classifier. Physical category never overrides an explicit construction identity:
 
-- **Slab subtypes:** Slab (including Chajja), Fold Slab, Grade Slab, Other.
+- **Slab subtypes:** Slab (including Chajja, Lobby floors and Ramp floors), Fold Slab, Grade Slab,
+  Other.
 - **Foundation subtypes:** Footing, Combined Footing, PCC, Raft, Combined Raft, Other.
 
 Foundation identity has priority over generic slab wording. Codes use exact boundaries:
@@ -329,13 +330,38 @@ project.
   All automatic fields are exposed in Rebar's Available Parameters list. The pure engine computes
   Unit Weight with `d²/162 kg/m` and Total Weight. Initial code/harness is
   complete; live comparison with a native Revit 2025 rebar schedule is required before closure.
-- **Phase 5 — Rebar Summary / BBS (`v1.11.1` testing).** Diameter-wise summary includes Diameter,
+- **Phase 5 — Rebar Summary / BBS (`v1.12.4` testing).** Diameter-wise summary includes Diameter,
   Number of Bars, Total Length, Unit Weight and Total Weight in kg/ton. The BBS includes Bar Mark,
   Shape, Diameter, A-H, Bend Diameter, start/end hooks, Quantity, Cutting Length, Total Length,
   Unit/Total Weight, Host and Level. Revit Bar Length is authoritative for cutting length because
   its shape definition owns repeated segments, bend radii and hooks; no universal deduction is
-  guessed. Variable sets keep Cutting Length blank and expose a clearly labelled average; Rebar
-  Level falls back to its host. Code/harness are complete and live patch verification is pending.
+  guessed. Variable sets keep Cutting Length blank, remain separate by Rebar Element ID, preserve
+  varying A-H markers and expose a clearly labelled per-set average; Rebar Level falls back to its
+  host. The owner's `v1.12.4` workbook live-verifies the per-set BBS behavior and reconciled totals.
+  The `v1.11.2` patch also persists selected export parameters and their order across dialog close,
+  pyRevit reload and Revit restart.
+  The `v1.11.3` patch reads Beam section width/depth from built-in or controlled family/type
+  parameters and rejects rotated bounding-box dimensions for shuttering calculations.
+  The `v1.12.0` performance pass indexes each instance once and each shared Revit type once for
+  Selected parameter, grade and identity resolution during export.
+  The `v1.12.1` measured follow-up skips Site-only Grade resolution, caches Level names and avoids
+  unnecessary framing bounding-box reads.
+  The `v1.12.2` completion report exposes compact Element ID/details for routing findings without
+  dumping healthy classification rows. `v1.12.3` uses built-in system-family Type/Family fallbacks
+  and routes the owner's live-verified `LOBBY` and `ramp` Floor types to `Slab / Slab`.
+  `v1.12.4` live-verifies that distinct varying Rebar sets no longer collapse into one misleading
+  BBS average.
+- **Local integration foundation (`v1.14.1` MCP testing).** An out-of-process localhost ASP.NET Core
+  Gateway communicates with a Revit 2025 .NET add-in over a current-user-only Named Pipe. Revit reads
+  are marshalled through `ExternalEvent`; only token-protected status, document, selection, element
+  and Rebar snapshots are allowed. The interface excludes model writes, document paths and arbitrary
+  execution and bounds returned collections. The earlier pyRevit Routes prototype remains disabled
+  after host instability. Live Revit 2025 `v1.13.1` testing verifies startup, authentication,
+  document, selection, element and varying-Rebar reads plus 404/422 boundaries. `v1.13.3` mirrors
+  the proven BOQ rule that maps a Rebar dimension with `HasValue=false` to `Varies`; multi-instance
+  ownership and clean shutdown are also live-verified. `v1.14.0` adds a dependency-free STDIO MCP
+  adapter over the same five read-only calls; `v1.14.1` hardens BOM handling and initialization
+  state. Registered Codex discovery remains live QA.
 - **Phase 6 — Structural BOQ Assembly.** Configurable assemblies e.g. RCC Beam → Concrete,
   Reinforcement, Formwork, Binding Wire, Cover Blocks, Labour (similarly for columns, slabs,
   foundations), with support for future custom components.

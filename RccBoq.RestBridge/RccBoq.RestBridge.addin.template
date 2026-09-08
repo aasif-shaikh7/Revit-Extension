@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>RCC BOQ REST Bridge</Name>
+    <Assembly>__ASSEMBLY_PATH__</Assembly>
+    <FullClassName>RccBoq.RestRevit.App</FullClassName>
+    <ClientId>8D08BC88-13F3-4AE8-A27A-B3CF14AF7168</ClientId>
+    <VendorId>RCCB</VendorId>
+    <VendorDescription>RCC BOQ localhost read-only integration bridge</VendorDescription>
+  </AddIn>
+</RevitAddIns>

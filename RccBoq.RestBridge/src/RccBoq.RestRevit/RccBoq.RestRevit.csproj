@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>RccBoq.RestRevit</AssemblyName>
+    <RootNamespace>RccBoq.RestRevit</RootNamespace>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == ''">C:\Program Files\Autodesk\Revit 2025</RevitInstallDir>
+    <!-- Autodesk's 2025 API facade references a newer Microsoft.VisualBasic identity
+         than the net8 reference pack. The bridge does not use Visual Basic types. -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RccBoq.RestCore\RccBoq.RestCore.csproj" />
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitInstallDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitInstallDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="ValidateRevitApi" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll')"
+           Text="RevitAPI.dll was not found. Set RevitInstallDir to the Revit 2025 installation folder." />
+    <Error Condition="!Exists('$(RevitInstallDir)\RevitAPIUI.dll')"
+           Text="RevitAPIUI.dll was not found. Set RevitInstallDir to the Revit 2025 installation folder." />
+  </Target>
+</Project>

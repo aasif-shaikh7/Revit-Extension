@@ -1,0 +1,289 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using RccBoq.RestCore;
+
+namespace RccBoq.RestMcp;
+
+internal sealed class McpServer(
+    TextReader input,
+    TextWriter output,
+    IGatewayClient gateway)
+{
+    private const string ProtocolVersion = "2025-06-18";
+    private bool initializeReceived;
+    private bool initialized;
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            string? line = await input.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            if (line is null)
+            {
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+            line = line.TrimStart('\uFEFF');
+            if (line.Length > BridgeConstants.MaxMessageBytes)
+            {
+                await output.WriteLineAsync(
+                    Error(null, -32600, "Request exceeds the configured size limit").ToJsonString())
+                    .ConfigureAwait(false);
+                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            JsonObject? response;
+            try
+            {
+                using JsonDocument message = JsonDocument.Parse(line, new JsonDocumentOptions
+                {
+                    MaxDepth = 32,
+                });
+                response = await DispatchAsync(
+                    message.RootElement,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (JsonException)
+            {
+                response = Error(null, -32700, "Parse error");
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                response = Error(null, -32603, $"Internal error: {exception.Message}");
+            }
+
+            if (response is not null)
+            {
+                await output.WriteLineAsync(response.ToJsonString()).ConfigureAwait(false);
+                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<JsonObject?> DispatchAsync(
+        JsonElement message,
+        CancellationToken cancellationToken)
+    {
+        if (message.ValueKind != JsonValueKind.Object
+            || !message.TryGetProperty("jsonrpc", out JsonElement jsonRpc)
+            || jsonRpc.GetString() != "2.0"
+            || !message.TryGetProperty("method", out JsonElement methodElement)
+            || methodElement.ValueKind != JsonValueKind.String)
+        {
+            return Error(GetId(message), -32600, "Invalid Request");
+        }
+
+        JsonNode? id = GetId(message);
+        string method = methodElement.GetString()!;
+        JsonElement parameters = message.TryGetProperty("params", out JsonElement value)
+            ? value
+            : default;
+
+        if (id is null)
+        {
+            if (method == "notifications/initialized")
+            {
+                initialized = initializeReceived;
+            }
+            return null;
+        }
+
+        return method switch
+        {
+            "initialize" => Initialize(id, parameters),
+            "ping" => Result(id, new JsonObject()),
+            "tools/list" when initialized => Result(id, ToolCatalog()),
+            "tools/call" when initialized => await CallToolAsync(
+                id,
+                parameters,
+                cancellationToken).ConfigureAwait(false),
+            "tools/list" or "tools/call" => Error(id, -32002, "Server is not initialized"),
+            _ => Error(id, -32601, "Method not found"),
+        };
+    }
+
+    private JsonObject Initialize(JsonNode id, JsonElement parameters)
+    {
+        initializeReceived = true;
+        string negotiated = ProtocolVersion;
+        if (parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("protocolVersion", out JsonElement requested)
+            && requested.ValueKind == JsonValueKind.String
+            && requested.GetString() is string requestedVersion
+            && requestedVersion is "2025-06-18" or "2025-03-26" or "2024-11-05")
+        {
+            negotiated = requestedVersion;
+        }
+
+        return Result(id, new JsonObject
+        {
+            ["protocolVersion"] = negotiated,
+            ["capabilities"] = new JsonObject
+            {
+                ["tools"] = new JsonObject { ["listChanged"] = false },
+            },
+            ["serverInfo"] = new JsonObject
+            {
+                ["name"] = "rcc-boq-revit",
+                ["version"] = BridgeConstants.Version,
+            },
+            ["instructions"] = "Read-only access to the active Revit 2025 document through the local RCC BOQ bridge. Check rcc_boq_status first. Use rcc_boq_selection for the current selection, then pass an element_id to rcc_boq_element or rcc_boq_rebar. Never describe these tools as proof of model edits; they cannot modify Revit.",
+        });
+    }
+
+    private static JsonObject ToolCatalog()
+    {
+        JsonArray tools =
+        [
+            Tool("rcc_boq_status", "Check the local RCC BOQ bridge and Revit connection.", EmptySchema()),
+            Tool("rcc_boq_document", "Read bounded identity for the active Revit document.", EmptySchema()),
+            Tool("rcc_boq_selection", "Read bounded identity for the current Revit selection.", EmptySchema()),
+            Tool("rcc_boq_element", "Read bounded identity and parameters for one Revit element.", ElementSchema()),
+            Tool("rcc_boq_rebar", "Read native and derived data for one Revit Rebar element.", ElementSchema()),
+        ];
+        return new JsonObject { ["tools"] = tools };
+    }
+
+    private async Task<JsonObject> CallToolAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object
+            || !parameters.TryGetProperty("name", out JsonElement nameElement)
+            || nameElement.ValueKind != JsonValueKind.String)
+        {
+            return Error(id, -32602, "Tool name is required");
+        }
+
+        string name = nameElement.GetString()!;
+        string? path = name switch
+        {
+            "rcc_boq_status" => "/rcc-boq/status",
+            "rcc_boq_document" => "/rcc-boq/document",
+            "rcc_boq_selection" => "/rcc-boq/selection",
+            "rcc_boq_element" => ElementPath(parameters, "/rcc-boq/elements/"),
+            "rcc_boq_rebar" => ElementPath(parameters, "/rcc-boq/rebar/"),
+            _ => null,
+        };
+
+        if (path is null)
+        {
+            return name is "rcc_boq_element" or "rcc_boq_rebar"
+                ? Error(id, -32602, "A positive integer element_id is required")
+                : Error(id, -32602, $"Unknown tool: {name}");
+        }
+
+        try
+        {
+            GatewayResult gatewayResult = await gateway.GetAsync(
+                path,
+                cancellationToken).ConfigureAwait(false);
+            string body = JsonSerializer.Serialize(
+                gatewayResult.Body,
+                new JsonSerializerOptions { WriteIndented = true });
+            return Result(id, new JsonObject
+            {
+                ["content"] = new JsonArray
+                {
+                    new JsonObject { ["type"] = "text", ["text"] = body },
+                },
+                ["isError"] = !gatewayResult.IsSuccess,
+            });
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return Result(id, new JsonObject
+            {
+                ["content"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = $"RCC BOQ bridge unavailable: {exception.Message}",
+                    },
+                },
+                ["isError"] = true,
+            });
+        }
+    }
+
+    private static string? ElementPath(JsonElement parameters, string prefix)
+    {
+        if (!parameters.TryGetProperty("arguments", out JsonElement arguments)
+            || arguments.ValueKind != JsonValueKind.Object
+            || !arguments.TryGetProperty("element_id", out JsonElement elementId)
+            || !elementId.TryGetInt64(out long value)
+            || value <= 0)
+        {
+            return null;
+        }
+        return prefix + value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static JsonObject Tool(string name, string description, JsonObject inputSchema) => new()
+    {
+        ["name"] = name,
+        ["description"] = description,
+        ["inputSchema"] = inputSchema,
+        ["annotations"] = new JsonObject
+        {
+            ["readOnlyHint"] = true,
+            ["destructiveHint"] = false,
+            ["idempotentHint"] = true,
+            ["openWorldHint"] = false,
+        },
+    };
+
+    private static JsonObject EmptySchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject(),
+        ["additionalProperties"] = false,
+    };
+
+    private static JsonObject ElementSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["element_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+                ["description"] = "Positive Revit element ID.",
+            },
+        },
+        ["required"] = new JsonArray("element_id"),
+        ["additionalProperties"] = false,
+    };
+
+    private static JsonObject Result(JsonNode id, JsonNode result) => new()
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = id.DeepClone(),
+        ["result"] = result,
+    };
+
+    private static JsonObject Error(JsonNode? id, int code, string message) => new()
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = id?.DeepClone(),
+        ["error"] = new JsonObject { ["code"] = code, ["message"] = message },
+    };
+
+    private static JsonNode? GetId(JsonElement message)
+    {
+        if (message.ValueKind != JsonValueKind.Object
+            || !message.TryGetProperty("id", out JsonElement id)
+            || id.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+        return JsonNode.Parse(id.GetRawText());
+    }
+}

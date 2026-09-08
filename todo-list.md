@@ -45,7 +45,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
 | P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | `testing` (`v1.10.2`) |
-| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.11.1`) |
+| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.12.4`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | `todo` |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
@@ -61,6 +61,58 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 ---
 
 ## Active roadmap phase
+
+### INT-02 — Codex STDIO MCP adapter — `testing` (`v1.14.1`)
+
+**Built:** a dependency-free .NET 8 STDIO MCP server exposes five read-only tools for bridge status,
+active document, selection, generic element and Rebar. It reads the existing per-user token at call
+time and forwards only to the fixed localhost REST allow-list. Tool annotations declare read-only,
+non-destructive, idempotent, closed-world behavior; element IDs require positive integers.
+
+**Verified:** zero-warning build, dependency-free MCP protocol regressions and a live STDIO handshake
+all pass. Live MCP calls returned the connected `v1.13.3` bridge and active document
+`20260225-BBS_BEAM_RBM_SALES-P1` without exposing its path or token.
+
+**Installed:** `v1.14.1` is published side-by-side and global Codex server `rcc-boq` is enabled at
+the installed executable. Its BOM-hardened installed STDIO handshake and live status/document calls
+pass against the currently running `v1.13.3` Revit bridge.
+
+**Remaining:** restart Revit and Codex, then invoke the registered MCP tools from a fresh Codex
+session. Host-free and raw-STDIO evidence do not prove Codex discovery.
+
+### INT-01 — Secure direct Revit REST integration — `complete` (`v1.13.3`)
+
+**Built:** a Revit 2025 .NET add-in owns a current-user-only Named Pipe and queues only approved reads
+through `ExternalEvent`. An out-of-process ASP.NET Core Gateway exposes status, document, selection,
+element and Rebar GET endpoints only on `127.0.0.1`; a random per-user Bearer token protects every
+endpoint. Payloads are bounded, responses are non-cacheable, model paths are excluded, and there is
+no transaction/arbitrary-execution endpoint. The dependency-free client lives at
+`scripts/rcc_boq_rest_client.py`; `scripts/install_rest_bridge.ps1` builds and installs the add-in.
+The unstable pyRevit Routes prototype remains disabled as `startup.disabled.py`.
+
+**Tested (host-free):** Gateway and Revit projects compile with zero warnings/errors; .NET token and
+pipe framing tests pass; Python client/serialization and complete XLSX regressions pass. A local
+Gateway smoke test returns `401` without credentials and a fast `503` when Revit is unavailable.
+
+**Live-verified:** Revit 2025 loaded `v1.13.1`; unauthenticated status returned `401`, authenticated
+status reported a connected Revit bridge, document and empty-selection calls succeeded, and varying
+Rebar ID `3411763` returned native Quantity `3`, blank Bar Length, Total Bar Length `33510 mm` and
+`has_variable_length_bars=true`. Non-Rebar and missing-element calls returned `422` and `404`.
+Revit and Gateway remained responsive with no new bridge-log error.
+
+**Live-verified in `v1.13.2`:** a non-empty selection returned Rebar `3411763` with bounded identity
+data. A repeated Rebar call confirmed Revit exposes A as blank/`HasValue=false`, so merely reading
+display text is insufficient.
+
+**Live-verified in `v1.13.3`:** authenticated status reported the connected bridge; the non-empty
+selection returned Rebar `3411763`, and its Rebar payload returned A `Varies`, B `492 mm`, Quantity
+`3`, blank individual Bar Length, Total Bar Length `33510 mm` and
+`has_variable_length_bars=true`. Revit and Gateway remained responsive with no new bridge-log error.
+
+**Final live QA:** with two Revit processes, exactly one Gateway remained active and the second
+add-in logged that it was inactive while the API stayed connected. Closing the owner Revit normally
+also stopped its Gateway and wrote a clean bridge-stopped log entry. Relaunching Revit restored one
+Gateway with `revit_connected=true`. INT-01 is complete; the MCP layer is the next integration phase.
 
 ### P4-01 — Rebar Quantity Engine first slice — `testing` (`v1.10.2`)
 
@@ -83,7 +135,7 @@ Variable-length/free-form/fabric reinforcement remain outside this first slice u
 shows which additional API paths are required. The owner explicitly requested the P5 BBS slice from
 a successful real-project `v1.10.2` export while full P4 schedule comparison remains open.
 
-### P5-01 — Shape-aware BBS + diameter summary — `testing` (`v1.11.1`)
+### P5-01 — Shape-aware BBS + diameter summary — `testing` (`v1.12.4`)
 
 **Built:** automatic A-H dimensions, Bend Diameter, start/end hooks and Cutting Length are read for
 each Rebar. Cutting Length intentionally uses Revit's shape-aware Bar Length instead of assuming one
@@ -96,7 +148,36 @@ The owner-exported `v1.11.0` workbook reconciled raw/detail, BBS and diameter to
 variable-length entries (280 bars) without an individual Bar Length. `v1.11.1` adds host-level
 fallback plus an explicit Average Bar Length / Length Status without fabricating a cutting length.
 
-**Remaining live QA:** reload `v1.11.1`, export the supplied BBS project and compare L-shape,
+`v1.11.2` additionally persists every Available -> Selected parameter choice and its visible order
+after edits, Apply/Export and all dialog close paths.
+
+`v1.11.3` fixes Beam shuttering for angled/rotated framing: actual built-in/type `BEAM WIDTH` and
+depth drive the formula, while bounding-box section dimensions are rejected. The corrected owner
+workbook target is 22,488.481276 m2 unrounded, or 22,488.94 m2 after the exporter's existing
+two-decimal rounding on each of the 4,031 Beam rows.
+
+`v1.12.0` indexes instance parameters once per element and type parameters once per shared Revit
+type, then reuses those indexes for Selected fields, Grade and identity reads. This removes the
+largest repeated API scan from the export path.
+
+Live `v1.12.0` timing was 46.0 seconds for 9,632 rows: Revit data 40.1 seconds and workbook 5.9
+seconds. `v1.12.1` targets that measured data bottleneck by skipping Site-only unnecessary Grade
+resolution, caching Level names and avoiding unnecessary framing bounding boxes.
+
+Live `v1.12.1` follow-up completed the same export in 19.1 seconds (58.5% faster). `v1.12.2` adds
+a compact completion-popup list for routing findings. `v1.12.3` uses system-Floor built-in Type
+fallbacks and routes the screenshot-verified `LOBBY` and `ramp` types to `Slab / Slab`.
+`v1.12.4` keeps each varying Rebar set on its own BBS row, preserves `Varies` dimensions and adds
+Rebar Element ID traceability while retaining fixed-bar grouping.
+
+**Live-verified in `v1.12.4`:** the two `33510 mm / 3 bar` sets are separate BBS rows with distinct
+Rebar Element IDs, `11.17 m` average, blank Cutting Length and `A=Varies`. The old combined row is
+absent, and BBS/Rebar Summary totals reconcile exactly.
+
+**Remaining live QA:** confirm Beam W/H match BEAM WIDTH/BEAM DEPTH on all rows,
+confirm a changed
+parameter selection/order survives dialog
+close and Revit restart, then export the supplied BBS project and compare L-shape,
 C-shape, closed stirrup and hooked U-ring A-H/Cutting Length values with the native Revit schedule.
 Confirm Level now resolves from each host, variable sets are labelled correctly, both new sheets
 open without Excel repair and their quantity/weight totals still reconcile.

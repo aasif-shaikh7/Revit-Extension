@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>RccBoq.RestCore.Tests</AssemblyName>
+    <RootNamespace>RccBoq.RestCore.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RccBoq.RestCore\RccBoq.RestCore.csproj" />
+  </ItemGroup>
+</Project>
