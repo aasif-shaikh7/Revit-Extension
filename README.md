@@ -364,9 +364,9 @@ testing of `v1.13.1` verified startup, authentication, document, empty selection
 varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension
 marker. `v1.13.3` mirrors the BOQ rule by mapping a dimension with `HasValue=false` to `Varies`.
 The owner live-verified the corrected `Varies` payload and non-empty selection in `v1.13.3`;
-the single-owner mutex and clean owner/Gateway shutdown are also live-verified. Raw STDIO MCP tool
-discovery and live status/document/selection calls pass; registered Codex discovery needs a fresh
-session after installation. The previous pyRevit Routes prototype stays
+the single-owner mutex and clean owner/Gateway shutdown are also live-verified. In `v1.14.1`, raw
+STDIO and fresh-session registered Codex discovery pass, along with live status, document,
+empty/non-empty selection, element and varying-Rebar calls. The previous pyRevit Routes prototype stays
 disabled. P1 quantity,
 P2 grouping and P3 formwork are complete; the owner confirmed `v1.8.10` Slab/Foundation routing in
 Revit 2025 on 2026-09-03. Structure Wall `v1.9.3` is live-confirmed. Version `v1.12.4` keeps varying

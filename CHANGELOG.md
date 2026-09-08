@@ -30,12 +30,17 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - Do not accept `notifications/initialized` unless a valid `initialize` request was processed first.
 - Added the BOM case to the dependency-free MCP protocol regression.
 
-### Verification boundary
+### Verification
 - The corrected `v1.14.1` executable is installed and registered as the enabled global Codex STDIO
   server `rcc-boq`.
 - Its installed handshake and live status/document calls pass, including the PowerShell BOM path.
-  Revit still reports the already-loaded `v1.13.3` assembly; fresh Revit and Codex sessions are
-  required to verify the new add-in version and registered tool discovery.
+  A fresh Revit 2025 launch now reports the connected `v1.14.1` assembly, and the installed MCP
+  executable lists all five tools and calls live status successfully. With the test model open,
+  document, empty-selection, generic-element and varying-Rebar calls also pass; Rebar `3411763`
+  preserves Quantity `3`, blank Bar Length, Total Bar Length `33510 mm`, A as `Varies` and the
+  variable-set flag. A fresh ephemeral Codex session discovered and invoked the registered
+  `rcc-boq/rcc_boq_status` tool without a fallback, and a visible non-empty Revit selection returned
+  the bounded snapshot for Structural Rebar `3411763`. INT-02 is complete.
 
 ## [v1.14.0] - 2026-09-08
 

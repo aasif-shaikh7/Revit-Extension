@@ -351,7 +351,7 @@ project.
   and routes the owner's live-verified `LOBBY` and `ramp` Floor types to `Slab / Slab`.
   `v1.12.4` live-verifies that distinct varying Rebar sets no longer collapse into one misleading
   BBS average.
-- **Local integration foundation (`v1.14.1` MCP testing).** An out-of-process localhost ASP.NET Core
+- **Local integration foundation (`v1.14.1` MCP complete).** An out-of-process localhost ASP.NET Core
   Gateway communicates with a Revit 2025 .NET add-in over a current-user-only Named Pipe. Revit reads
   are marshalled through `ExternalEvent`; only token-protected status, document, selection, element
   and Rebar snapshots are allowed. The interface excludes model writes, document paths and arbitrary
@@ -361,7 +361,8 @@ project.
   the proven BOQ rule that maps a Rebar dimension with `HasValue=false` to `Varies`; multi-instance
   ownership and clean shutdown are also live-verified. `v1.14.0` adds a dependency-free STDIO MCP
   adapter over the same five read-only calls; `v1.14.1` hardens BOM handling and initialization
-  state. Registered Codex discovery remains live QA.
+  state. A fresh Codex session discovered and invoked the registered status tool, and live Revit QA
+  verified document, empty/non-empty selection, element and varying-Rebar calls.
 - **Phase 6 — Structural BOQ Assembly.** Configurable assemblies e.g. RCC Beam → Concrete,
   Reinforcement, Formwork, Binding Wire, Cover Blocks, Labour (similarly for columns, slabs,
   foundations), with support for future custom components.

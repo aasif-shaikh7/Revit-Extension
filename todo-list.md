@@ -62,23 +62,28 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-### INT-02 — Codex STDIO MCP adapter — `testing` (`v1.14.1`)
+### INT-02 — Codex STDIO MCP adapter — `complete` (`v1.14.1`)
 
 **Built:** a dependency-free .NET 8 STDIO MCP server exposes five read-only tools for bridge status,
 active document, selection, generic element and Rebar. It reads the existing per-user token at call
 time and forwards only to the fixed localhost REST allow-list. Tool annotations declare read-only,
 non-destructive, idempotent, closed-world behavior; element IDs require positive integers.
 
-**Verified:** zero-warning build, dependency-free MCP protocol regressions and a live STDIO handshake
-all pass. Live MCP calls returned the connected `v1.13.3` bridge and active document
-`20260225-BBS_BEAM_RBM_SALES-P1` without exposing its path or token.
+**Verified:** zero-warning build, dependency-free MCP protocol regressions and live STDIO handshakes
+all pass. After a fresh Revit 2025 launch, the installed MCP server listed all five tools and its
+status call returned the connected `v1.14.1` bridge without exposing a path or token. With
+`20260225-BBS_BEAM_RBM_SALES-P1` open, document, empty-selection, generic-element and varying-Rebar
+calls passed. Rebar `3411763` returned Quantity `3`, blank Bar Length, Total Bar Length `33510 mm`,
+dimension A as `Varies` and `has_variable_length_bars=true`.
 
 **Installed:** `v1.14.1` is published side-by-side and global Codex server `rcc-boq` is enabled at
 the installed executable. Its BOM-hardened installed STDIO handshake and live status/document calls
-pass against the currently running `v1.13.3` Revit bridge.
+pass; the fresh Revit process now loads and reports the `v1.14.1` bridge.
 
-**Remaining:** restart Revit and Codex, then invoke the registered MCP tools from a fresh Codex
-session. Host-free and raw-STDIO evidence do not prove Codex discovery.
+**Final live QA:** a fresh ephemeral Codex session discovered and invoked the registered
+`rcc-boq/rcc_boq_status` tool without using a shell, direct executable or HTTP fallback; it returned
+the connected `v1.14.1` bridge. A visible Revit selection then returned one bounded Structural Rebar
+snapshot for element `3411763` with `truncated=false`. INT-02 is complete.
 
 ### INT-01 — Secure direct Revit REST integration — `complete` (`v1.13.3`)
 

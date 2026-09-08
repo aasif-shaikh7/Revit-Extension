@@ -1036,6 +1036,21 @@ appears on **2026-09-03**. T-10 and P3.5 are closed; P4 is next.
 
 ---
 
+## v1.14.1 — Registered Codex MCP adapter — **done**
+
+**Built.** A dependency-free .NET 8 STDIO MCP server exposes five bounded read-only tools over the
+token-protected localhost Revit bridge: status, active document, selection, element and Rebar.
+
+**How it is known.** Release builds and Core/MCP protocol regressions pass with zero warnings. A
+fresh Revit 2025 process loaded the `v1.14.1` bridge; raw installed MCP calls verified all five tool
+schemas plus live status, document, empty/non-empty selection, generic element and varying-Rebar
+reads. Rebar `3411763` retained Quantity `3`, blank Bar Length, Total Bar Length `33510 mm`, A as
+`Varies` and `has_variable_length_bars=true`. A separate fresh ephemeral Codex session discovered
+and invoked the registered `rcc-boq/rcc_boq_status` tool without shell, executable or HTTP fallback.
+INT-02 is closed.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.
