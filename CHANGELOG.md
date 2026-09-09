@@ -22,6 +22,34 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.18.0] - 2026-09-09
+
+### Added (headless Agent export; host-free verified)
+- Upgraded Agent Bridge to `v2.2.0` with a consent-gated, dry-run-first BOQ export job. The bridge
+  posts the existing Nudge RCC BOQ pyRevit command, so classification, quantities and workbook
+  generation are not duplicated in native code.
+- Added a hidden one-shot mode to the existing BOQ command. It consumes only a schema-checked job
+  for the exact active document, bypasses WPF and Save dialogs, preserves saved user preferences,
+  forces quantities on, prevents Excel auto-open, and publishes the existing canonical validation.
+- Exports use unique names only inside `%LOCALAPPDATA%\RCC_BOQ\AgentExports`; arbitrary output paths,
+  overwrite requests and Revit document save remain unavailable.
+- Added REST `POST /rcc-boq/boq/export`, `GET /rcc-boq/boq/export-status`, MCP tools
+  `rcc_boq_start_export` / `rcc_boq_export_status`, and CLI commands `start-export` /
+  `export-status`. Job status returns only bounded metadata and the output basename, never the
+  internal filesystem path.
+
+### Verified (host-free)
+- Python compilation, the complete Classic/Site XLSX harness, Core/MCP/REST regressions and all
+  Revit/Gateway/MCP builds pass with zero warnings. Tests cover queued/running/completed jobs,
+  external-path rejection, dry-run defaults and the nine-tool closed MCP catalog.
+
+### Verification boundary
+- A fresh Revit restart must confirm pyRevit command discovery, native `PostCommand`, headless
+  completion and retrieval of the generated validation report before this export operation is
+  marked live-tested.
+
+---
+
 ## [v1.17.0] - 2026-09-09
 
 ### Added (canonical BOQ validation; host-free verified)

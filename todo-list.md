@@ -57,13 +57,13 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
-| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.17.0`) |
+| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.18.0`) |
 
 ---
 
 ## Active roadmap phase
 
-### INT-03 — Controlled Agent Bridge — `building` (`v1.17.0`, Bridge API `v2.1.0`)
+### INT-03 — Controlled Agent Bridge — `building` (`v1.18.0`, Bridge API `v2.2.0`)
 
 **Built:** native Agent Bridge consent button, 15-minute write window, dry-run-first parameter edit,
 optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
@@ -87,9 +87,17 @@ that report plus its active-document match state without accepting an arbitrary 
 **Verified (host-free):** both workbook formats pass the canonical validator; an intentionally
 changed Beam cell is detected. All Python, .NET Core/MCP/REST and zero-warning bridge builds pass.
 
-**Remaining:** install/restart and verify one fresh live BOQ report, plus native automatic-expiry
-and forced-failure rollback QA. Background export triggering remains a separately gated future
-operation because the current pyRevit workflow owns an interactive Save dialog.
+**Built in v1.18.0:** the consent-gated MCP/REST export operation queues the existing pyRevit BOQ
+command in hidden one-shot mode. It writes a uniquely named Classic/Site workbook only below the
+fixed current-user `AgentExports` folder, preserves saved dialog settings, prevents auto-open and
+publishes a pollable bounded result with the canonical validation summary. No arbitrary output path,
+overwrite or Revit document save is exposed.
+
+**Verified (host-free):** job lifecycle, exact-document matching, external-path rejection,
+dry-run-first REST/MCP schemas, nine-tool catalog, Python compilation and all automated suites pass.
+
+**Remaining:** install/restart and verify command discovery plus one fresh live headless export,
+then native automatic-expiry and forced-failure transaction rollback QA.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
 

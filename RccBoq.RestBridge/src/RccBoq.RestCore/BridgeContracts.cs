@@ -6,8 +6,8 @@ namespace RccBoq.RestCore;
 
 public static class BridgeConstants
 {
-    public const string Version = "2.1.0";
-    public const string ApiVersion = "2.1.0";
+    public const string Version = "2.2.0";
+    public const string ApiVersion = "2.2.0";
     public const string ApiName = "rcc-boq";
     public const string InstanceMutexName = @"Local\RccBoq.AgentBridge.v2";
     public const string PipeName = "RccBoq.RevitBridge.v2";
@@ -24,7 +24,9 @@ public sealed record BridgeRequest(
     string? Value = null,
     string? ExpectedCurrentValue = null,
     bool DryRun = true,
-    string? RequestId = null);
+    string? RequestId = null,
+    string? ExportFormat = null,
+    bool IncludeFormwork = true);
 
 public sealed record BridgeResponse(int StatusCode, JsonElement Body)
 {

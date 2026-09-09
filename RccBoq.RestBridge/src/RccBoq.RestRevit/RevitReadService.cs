@@ -30,6 +30,7 @@ internal static class RevitReadService
             "element" => ElementResponse(application, request.ElementId, false),
             "rebar" => ElementResponse(application, request.ElementId, true),
             "last_export_validation" => LastExportValidationResponse(application),
+            "boq_export_status" => HeadlessBoqExportService.Status(application),
             _ => BridgeResponse.Json(400, new { ok = false, error = "Unsupported operation" })
         };
     }

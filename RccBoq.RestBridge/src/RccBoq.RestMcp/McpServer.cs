@@ -131,7 +131,7 @@ internal sealed class McpServer(
                 ["name"] = "rcc-boq-revit",
                 ["version"] = BridgeConstants.Version,
             },
-            ["instructions"] = "Controlled access to the active Revit 2025 document through the local RCC BOQ Agent Bridge. Reads and parameter dry-runs are always available. Actual writes require the user to enable a short write session from Revit's Agent Bridge pushbutton. Never claim a write succeeded unless the tool returns dry_run=false and ok=true; the bridge never saves the document automatically.",
+            ["instructions"] = "Controlled access to the active Revit 2025 document through the local RCC BOQ Agent Bridge. Reads and dry-runs are always available. Actual parameter writes and fixed-folder BOQ exports require the user to enable a short write session from Revit's Agent Bridge pushbutton. Never claim a write or export succeeded unless its result reports completion; the bridge never saves the Revit document automatically.",
         });
     }
 
@@ -148,6 +148,17 @@ internal sealed class McpServer(
                 "rcc_boq_last_export_validation",
                 "Read the latest bounded canonical BOQ XLSX validation report produced by the exporter.",
                 EmptySchema()),
+            Tool(
+                "rcc_boq_export_status",
+                "Read bounded status for the latest Agent Bridge BOQ export job.",
+                EmptySchema()),
+            Tool(
+                "rcc_boq_start_export",
+                "Preview or queue a headless BOQ export in the fixed current-user AgentExports folder.",
+                StartExportSchema(),
+                readOnly: false,
+                destructive: false,
+                idempotent: false),
             Tool(
                 "rcc_boq_set_parameter",
                 "Preview or apply one allow-listed Revit parameter edit. Dry-run defaults to true; apply requires temporary user consent in Revit.",
@@ -179,12 +190,19 @@ internal sealed class McpServer(
             "rcc_boq_element" => ElementPath(parameters, "/rcc-boq/elements/"),
             "rcc_boq_rebar" => ElementPath(parameters, "/rcc-boq/rebar/"),
             "rcc_boq_last_export_validation" => "/rcc-boq/boq/last-validation",
+            "rcc_boq_export_status" => "/rcc-boq/boq/export-status",
             _ => null,
         };
 
         if (name == "rcc_boq_set_parameter")
         {
             return await CallSetParameterAsync(id, parameters, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (name == "rcc_boq_start_export")
+        {
+            return await CallStartExportAsync(id, parameters, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -273,6 +291,46 @@ internal sealed class McpServer(
         }
     }
 
+    private async Task<JsonObject> CallStartExportAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(parameters, out JsonElement arguments))
+        {
+            return Error(id, -32602, "Export arguments are required");
+        }
+        string format = OptionalString(arguments, "export_format") ?? "site";
+        if (format is not ("classic" or "site"))
+        {
+            return Error(id, -32602, "export_format must be classic or site");
+        }
+        bool includeFormwork = !arguments.TryGetProperty(
+            "include_formwork", out JsonElement formwork)
+            || formwork.ValueKind != JsonValueKind.False;
+        bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
+            || dryRunElement.ValueKind != JsonValueKind.False;
+        object body = new
+        {
+            exportFormat = format,
+            includeFormwork,
+            dryRun,
+            requestId = OptionalString(arguments, "request_id")
+        };
+        try
+        {
+            GatewayResult result = await gateway.PostAsync(
+                "/rcc-boq/boq/export",
+                body,
+                cancellationToken).ConfigureAwait(false);
+            return ToolResult(id, result);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return BridgeUnavailable(id, exception);
+        }
+    }
+
     private static string? ElementPath(JsonElement parameters, string prefix)
     {
         if (!parameters.TryGetProperty("arguments", out JsonElement arguments)
@@ -291,7 +349,8 @@ internal sealed class McpServer(
         string description,
         JsonObject inputSchema,
         bool readOnly = true,
-        bool destructive = false) => new()
+        bool destructive = false,
+        bool idempotent = true) => new()
     {
         ["name"] = name,
         ["description"] = description,
@@ -300,7 +359,7 @@ internal sealed class McpServer(
         {
             ["readOnlyHint"] = readOnly,
             ["destructiveHint"] = destructive,
-            ["idempotentHint"] = true,
+            ["idempotentHint"] = idempotent,
             ["openWorldHint"] = false,
         },
     };
@@ -346,6 +405,33 @@ internal sealed class McpServer(
             ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
         },
         ["required"] = new JsonArray("element_id", "parameter_name", "value"),
+        ["additionalProperties"] = false,
+    };
+
+    private static JsonObject StartExportSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["export_format"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = new JsonArray("classic", "site"),
+                ["default"] = "site"
+            },
+            ["include_formwork"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true
+            },
+            ["dry_run"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true,
+                ["description"] = "False queues one unique fixed-folder export and requires temporary user consent."
+            },
+            ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
+        },
         ["additionalProperties"] = false,
     };
 

@@ -57,6 +57,16 @@ app.MapGet("/rcc-boq/rebar/{elementId:long}",
         ForwardAsync(pipe, new BridgeRequest("rebar", elementId), token));
 app.MapGet("/rcc-boq/boq/last-validation", (RevitPipeClient pipe, CancellationToken token) =>
     ForwardAsync(pipe, new BridgeRequest("last_export_validation"), token));
+app.MapGet("/rcc-boq/boq/export-status", (RevitPipeClient pipe, CancellationToken token) =>
+    ForwardAsync(pipe, new BridgeRequest("boq_export_status"), token));
+app.MapPost("/rcc-boq/boq/export",
+    (StartBoqExportBody body, RevitPipeClient pipe, CancellationToken token) =>
+        ForwardAsync(pipe, new BridgeRequest(
+            Operation: "start_boq_export",
+            DryRun: body.DryRun,
+            RequestId: body.RequestId,
+            ExportFormat: body.ExportFormat,
+            IncludeFormwork: body.IncludeFormwork), token));
 app.MapPost("/rcc-boq/elements/{elementId:long}/parameter",
     (long elementId, SetParameterBody body, RevitPipeClient pipe, CancellationToken token) =>
         ForwardAsync(pipe, new BridgeRequest(
@@ -107,5 +117,11 @@ internal sealed record SetParameterBody(
     string ParameterName,
     string Value,
     string? ExpectedCurrentValue = null,
+    bool DryRun = true,
+    string? RequestId = null);
+
+internal sealed record StartBoqExportBody(
+    string ExportFormat = "site",
+    bool IncludeFormwork = true,
     bool DryRun = true,
     string? RequestId = null);

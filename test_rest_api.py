@@ -12,6 +12,7 @@ if LIB not in sys.path:
     sys.path.insert(0, LIB)
 
 import rest_api
+import agent_export_job
 
 CLIENT_PATH = os.path.join(ROOT, "scripts", "rcc_boq_rest_client.py")
 CLIENT_SPEC = importlib.util.spec_from_file_location("rcc_boq_rest_client", CLIENT_PATH)
@@ -117,17 +118,80 @@ def run():
         gateway_source = gateway_file.read()
     check("127.0.0.1" not in gateway_source, "gateway URL must come from shared constants")
     check("Headers.Authorization" in gateway_source, "Bearer authorization is missing")
-    check(gateway_source.count("app.MapPost(") == 1,
-          "API must expose exactly one bounded write route")
+    check(gateway_source.count("app.MapPost(") == 2,
+          "API must expose exactly two bounded write routes")
     check('"/rcc-boq/elements/{elementId:long}/parameter"' in gateway_source,
           "bounded parameter-write route missing")
     check('"/rcc-boq/boq/last-validation"' in gateway_source,
           "bounded last-export validation route missing")
+    check('"/rcc-boq/boq/export-status"' in gateway_source,
+          "bounded export-status route missing")
+    check('"/rcc-boq/boq/export"' in gateway_source,
+          "bounded headless-export route missing")
     check(
         rest_client.endpoint_path("last-validation")
         == "/rcc-boq/boq/last-validation",
         "last-export validation client route missing",
     )
+    check(
+        rest_client.endpoint_path("export-status")
+        == "/rcc-boq/boq/export-status"
+        and rest_client.endpoint_path("start-export")
+        == "/rcc-boq/boq/export",
+        "headless export client routes missing",
+    )
+
+    original_local_app_data = os.environ.get("LOCALAPPDATA")
+    try:
+        with tempfile.TemporaryDirectory() as job_root:
+            os.environ["LOCALAPPDATA"] = job_root
+            export_root = agent_export_job.agent_export_root()
+            os.makedirs(export_root)
+            output_path = os.path.join(export_root, "safe-agent-export.xlsx")
+            job = {
+                "schema": agent_export_job.JOB_SCHEMA,
+                "job_id": "12345678-1234-1234-1234-123456789abc",
+                "status": "queued",
+                "document_title": "QA Model",
+                "export_format": "site",
+                "include_formwork": True,
+                "output_name": os.path.basename(output_path),
+                "output_path": output_path,
+                "error": "",
+            }
+            agent_export_job._write_job(job)
+            loaded = agent_export_job.load_queued_export_job("QA Model")
+            check(loaded is not None, "safe queued Agent export job rejected")
+            agent_export_job.mark_export_job_running(loaded)
+            agent_export_job.complete_export_job(loaded, {
+                "ok": True,
+                "workbook_name": os.path.basename(output_path),
+                "workbook_sha256": "a" * 64,
+                "expected_sheet_count": 2,
+                "actual_sheet_count": 2,
+                "expected_cell_count": 20,
+                "actual_cell_count": 20,
+                "mismatch_count": 0,
+            })
+            with open(agent_export_job.agent_export_job_path(), "r", encoding="utf-8") as job_file:
+                completed = json.load(job_file)
+            check(
+                completed["status"] == "completed"
+                and completed["validation"]["mismatch_count"] == 0,
+                "Agent export job completion result missing",
+            )
+            job["status"] = "queued"
+            job["output_path"] = os.path.join(job_root, "outside.xlsx")
+            agent_export_job._write_job(job)
+            check(
+                agent_export_job.load_queued_export_job("QA Model") is None,
+                "Agent export accepted a path outside its fixed folder",
+            )
+    finally:
+        if original_local_app_data is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = original_local_app_data
 
     write_service_path = os.path.join(
         ROOT, "RccBoq.RestBridge", "src", "RccBoq.RestRevit", "RevitWriteService.cs"

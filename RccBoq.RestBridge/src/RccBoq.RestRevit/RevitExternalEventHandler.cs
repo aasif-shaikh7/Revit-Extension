@@ -69,9 +69,12 @@ internal sealed class RevitExternalEventHandler : IExternalEventHandler, IDispos
 
         try
         {
-            BridgeResponse response = pending.Request.Operation == "set_parameter"
-                ? RevitWriteService.SetParameter(application, pending.Request)
-                : RevitReadService.Execute(application, pending.Request);
+            BridgeResponse response = pending.Request.Operation switch
+            {
+                "set_parameter" => RevitWriteService.SetParameter(application, pending.Request),
+                "start_boq_export" => HeadlessBoqExportService.Start(application, pending.Request),
+                _ => RevitReadService.Execute(application, pending.Request)
+            };
             pending.Completion.TrySetResult(response);
         }
         catch (Exception exception)

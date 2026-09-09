@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.17.0'
+__version__ = '1.18.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.17.0'
+SCRIPT_VERSION = '1.18.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -162,6 +162,10 @@ active_selection_ids = set()
 # columns (volume, area, length) to the element sheets and builds the
 # BOQ Summary sheet with live SUM formulas.
 quantities_flag = True
+
+# A queued Agent Bridge export is consumed only by the matching active
+# document. Normal interactive runs leave this as None.
+_headless_export_job = None
 
 # ============================================================
 # FORMWORK ENGINE (P3) - moved to lib/formwork_engine.py
@@ -2372,6 +2376,12 @@ def choose_excel_output_path():
     saved = load_app_settings()
     last_dir = saved.get("last_dir", "")
 
+    if _headless_export_job is not None:
+        try:
+            return _headless_export_job.get("output_path", "")
+        except:
+            return ""
+
     dialog = SaveFileDialog()
     dialog.Title = "Save RCC BOQ Excel Report"
     dialog.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
@@ -2413,6 +2423,18 @@ def choose_excel_output_path():
 # ============================================================
 
 doc = revit.doc
+
+from agent_export_job import (
+    complete_export_job,
+    fail_export_job,
+    load_queued_export_job,
+    mark_export_job_running,
+)
+
+try:
+    _headless_export_job = load_queued_export_job(doc.Title)
+except:
+    _headless_export_job = None
 
 
 # ============================================================
@@ -5139,10 +5161,11 @@ try:
                 args
             ):
 
-                try:
-                    capture_and_save_settings()
-                except:
-                    pass
+                if _headless_export_job is None:
+                    try:
+                        capture_and_save_settings()
+                    except:
+                        pass
 
                 total = 0
 
@@ -5312,7 +5335,11 @@ try:
 
                 # P4 Rebar quantities are automatic, so a Rebar-only model
                 # can export without choosing an additional raw parameter.
-                if total == 0 and not category_elements.get("Rebar", []):
+                if (
+                    total == 0
+                    and not category_elements.get("Rebar", [])
+                    and _headless_export_job is None
+                ):
 
                     if status:
                         set_status(
@@ -5461,6 +5488,12 @@ try:
                             "element rows were found to export.",
                             title="RCC BOQ - Excel Export"
                         )
+
+                        if _headless_export_job is not None:
+                            fail_export_job(
+                                _headless_export_job,
+                                "No structural element rows were found to export"
+                            )
 
                         return
 
@@ -5664,12 +5697,27 @@ try:
                                 )
                             )
 
+                    if _headless_export_job is not None:
+                        complete_export_job(
+                            _headless_export_job,
+                            validation_report
+                        )
+
                     forms.alert(
                         completion_message,
                         title="RCC BOQ - Excel Export"
                     )
 
                 except Exception as export_error:
+
+                    if _headless_export_job is not None:
+                        try:
+                            fail_export_job(
+                                _headless_export_job,
+                                export_error
+                            )
+                        except:
+                            pass
 
                     if status:
 
@@ -5752,7 +5800,48 @@ try:
         # SHOW WINDOW
         # ====================================================
 
-        window.ShowDialog()
+        if _headless_export_job is not None:
+            # The bridge owns this one-shot run. Keep the WPF window hidden,
+            # force non-interactive options, and never alter the user's saved
+            # dialog preferences.
+            try:
+                for control_name, value in (
+                    ("ExportOnlyCheck", False),
+                    ("AutoOpenCheck", False),
+                    ("QuantitiesCheck", True),
+                    (
+                        "SiteFormatCheck",
+                        _headless_export_job.get("export_format") == "site"
+                    ),
+                    (
+                        "IncludeFormworkCheck",
+                        bool(_headless_export_job.get("include_formwork", True))
+                    ),
+                ):
+                    control = window.FindName(control_name)
+                    if control:
+                        control.IsChecked = value
+
+                mark_export_job_running(_headless_export_job)
+                original_alert = forms.alert
+                forms.alert = lambda *args, **kwargs: None
+                try:
+                    export_to_excel(None, None)
+                finally:
+                    forms.alert = original_alert
+
+                if _headless_export_job.get("status") == "running":
+                    fail_export_job(
+                        _headless_export_job,
+                        "Headless BOQ export ended without a result"
+                    )
+            except Exception as headless_error:
+                try:
+                    fail_export_job(_headless_export_job, headless_error)
+                except:
+                    pass
+        else:
+            window.ShowDialog()
 
 
 except Exception as ex:
@@ -5767,9 +5856,15 @@ except Exception as ex:
     except:
         pass
 
-    forms.alert(
+    if _headless_export_job is not None:
+        try:
+            fail_export_job(_headless_export_job, startup_details)
+        except:
+            pass
+    else:
+        forms.alert(
 
-        startup_details,
+            startup_details,
 
-        title="RCC BOQ ERROR"
-    )
+            title="RCC BOQ ERROR"
+        )

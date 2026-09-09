@@ -30,6 +30,10 @@ def endpoint_path(command, element_id=None):
         return "/rcc-boq/" + command
     if command == "last-validation":
         return "/rcc-boq/boq/last-validation"
+    if command == "export-status":
+        return "/rcc-boq/boq/export-status"
+    if command == "start-export":
+        return "/rcc-boq/boq/export"
     if command in ("element", "rebar") and element_id is not None:
         return "/rcc-boq/{0}/{1}".format(command + "s" if command == "element" else command, element_id)
     if command == "set-parameter" and element_id is not None:
@@ -68,13 +72,18 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("status", "document", "selection", "element", "rebar", "last-validation", "set-parameter"),
+        choices=(
+            "status", "document", "selection", "element", "rebar",
+            "last-validation", "export-status", "start-export", "set-parameter",
+        ),
     )
     parser.add_argument("element_id", nargs="?", type=int)
     parser.add_argument("--parameter-name")
     parser.add_argument("--value")
     parser.add_argument("--expected-current-value")
     parser.add_argument("--request-id")
+    parser.add_argument("--format", choices=("classic", "site"), default="site")
+    parser.add_argument("--no-formwork", action="store_true")
     parser.add_argument(
         "--apply",
         action="store_true",
@@ -97,6 +106,13 @@ def main(argv=None):
                 "parameterName": args.parameter_name,
                 "value": args.value,
                 "expectedCurrentValue": args.expected_current_value,
+                "dryRun": not args.apply,
+                "requestId": args.request_id,
+            }
+        elif args.command == "start-export":
+            body = {
+                "exportFormat": args.format,
+                "includeFormwork": not args.no_formwork,
                 "dryRun": not args.apply,
                 "requestId": args.request_id,
             }

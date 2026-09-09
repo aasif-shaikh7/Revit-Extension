@@ -141,7 +141,7 @@ dependencies imported into the pyRevit host.
 
 ---
 
-## Local REST + MCP Integration (`v2.1.0`)
+## Local REST + MCP Integration (`v2.2.0`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
 `http://127.0.0.1:48885/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
 ```
 
 The installer publishes the Gateway and STDIO MCP server below
-`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.1.0` and creates
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.2.0` and creates
 `%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
 
 The first extension startup creates a random token at
@@ -169,13 +169,17 @@ python scripts/rcc_boq_rest_client.py selection
 python scripts/rcc_boq_rest_client.py element 3411763
 python scripts/rcc_boq_rest_client.py rebar 3411763
 python scripts/rcc_boq_rest_client.py last-validation
+python scripts/rcc_boq_rest_client.py start-export --format site
+python scripts/rcc_boq_rest_client.py start-export --format site --apply
+python scripts/rcc_boq_rest_client.py export-status
 python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value QA
 ```
 
 Available REST endpoints are `GET /status`, `/document`, `/selection`,
-`/elements/<element_id>`, `/rebar/<element_id>` and `/boq/last-validation`, plus
-`POST /elements/<element_id>/parameter`, below the `/rcc-boq` root. Parameter writes default to a
-dry-run. Actual apply also requires a write session enabled from Revit's Agent Bridge button; the
+`/elements/<element_id>`, `/rebar/<element_id>`, `/boq/last-validation` and
+`/boq/export-status`, plus `POST /boq/export` and `/elements/<element_id>/parameter`, below the
+`/rcc-boq` root. Parameter writes and Agent exports default to dry-run. Actual apply also requires a
+write session enabled from Revit's Agent Bridge button; the
 bridge never saves the document. Selection output is limited to 100 elements and parameter output
 to 250 values per element. Document paths and API tokens are never returned.
 
@@ -183,18 +187,22 @@ Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
 codex mcp remove rcc-boq-v2
-codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.1.0\Mcp\RccBoq.RestMcp.exe"
+codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.2.0\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 
 The MCP tools are `rcc_boq_status`, `rcc_boq_document`, `rcc_boq_selection`,
-`rcc_boq_element`, `rcc_boq_rebar`, `rcc_boq_last_export_validation` and
-`rcc_boq_set_parameter`. The MCP process reads the same
+`rcc_boq_element`, `rcc_boq_rebar`, `rcc_boq_last_export_validation`,
+`rcc_boq_export_status`, `rcc_boq_start_export` and `rcc_boq_set_parameter`. The MCP process reads the same
 per-user token itself; the token is not stored in agent configuration or emitted in tool results.
 The write tool is explicitly annotated non-read-only/destructive and defaults to dry-run.
 Every successful BOQ export is reread before publication and compared cell-for-cell with its
 canonical Revit-derived rows. The completion dialog shows `Workbook validation: PASS`; the Agent
 Bridge returns only the fixed, bounded latest report and never accepts an arbitrary workbook path.
+An applied Agent export posts the same BOQ command in hidden one-shot mode and writes a unique file
+below `%LOCALAPPDATA%\RCC_BOQ\AgentExports`. It does not overwrite a requested path, open Excel or
+save the Revit document. Poll `rcc_boq_export_status` until `completed`, then read
+`rcc_boq_last_export_validation`.
 
 Host-free verification:
 
@@ -366,13 +374,14 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.17.0`
-adds canonical cell-for-cell export validation and a bounded last-validation tool to Agent Bridge
-`v2.1.0`. The earlier `v1.16.0` foundation provides bounded reads plus a dry-run-first,
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.18.0`
+adds consent-gated fixed-folder headless export and job polling to Agent Bridge `v2.2.0`. Version
+`v1.17.0` added canonical cell-for-cell validation and a bounded last-validation tool. The earlier
+`v1.16.0` foundation provides bounded reads plus a dry-run-first,
 consent-gated parameter write. Live Revit QA verifies v2 startup beside v1, bounded reads, dry-run,
 the consent-off write guard, a consent-enabled write/read-back/restore cycle, stale-value rejection,
-manual revocation and Codex registration. Automatic-expiry/forced-rollback QA and background BOQ
-comparison remain pending. The earlier `v1.14.1` release established the dependency-free STDIO
+manual revocation and Codex registration. Automatic-expiry/forced-rollback QA and a fresh live
+headless-export run remain pending. The earlier `v1.14.1` release established the dependency-free STDIO
 MCP adapter over the token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
 testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
 varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension
