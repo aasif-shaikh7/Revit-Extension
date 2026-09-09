@@ -36,9 +36,18 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - Kept the MCP surface closed-world: no arbitrary Revit method names, code evaluation, delete,
   document save or document-close operation is exposed.
 
-### Verification boundary
+### Verified (live Revit 2025 + automated tests)
 - Revit add-in, Gateway and MCP builds pass with zero warnings; Core and MCP protocol regressions
-  pass. Installation and native Revit dry-run/apply/rollback QA remain pending.
+  pass. The installed v2 bridge started beside the still-running v1 bridge without taking over the
+  user's working Revit process.
+- Authenticated status/document/element/Rebar reads passed against Revit `25.0.2.419`. A native
+  `Comments` parameter dry-run produced the expected preview; apply with write consent disabled was
+  rejected and a follow-up read confirmed that the model value remained unchanged.
+- The installed MCP executable passed a raw initialize/list/status exchange with all six tools and
+  is registered in Codex as `rcc-boq-v2`.
+
+### Verification boundary
+- Consent-enabled apply, expiry and rollback still require a controlled native Revit QA pass.
 - Background BOQ snapshot/export comparison is the next Agent Bridge slice and is not claimed here.
 
 ---

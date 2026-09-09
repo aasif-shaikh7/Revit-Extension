@@ -361,10 +361,11 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.16.0`
-adds the host-free-verified Agent Bridge `v2.0.0` foundation: the original bounded reads plus a
-dry-run-first, consent-gated parameter write. Native write QA and background BOQ comparison remain
-pending. The earlier `v1.14.1` release established the dependency-free STDIO MCP adapter over the
-token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
+adds the Agent Bridge `v2.0.0` foundation: the original bounded reads plus a dry-run-first,
+consent-gated parameter write. Live Revit QA verifies v2 startup beside v1, bounded reads, dry-run,
+the consent-off write guard and Codex registration. Consent-enabled write/rollback QA and background
+BOQ comparison remain pending. The earlier `v1.14.1` release established the dependency-free STDIO
+MCP adapter over the token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
 testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
 varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension
 marker. `v1.13.3` mirrors the BOQ rule by mapping a dimension with `HasValue=false` to `Varies`.

@@ -69,10 +69,15 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
 Arbitrary code/API dispatch, delete and automatic document save remain forbidden.
 
-**Verified (host-free):** zero-warning Revit/Gateway/MCP builds and Core/MCP protocol tests.
+**Verified:** zero-warning Revit/Gateway/MCP builds and Core/MCP protocol tests. The `v2.0.0`
+deployment also ran beside an untouched `v1.14.1` Revit session: authenticated status/document/
+element/Rebar reads passed against Revit 2025, the `Comments` dry-run returned the expected preview,
+an apply attempt with write consent disabled was rejected, and the parameter remained unchanged.
+The installed MCP server completed a raw initialize/list/status exchange and is registered in Codex
+as `rcc-boq-v2`.
 
-**Remaining:** install beside `v1.14.1`, native dry-run/apply/expiry QA, client registration refresh,
-then add canonical BOQ snapshot/export/compare tools for background workbook validation.
+**Remaining:** native consent-enabled apply/expiry/rollback QA, then canonical BOQ
+snapshot/export/compare tools for background workbook validation.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
 
