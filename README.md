@@ -141,7 +141,7 @@ dependencies imported into the pyRevit host.
 
 ---
 
-## Local REST + MCP Integration (`v2.2.0`)
+## Local REST + MCP Integration (`v2.2.1`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
 `http://127.0.0.1:48885/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
 ```
 
 The installer publishes the Gateway and STDIO MCP server below
-`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.2.0` and creates
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.2.1` and creates
 `%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
 
 The first extension startup creates a random token at
@@ -187,7 +187,7 @@ Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
 codex mcp remove rcc-boq-v2
-codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.2.0\Mcp\RccBoq.RestMcp.exe"
+codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.2.1\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 
@@ -374,8 +374,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.18.0`
-adds consent-gated fixed-folder headless export and job polling to Agent Bridge `v2.2.0`. Version
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.18.1`
+fixes live pyRevit command discovery in Agent Bridge `v2.2.1`; `v1.18.0` added consent-gated
+fixed-folder headless export and job polling. Version
 `v1.17.0` added canonical cell-for-cell validation and a bounded last-validation tool. The earlier
 `v1.16.0` foundation provides bounded reads plus a dry-run-first,
 consent-gated parameter write. Live Revit QA verifies v2 startup beside v1, bounded reads, dry-run,

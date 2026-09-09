@@ -128,6 +128,17 @@ def run():
           "bounded export-status route missing")
     check('"/rcc-boq/boq/export"' in gateway_source,
           "bounded headless-export route missing")
+    headless_service_path = os.path.join(
+        ROOT, "RccBoq.RestBridge", "src", "RccBoq.RestRevit",
+        "HeadlessBoqExportService.cs",
+    )
+    with open(headless_service_path, "r", encoding="utf-8") as service_file:
+        headless_service_source = service_file.read()
+    check(
+        '"CustomCtrl_%CustomCtrl_%Nudge%Generate%BOQ"'
+        in headless_service_source,
+        "journal-confirmed pyRevit BOQ command identifier missing",
+    )
     check(
         rest_client.endpoint_path("last-validation")
         == "/rcc-boq/boq/last-validation",

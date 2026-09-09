@@ -328,6 +328,7 @@ internal static partial class HeadlessBoqExportService
 
     private static readonly string[] CommandNames =
     [
+        "CustomCtrl_%CustomCtrl_%Nudge%Generate%BOQ",
         "CustomCtrl_%Nudge%Generate%BOQ",
         "CustomCtrl_%Nudge%Generate%RCC BOQ"
     ];

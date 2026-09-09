@@ -22,6 +22,21 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.18.1] - 2026-09-09
+
+### Fixed (live Revit command discovery)
+- Upgraded Agent Bridge to `v2.2.1`. Live Revit dry-run showed that pyRevit registers the BOQ
+  button with the fully-qualified identifier
+  `CustomCtrl_%CustomCtrl_%Nudge%Generate%BOQ`; command discovery now tries that journal-confirmed
+  identifier first while retaining the earlier compatibility candidates.
+
+### Verified
+- Revit 2025 loaded Agent Bridge `v2.2.0`, connected to the intended BBS test document, and safely
+  rejected command discovery before any job or workbook was created. The exact BOQ identifier was
+  then recovered from the same native Revit journal and added to the REST regression contract.
+
+---
+
 ## [v1.18.0] - 2026-09-09
 
 ### Added (headless Agent export; host-free verified)
