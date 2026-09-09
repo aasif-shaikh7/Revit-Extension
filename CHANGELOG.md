@@ -22,6 +22,16 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.15.1] - 2026-09-09
+
+### Fixed (host-free verified; native Revit QA pending)
+- Replaced the BOQ footer `DockPanel` with a responsive three-column grid so long status messages
+  truncate with an ellipsis instead of squeezing the export-option controls off-screen.
+- Preserved the complete status text in a tooltip and kept the options plus Close button at their
+  natural widths.
+
+---
+
 ## [v1.15.0] - 2026-09-08
 
 ### Added (P6; host-free and Revit 2025 verified)

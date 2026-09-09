@@ -2213,6 +2213,15 @@ def main():
         and "assembly_profile=assembly_profile" in script_text,
         "P6 Assembly Profile UI, persistence and exporter wiring are present"
     )
+    check(
+        'x:Name="StatusText"' in ui_text
+        and 'TextTrimming="CharacterEllipsis"' in ui_text
+        and 'ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"' in ui_text
+        and 'x:Name="SiteFormatCheck"' in ui_text
+        and 'x:Name="IncludeFormworkCheck"' in ui_text
+        and '<ColumnDefinition Width="*"/>' in ui_text,
+        "v1.15.1 footer keeps options visible while long status text truncates"
+    )
 
     required_rebar_controls = (
         "RebarSearch", "RebarAvailable", "RebarSelected", "RebarAdd",

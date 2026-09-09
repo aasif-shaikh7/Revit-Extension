@@ -846,27 +846,26 @@
             BorderBrush="{DynamicResource BorderBrush2}"
             Background="{DynamicResource SurfaceAltBrush}">
 
-            <DockPanel>
+            <Grid>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
                 <TextBlock
                     x:Name="StatusText"
+                    Grid.Column="0"
                     VerticalAlignment="Center"
                     Style="{DynamicResource BrandBodyText}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
                     Text="Ready"/>
 
-
-                <Button
-                    x:Name="CloseButton"
-                    DockPanel.Dock="Right"
-                    Content="Close"
-                    Width="100"
-                    Height="34"
-                    Margin="0,0,8,0"
-                    Style="{DynamicResource BrandSecondaryButton}"/>
-
                 <StackPanel
+                    Grid.Column="1"
                     Orientation="Horizontal"
-                    DockPanel.Dock="Right"
                     VerticalAlignment="Center"
                     Margin="0,0,20,0">
 
@@ -934,7 +933,16 @@
 
                 </StackPanel>
 
-            </DockPanel>
+                <Button
+                    x:Name="CloseButton"
+                    Grid.Column="2"
+                    Content="Close"
+                    Width="100"
+                    Height="34"
+                    Margin="0,0,8,0"
+                    Style="{DynamicResource BrandSecondaryButton}"/>
+
+            </Grid>
 
         </Border>
 
