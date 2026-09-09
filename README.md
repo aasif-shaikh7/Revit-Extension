@@ -8,9 +8,9 @@
 This repository contains a **pyRevit extension** that runs inside Autodesk Revit and
 automates the generation of **RCC (Reinforced Cement Concrete) BOQ** workbooks.
 
-Right now it ships two buttons — **BOQ** in the **Generate** panel of the **Nudge** tab, which
-opens the **RCC BOQ Parameter Manager**, and **Brand Showcase** in the **Brand** panel — a live
-preview of the toolkit's brand/theme system that doubles as a Light/Dark visual QA tool.
+The pyRevit extension ships **BOQ** and **Brand Showcase**. The separately installed native
+`RccBoq.RestBridge` add-in also provides an **Agent Bridge** button under Revit Add-Ins for viewing
+bridge state and granting or revoking short controlled-write sessions.
 
 **Target environment:**
 
@@ -141,12 +141,12 @@ dependencies imported into the pyRevit host.
 
 ---
 
-## Local REST + MCP Integration (`v1.14.1`)
+## Local REST + MCP Integration (`v2.0.0`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
-`http://127.0.0.1:48884/rcc-boq`. Revit API reads are marshalled through `ExternalEvent` and a
-current-user-only Named Pipe. The fixed endpoint allow-list cannot modify the model or execute an
-arbitrary Revit API call. The earlier pyRevit Routes prototype is disabled and must stay disabled.
+`http://127.0.0.1:48884/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
+current-user-only Named Pipe. The closed operation allow-list supports bounded reads and one
+controlled parameter-write operation; arbitrary Revit calls and code evaluation remain forbidden.
 
 Close Revit 2025, then build and install the bridge for the current Windows user:
 
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
 ```
 
 The installer publishes the Gateway and STDIO MCP server below
-`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v1.14.1` and creates
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.0.0` and creates
 `%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
 
 The first extension startup creates a random token at
@@ -168,24 +168,27 @@ python scripts/rcc_boq_rest_client.py document
 python scripts/rcc_boq_rest_client.py selection
 python scripts/rcc_boq_rest_client.py element 3411763
 python scripts/rcc_boq_rest_client.py rebar 3411763
+python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value QA
 ```
 
 Available REST endpoints are `GET /status`, `/document`, `/selection`,
-`/elements/<element_id>` and `/rebar/<element_id>` below the `/rcc-boq` root. Selection output is
-limited to 100 elements and parameter output to 250 values per element. The document title may be
-returned, but its filesystem path and the API token are never returned.
+`/elements/<element_id>` and `/rebar/<element_id>`, plus
+`POST /elements/<element_id>/parameter`, below the `/rcc-boq` root. Parameter writes default to a
+dry-run. Actual apply also requires a write session enabled from Revit's Agent Bridge button; the
+bridge never saves the document. Selection output is limited to 100 elements and parameter output
+to 250 values per element. Document paths and API tokens are never returned.
 
-Register the installed read-only MCP server with Codex, then restart Codex:
+Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
-codex mcp add rcc-boq -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v1.14.1\Mcp\RccBoq.RestMcp.exe"
+codex mcp add rcc-boq -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.0.0\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 
 The MCP tools are `rcc_boq_status`, `rcc_boq_document`, `rcc_boq_selection`,
-`rcc_boq_element` and `rcc_boq_rebar`. The MCP process reads the same per-user token itself; the
-token is not stored in Codex configuration or emitted in tool results. All tools are annotated
-read-only and route only to the fixed REST allow-list.
+`rcc_boq_element`, `rcc_boq_rebar` and `rcc_boq_set_parameter`. The MCP process reads the same
+per-user token itself; the token is not stored in agent configuration or emitted in tool results.
+The write tool is explicitly annotated non-read-only/destructive and defaults to dry-run.
 
 Host-free verification:
 
@@ -357,9 +360,11 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.14.1`
-adds a dependency-free, read-only STDIO MCP adapter over the token-protected localhost .NET Gateway
-and Revit add-in. Revit 2025 live
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.16.0`
+adds the host-free-verified Agent Bridge `v2.0.0` foundation: the original bounded reads plus a
+dry-run-first, consent-gated parameter write. Native write QA and background BOQ comparison remain
+pending. The earlier `v1.14.1` release established the dependency-free STDIO MCP adapter over the
+token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
 testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
 varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension
 marker. `v1.13.3` mirrors the BOQ rule by mapping a dimension with `HasValue=false` to `Varies`.

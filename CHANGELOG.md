@@ -22,6 +22,25 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.16.0] - 2026-09-09
+
+### Added (Agent Bridge v2 foundation; host-free verified)
+- Upgraded the local bridge protocol to `v2.0.0` and added a native Revit **Agent Bridge**
+  pushbutton under Add-Ins.
+- Added a user-controlled 15-minute write session; writes remain disabled by default and are
+  disabled again during Revit shutdown.
+- Added `rcc_boq_set_parameter` to MCP and REST with dry-run default, expected-current-value guard,
+  explicit apply mode, Revit transaction rollback, bounded inputs and local audit logging.
+- Kept the MCP surface closed-world: no arbitrary Revit method names, code evaluation, delete,
+  document save or document-close operation is exposed.
+
+### Verification boundary
+- Revit add-in, Gateway and MCP builds pass with zero warnings; Core and MCP protocol regressions
+  pass. Installation and native Revit dry-run/apply/rollback QA remain pending.
+- Background BOQ snapshot/export comparison is the next Agent Bridge slice and is not claimed here.
+
+---
+
 ## [v1.15.1] - 2026-09-09
 
 ### Fixed (host-free verified; native Revit QA pending)

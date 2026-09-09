@@ -1,5 +1,6 @@
 """Plain-Python regression tests for the secure RCC BOQ REST contract."""
 
+import json
 import os
 import sys
 import tempfile
@@ -116,8 +117,22 @@ def run():
         gateway_source = gateway_file.read()
     check("127.0.0.1" not in gateway_source, "gateway URL must come from shared constants")
     check("Headers.Authorization" in gateway_source, "Bearer authorization is missing")
-    check("MapGet" in gateway_source and "MapPost" not in gateway_source,
-          "API must use bounded GET routes")
+    check(gateway_source.count("app.MapPost(") == 1,
+          "API must expose exactly one bounded write route")
+    check('"/rcc-boq/elements/{elementId:long}/parameter"' in gateway_source,
+          "bounded parameter-write route missing")
+
+    write_service_path = os.path.join(
+        ROOT, "RccBoq.RestBridge", "src", "RccBoq.RestRevit", "RevitWriteService.cs"
+    )
+    with open(write_service_path, "r", encoding="utf-8") as write_file:
+        write_source = write_file.read()
+    check("request.DryRun" in write_source, "write preview gate missing")
+    check("WriteSessionConsent.GetState" in write_source, "write consent gate missing")
+    check("transaction.RollBack" in write_source, "transaction rollback missing")
+    check("document_saved = false" in write_source, "no-auto-save contract missing")
+    check("Evaluate" not in write_source and "InvokeMember" not in write_source,
+          "arbitrary execution surface detected")
 
     with tempfile.TemporaryDirectory() as directory:
         client_token_path = os.path.join(directory, "token.txt")
@@ -154,6 +169,24 @@ def run():
         check(request.get_header("Authorization") == "Bearer " + "a" * 64,
               "client Bearer token missing")
         check(status == 200 and payload["ok"], "client response parsing failed")
+
+        captured.clear()
+        original_urlopen = rest_client.urllib.request.urlopen
+        try:
+            rest_client.urllib.request.urlopen = fake_urlopen
+            status, payload = rest_client.call_api(
+                "/rcc-boq/elements/7/parameter",
+                token_path=client_token_path,
+                body={"parameterName": "Comments", "value": "QA", "dryRun": True},
+            )
+        finally:
+            rest_client.urllib.request.urlopen = original_urlopen
+        request = captured["request"]
+        check(request.get_method() == "POST", "write client must use POST")
+        sent = json.loads(request.data.decode("utf-8"))
+        check(sent["dryRun"] is True, "write client must preserve dry-run")
+        check(request.get_header("Content-type") == "application/json",
+              "write client content type missing")
 
     with tempfile.TemporaryDirectory() as directory:
         token_path = os.path.join(directory, "private", "token.txt")

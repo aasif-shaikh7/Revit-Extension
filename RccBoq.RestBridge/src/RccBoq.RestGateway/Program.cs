@@ -36,27 +36,35 @@ app.Use(async (context, next) =>
 
 static async Task<IResult> ForwardAsync(
     RevitPipeClient pipe,
-    string operation,
-    long? elementId,
+    BridgeRequest request,
     CancellationToken cancellationToken)
 {
-    BridgeResponse response = await pipe.SendAsync(
-        new BridgeRequest(operation, elementId), cancellationToken);
+    BridgeResponse response = await pipe.SendAsync(request, cancellationToken);
     return Results.Json(response.Body, statusCode: response.StatusCode);
 }
 
 app.MapGet("/rcc-boq/status", (RevitPipeClient pipe, CancellationToken token) =>
-    ForwardAsync(pipe, "status", null, token));
+    ForwardAsync(pipe, new BridgeRequest("status"), token));
 app.MapGet("/rcc-boq/document", (RevitPipeClient pipe, CancellationToken token) =>
-    ForwardAsync(pipe, "document", null, token));
+    ForwardAsync(pipe, new BridgeRequest("document"), token));
 app.MapGet("/rcc-boq/selection", (RevitPipeClient pipe, CancellationToken token) =>
-    ForwardAsync(pipe, "selection", null, token));
+    ForwardAsync(pipe, new BridgeRequest("selection"), token));
 app.MapGet("/rcc-boq/elements/{elementId:long}",
     (long elementId, RevitPipeClient pipe, CancellationToken token) =>
-        ForwardAsync(pipe, "element", elementId, token));
+        ForwardAsync(pipe, new BridgeRequest("element", elementId), token));
 app.MapGet("/rcc-boq/rebar/{elementId:long}",
     (long elementId, RevitPipeClient pipe, CancellationToken token) =>
-        ForwardAsync(pipe, "rebar", elementId, token));
+        ForwardAsync(pipe, new BridgeRequest("rebar", elementId), token));
+app.MapPost("/rcc-boq/elements/{elementId:long}/parameter",
+    (long elementId, SetParameterBody body, RevitPipeClient pipe, CancellationToken token) =>
+        ForwardAsync(pipe, new BridgeRequest(
+            "set_parameter",
+            elementId,
+            body.ParameterName,
+            body.Value,
+            body.ExpectedCurrentValue,
+            body.DryRun,
+            body.RequestId), token));
 
 int? parentProcessId = ParseParentProcessId(args);
 if (parentProcessId is not null)
@@ -92,3 +100,10 @@ static async Task MonitorParentAsync(int processId, IHostApplicationLifetime lif
         lifetime.StopApplication();
     }
 }
+
+internal sealed record SetParameterBody(
+    string ParameterName,
+    string Value,
+    string? ExpectedCurrentValue = null,
+    bool DryRun = true,
+    string? RequestId = null);

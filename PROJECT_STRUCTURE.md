@@ -127,14 +127,16 @@ Nudge.extension/
   and the XAML dictionaries) must never import the engine modules, and
   the engine modules must never import UI/Revit code.
 
-Two pushbuttons exist today; nesting stays intentionally flat.
+Two pyRevit pushbuttons exist today; nesting stays intentionally flat. The installed native bridge
+adds a separate Agent Bridge consent/status button under Revit Add-Ins.
 
 The pyRevit Routes prototype is deliberately disabled because live host testing was unstable. The
 supported integration lives in `RccBoq.RestBridge`: a localhost-only out-of-process Gateway talks to
-a Revit 2025 add-in over a current-user-only Named Pipe. The add-in marshals its fixed read-only
-allow-list through `ExternalEvent`; it must never expose evaluation, arbitrary method names,
-transactions, document paths or token values. `RccBoq.RestMcp` exposes the same five reads as STDIO
-MCP tools and calls this Gateway rather than duplicating Revit reads.
+a Revit 2025 add-in over a current-user-only Named Pipe. The add-in marshals a fixed operation
+allow-list through `ExternalEvent`. Reads are always available; controlled writes require explicit,
+short-lived consent and execute in named Revit transactions with rollback. It must never expose
+evaluation, arbitrary method names, document save/close, document paths or token values.
+`RccBoq.RestMcp` calls this Gateway rather than duplicating Revit work.
 
 ---
 

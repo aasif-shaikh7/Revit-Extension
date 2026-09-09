@@ -57,10 +57,22 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
+| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.16.0`) |
 
 ---
 
 ## Active roadmap phase
+
+### INT-03 — Controlled Agent Bridge — `building` (`v1.16.0`, Bridge API `v2.0.0`)
+
+**Built:** native Agent Bridge consent button, 15-minute write window, dry-run-first parameter edit,
+optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
+Arbitrary code/API dispatch, delete and automatic document save remain forbidden.
+
+**Verified (host-free):** zero-warning Revit/Gateway/MCP builds and Core/MCP protocol tests.
+
+**Remaining:** install beside `v1.14.1`, native dry-run/apply/expiry QA, client registration refresh,
+then add canonical BOQ snapshot/export/compare tools for background workbook validation.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
 

@@ -131,7 +131,7 @@ internal sealed class McpServer(
                 ["name"] = "rcc-boq-revit",
                 ["version"] = BridgeConstants.Version,
             },
-            ["instructions"] = "Read-only access to the active Revit 2025 document through the local RCC BOQ bridge. Check rcc_boq_status first. Use rcc_boq_selection for the current selection, then pass an element_id to rcc_boq_element or rcc_boq_rebar. Never describe these tools as proof of model edits; they cannot modify Revit.",
+            ["instructions"] = "Controlled access to the active Revit 2025 document through the local RCC BOQ Agent Bridge. Reads and parameter dry-runs are always available. Actual writes require the user to enable a short write session from Revit's Agent Bridge pushbutton. Never claim a write succeeded unless the tool returns dry_run=false and ok=true; the bridge never saves the document automatically.",
         });
     }
 
@@ -144,6 +144,12 @@ internal sealed class McpServer(
             Tool("rcc_boq_selection", "Read bounded identity for the current Revit selection.", EmptySchema()),
             Tool("rcc_boq_element", "Read bounded identity and parameters for one Revit element.", ElementSchema()),
             Tool("rcc_boq_rebar", "Read native and derived data for one Revit Rebar element.", ElementSchema()),
+            Tool(
+                "rcc_boq_set_parameter",
+                "Preview or apply one allow-listed Revit parameter edit. Dry-run defaults to true; apply requires temporary user consent in Revit.",
+                SetParameterSchema(),
+                readOnly: false,
+                destructive: true),
         ];
         return new JsonObject { ["tools"] = tools };
     }
@@ -170,6 +176,12 @@ internal sealed class McpServer(
             "rcc_boq_rebar" => ElementPath(parameters, "/rcc-boq/rebar/"),
             _ => null,
         };
+
+        if (name == "rcc_boq_set_parameter")
+        {
+            return await CallSetParameterAsync(id, parameters, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         if (path is null)
         {
@@ -212,6 +224,50 @@ internal sealed class McpServer(
         }
     }
 
+    private async Task<JsonObject> CallSetParameterAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(parameters, out JsonElement arguments)
+            || !arguments.TryGetProperty("element_id", out JsonElement elementId)
+            || !elementId.TryGetInt64(out long elementIdValue)
+            || elementIdValue <= 0
+            || !arguments.TryGetProperty("parameter_name", out JsonElement parameterName)
+            || parameterName.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(parameterName.GetString())
+            || !arguments.TryGetProperty("value", out JsonElement value)
+            || value.ValueKind != JsonValueKind.String)
+        {
+            return Error(id, -32602, "Positive element_id, parameter_name and string value are required");
+        }
+
+        bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
+            || dryRunElement.ValueKind != JsonValueKind.False;
+        string? expected = OptionalString(arguments, "expected_current_value");
+        string? requestId = OptionalString(arguments, "request_id");
+        object body = new
+        {
+            parameterName = parameterName.GetString(),
+            value = value.GetString(),
+            expectedCurrentValue = expected,
+            dryRun,
+            requestId
+        };
+        try
+        {
+            GatewayResult result = await gateway.PostAsync(
+                $"/rcc-boq/elements/{elementIdValue}/parameter",
+                body,
+                cancellationToken).ConfigureAwait(false);
+            return ToolResult(id, result);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return BridgeUnavailable(id, exception);
+        }
+    }
+
     private static string? ElementPath(JsonElement parameters, string prefix)
     {
         if (!parameters.TryGetProperty("arguments", out JsonElement arguments)
@@ -225,15 +281,20 @@ internal sealed class McpServer(
         return prefix + value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static JsonObject Tool(string name, string description, JsonObject inputSchema) => new()
+    private static JsonObject Tool(
+        string name,
+        string description,
+        JsonObject inputSchema,
+        bool readOnly = true,
+        bool destructive = false) => new()
     {
         ["name"] = name,
         ["description"] = description,
         ["inputSchema"] = inputSchema,
         ["annotations"] = new JsonObject
         {
-            ["readOnlyHint"] = true,
-            ["destructiveHint"] = false,
+            ["readOnlyHint"] = readOnly,
+            ["destructiveHint"] = destructive,
             ["idempotentHint"] = true,
             ["openWorldHint"] = false,
         },
@@ -261,6 +322,74 @@ internal sealed class McpServer(
         ["required"] = new JsonArray("element_id"),
         ["additionalProperties"] = false,
     };
+
+    private static JsonObject SetParameterSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["element_id"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1 },
+            ["parameter_name"] = new JsonObject { ["type"] = "string", ["minLength"] = 1, ["maxLength"] = 250 },
+            ["value"] = new JsonObject { ["type"] = "string", ["maxLength"] = 2000 },
+            ["expected_current_value"] = new JsonObject { ["type"] = "string" },
+            ["dry_run"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true,
+                ["description"] = "Keep true to preview. False requires a temporary write session enabled in Revit."
+            },
+            ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
+        },
+        ["required"] = new JsonArray("element_id", "parameter_name", "value"),
+        ["additionalProperties"] = false,
+    };
+
+    private static bool TryArguments(JsonElement parameters, out JsonElement arguments)
+    {
+        arguments = default;
+        return parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("arguments", out arguments)
+            && arguments.ValueKind == JsonValueKind.Object;
+    }
+
+    private static string? OptionalString(JsonElement arguments, string name)
+    {
+        return arguments.TryGetProperty(name, out JsonElement value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+    }
+
+    private static JsonObject ToolResult(JsonNode id, GatewayResult gatewayResult)
+    {
+        string body = JsonSerializer.Serialize(
+            gatewayResult.Body,
+            new JsonSerializerOptions { WriteIndented = true });
+        return Result(id, new JsonObject
+        {
+            ["content"] = new JsonArray
+            {
+                new JsonObject { ["type"] = "text", ["text"] = body },
+            },
+            ["isError"] = !gatewayResult.IsSuccess,
+        });
+    }
+
+    private static JsonObject BridgeUnavailable(JsonNode id, Exception exception)
+    {
+        return Result(id, new JsonObject
+        {
+            ["content"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = $"RCC BOQ bridge unavailable: {exception.Message}",
+                },
+            },
+            ["isError"] = true,
+        });
+    }
 
     private static JsonObject Result(JsonNode id, JsonNode result) => new()
     {

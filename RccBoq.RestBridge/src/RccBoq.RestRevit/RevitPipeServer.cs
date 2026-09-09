@@ -49,7 +49,7 @@ internal sealed class RevitPipeServer : IDisposable
                             400,
                             new { ok = false, error = "Unsupported bridge operation" });
                     }
-                    else if ((operation is "element" or "rebar")
+                    else if ((operation is "element" or "rebar" or "set_parameter")
                              && request.ElementId is null or <= 0)
                     {
                         response = BridgeResponse.Json(
@@ -66,7 +66,8 @@ internal sealed class RevitPipeServer : IDisposable
                             api = BridgeConstants.ApiName,
                             api_version = BridgeConstants.ApiVersion,
                             extension_version = BridgeConstants.Version,
-                            access = "local read-only",
+                            access = "local controlled read-write",
+                            write_session = WriteSessionConsent.GetState(),
                             revit_connected = true
                         });
                     }
@@ -116,7 +117,7 @@ internal sealed class RevitPipeServer : IDisposable
     }
 
     private static readonly HashSet<string> AllowedOperations = new(
-        ["status", "document", "selection", "element", "rebar"],
+        ["status", "document", "selection", "element", "rebar", "set_parameter"],
         StringComparer.Ordinal);
 
     public void Dispose()

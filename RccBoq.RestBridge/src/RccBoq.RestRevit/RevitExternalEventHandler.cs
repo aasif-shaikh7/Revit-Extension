@@ -10,7 +10,7 @@ internal sealed class RevitExternalEventHandler : IExternalEventHandler, IDispos
     private ExternalEvent? _externalEvent;
     private bool _disposed;
 
-    public string GetName() => "RCC BOQ read-only REST bridge";
+    public string GetName() => "RCC BOQ controlled Agent Bridge";
 
     public void Attach(ExternalEvent externalEvent)
     {
@@ -49,7 +49,7 @@ internal sealed class RevitExternalEventHandler : IExternalEventHandler, IDispos
             }
             pending.Completion.TrySetResult(BridgeResponse.Json(
                 503,
-                new { ok = false, error = "Revit rejected the read request" }));
+                new { ok = false, error = "Revit rejected the bridge request" }));
         }
         return pending.Completion.Task;
     }
@@ -69,14 +69,17 @@ internal sealed class RevitExternalEventHandler : IExternalEventHandler, IDispos
 
         try
         {
-            pending.Completion.TrySetResult(RevitReadService.Execute(application, pending.Request));
+            BridgeResponse response = pending.Request.Operation == "set_parameter"
+                ? RevitWriteService.SetParameter(application, pending.Request)
+                : RevitReadService.Execute(application, pending.Request);
+            pending.Completion.TrySetResult(response);
         }
         catch (Exception exception)
         {
-            BridgeLog.Write("Revit read failed", exception);
+            BridgeLog.Write("Revit bridge operation failed", exception);
             pending.Completion.TrySetResult(BridgeResponse.Json(
                 500,
-                new { ok = false, error = "Revit read failed" }));
+                new { ok = false, error = "Revit bridge operation failed" }));
         }
     }
 
