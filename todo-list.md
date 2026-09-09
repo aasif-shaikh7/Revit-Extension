@@ -73,10 +73,13 @@ Arbitrary code/API dispatch, delete and automatic document save remain forbidden
 deployment also ran beside an untouched `v1.14.1` Revit session: authenticated status/document/
 element/Rebar reads passed against Revit 2025, the `Comments` dry-run returned the expected preview,
 an apply attempt with write consent disabled was rejected, and the parameter remained unchanged.
-The installed MCP server completed a raw initialize/list/status exchange and is registered in Codex
-as `rcc-boq-v2`.
+With explicit 15-minute consent enabled, `Comments` was changed from blank to `Agent QA`, verified
+by a fresh read, restored to blank and verified again without saving the document. A stale
+expected-value write was rejected without changing the model, and manual revocation restored
+read-only mode. The installed MCP server completed a raw initialize/list/status exchange and is
+registered in Codex as `rcc-boq-v2`.
 
-**Remaining:** native consent-enabled apply/expiry/rollback QA, then canonical BOQ
+**Remaining:** native automatic-expiry and forced-failure rollback QA, then canonical BOQ
 snapshot/export/compare tools for background workbook validation.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)

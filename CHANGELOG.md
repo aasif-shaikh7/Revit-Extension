@@ -43,11 +43,16 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - Authenticated status/document/element/Rebar reads passed against Revit `25.0.2.419`. A native
   `Comments` parameter dry-run produced the expected preview; apply with write consent disabled was
   rejected and a follow-up read confirmed that the model value remained unchanged.
+- During an explicitly enabled write session, `Comments` was changed from blank to `Agent QA`,
+  confirmed by read-back, restored to blank and confirmed again. The bridge reported
+  `document_saved=false`; an expected-current-value mismatch was rejected without mutation, and
+  manual consent revocation returned the bridge to read-only mode.
 - The installed MCP executable passed a raw initialize/list/status exchange with all six tools and
   is registered in Codex as `rcc-boq-v2`.
 
 ### Verification boundary
-- Consent-enabled apply, expiry and rollback still require a controlled native Revit QA pass.
+- Automatic consent expiry and a forced-failure transaction rollback still require controlled
+  native Revit QA.
 - Background BOQ snapshot/export comparison is the next Agent Bridge slice and is not claimed here.
 
 ---
