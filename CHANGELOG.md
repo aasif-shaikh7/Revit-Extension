@@ -22,6 +22,22 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.15.0] - 2026-09-08
+
+### Added (P6; host-free and Revit 2025 verified)
+- Added a pure Structural BOQ Assembly engine with measured Concrete, hosted Reinforcement and
+  Formwork components plus configurable Binding Wire, Cover Blocks and Labour allowances.
+- Added a safe Global / Custom profile: absent or invalid local factors stay blank and are labelled
+  `Input required` instead of silently fabricating quantities.
+- Added Profile and Source audit columns and persisted normalized assembly settings.
+- Added `Structural Assembly` sheets to Classic and Site-format workbooks.
+- Added regressions for hosted Rebar routing, safe blank allowances, sheet structure and ordering.
+
+### Verification boundary
+- Python compilation and the full XLSX regression harness pass.
+- Revit 2025 live QA verified Assembly Profile entry and restore, plus generated Site and Classic
+  workbooks containing `Structural Assembly` with the saved profile and source metadata.
+
 ## [v1.14.1] - 2026-09-08
 
 ### Fixed (installed STDIO smoke-test follow-up)

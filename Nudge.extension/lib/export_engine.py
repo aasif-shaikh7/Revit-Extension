@@ -1547,7 +1547,7 @@ def build_summary_cover_rows(
 # ============================================================
 
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
-                     project_name="", tool_version="", generated_stamp="",
+                     project_name="", tool_version="", generated_stamp="", assembly_profile=None,
                      site_format=False):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
@@ -1863,6 +1863,13 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_rows["BOQ Summary"] = summary_table
 
         quantity_column_map["BOQ Summary"] = [2, 3, 4, 5]
+
+    from assembly_engine import build_structural_assembly_table
+    assembly_table = build_structural_assembly_table(data_result, assembly_profile)
+    if len(assembly_table) > 1:
+        sheet_names.append("Structural Assembly")
+        sheet_rows["Structural Assembly"] = assembly_table
+        quantity_column_map["Structural Assembly"] = [3]
 
     # P2: level-wise grouping. One row per Level x Category with live SUMIF
     # formulas against the category sheets, placed between BOQ Summary and
@@ -2538,7 +2545,8 @@ SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 
 def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
-                    include_formwork=True, selected_parameters=None):
+                    include_formwork=True, selected_parameters=None,
+                    assembly_profile=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2634,6 +2642,18 @@ def write_site_xlsx(file_path, data_result, project_name="",
             sheet_names.append(p5_sheet_name)
             sheet_rows[p5_sheet_name] = p5_table
             sheet_widths[p5_sheet_name] = p5_widths
+
+    from assembly_engine import build_structural_assembly_table
+    assembly_plain_table = build_structural_assembly_table(data_result, assembly_profile)
+    if len(assembly_plain_table) > 1:
+        assembly_table, assembly_widths = build_site_tabular_sheet(
+            project_name,
+            "STRUCTURAL ASSEMBLY",
+            assembly_plain_table
+        )
+        sheet_names.append("Structural Assembly")
+        sheet_rows["Structural Assembly"] = assembly_table
+        sheet_widths["Structural Assembly"] = assembly_widths
 
     summary_table, summary_meta = build_site_summary_sheet(
         data_result,

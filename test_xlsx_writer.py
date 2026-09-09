@@ -45,6 +45,7 @@ ENGINE_MODULES = [
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "quantity_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "formwork_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "rebar_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "assembly_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
 ]
@@ -104,6 +105,9 @@ FUNCTION_NAMES = [
     "normalize_rebar_dimension_mm",
     "build_rebar_bbs_table",
     "build_rebar_diameter_summary_table",
+    "normalize_assembly_profile",
+    "_assembly_sum",
+    "build_structural_assembly_table",
     "_site_sort_key",
     "_sort_site_rows",
     "_site_cell_value",
@@ -195,6 +199,7 @@ def main():
         print("Source: {}".format(os.path.relpath(path, REPO_DIR)))
 
     CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
+    CONSTANT_LINES.append('DEFAULT_ASSEMBLY_PROFILE = {"id": "global-custom", "name": "Global / Custom", "edition": "1.0.0", "source": "Project specification / applicable local SOR", "binding_wire_factor": None, "cover_block_factor": None, "labour_factor": None}')
 
     import time
 
@@ -375,6 +380,25 @@ def main():
         check(
             "BOQ Summary" in sheet_rows,
             "BOQ Summary sheet was generated"
+        )
+
+        assembly_table = sheet_rows.get("Structural Assembly", [])
+        check(
+            bool(assembly_table)
+            and assembly_table[0] == ["Category", "Component", "Quantity", "Unit", "Basis", "Status", "Profile", "Source"],
+            "P6 Structural Assembly sheet was generated with auditable headers"
+        )
+        column_rebar = [row for row in assembly_table[1:]
+                        if row[0] == "Column" and row[1] == "Reinforcement"]
+        check(
+            bool(column_rebar) and column_rebar[0][2] == 10.667,
+            "P6 hosted Rebar weight maps to its structural assembly"
+        )
+        input_rows = [row for row in assembly_table[1:]
+                      if row[1] in ("Binding Wire", "Cover Blocks", "Labour")]
+        check(
+            bool(input_rows) and all(row[2] == "" and row[5] == "Input required" for row in input_rows),
+            "P6 unsupported global allowances stay blank instead of inventing quantities"
         )
 
         beam_table = sheet_rows["Beam"]
@@ -1536,7 +1560,7 @@ def main():
         expected_order = [
             "Summary", "Beam", "Column", "Structure Wall", "Foundation",
             "Rebar", "Rebar Summary", "Rebar BBS", "BOQ Summary",
-            "BOQ by Level", "BOQ by Grade", "Costing"
+            "Structural Assembly", "BOQ by Level", "BOQ by Grade", "Costing"
         ]
 
         check(
@@ -1770,7 +1794,7 @@ def main():
         check(
             sheet_order_site == [
                 "Summary", "Beam", "Structure Wall", "Rebar",
-                "Rebar Summary", "Rebar BBS"
+                "Rebar Summary", "Rebar BBS", "Structural Assembly"
             ],
             "Site workbook order: Summary then populated categories "
             "(got {})".format(sheet_order_site)
@@ -2174,6 +2198,20 @@ def main():
         and 'Header="Structure Wall"' in ui_text
         and all(name in ui_text for name in required_wall_controls),
         "Structure Wall XAML tab is valid and exposes every wired control"
+    )
+
+    required_assembly_controls = (
+        "AssemblyProfileName", "AssemblyProfileSource",
+        "AssemblyBindingWireFactor", "AssemblyCoverBlockFactor",
+        "AssemblyLabourFactor"
+    )
+    check(
+        ui_valid
+        and 'Header="Assembly Profile"' in ui_text
+        and all(name in ui_text for name in required_assembly_controls)
+        and 'settings["assembly_profile"]' in script_text
+        and "assembly_profile=assembly_profile" in script_text,
+        "P6 Assembly Profile UI, persistence and exporter wiring are present"
     )
 
     required_rebar_controls = (

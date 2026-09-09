@@ -288,7 +288,7 @@ every phase:
 | P3 Formwork Engine | `lib/formwork_engine.py` (**exists since v1.8.6**) |
 | P4 Rebar Engine | `lib/rebar_engine.py` (**exists since v1.10.0**; Revit reads stay in `script.py`) |
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
-| P6 Assembly | settings-driven configuration + export |
+| P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
 | P7 Site items | settings + element sheets |
 | P8 Rule Engine | `rule_engine.py` |
 | P9 Validation Engine | `validation_engine.py` |

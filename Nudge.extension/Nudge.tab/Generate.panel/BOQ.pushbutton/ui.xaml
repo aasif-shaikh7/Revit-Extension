@@ -811,6 +811,26 @@
             </TabItem>
 
 
+            <TabItem Header="Assembly Profile">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="18" MaxWidth="720" HorizontalAlignment="Left">
+                        <TextBlock Text="Structural Assembly Profile" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock Text="Measured concrete, Rebar and formwork stay model-derived. Optional factors below are multiplied by hosted Rebar weight in kg; leave blank when the applicable local SOR does not define a defensible coefficient." TextWrapping="Wrap" Margin="0,0,0,16"/>
+                        <TextBlock Text="Profile name" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyProfileName" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Authority / source reference" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyProfileSource" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Binding wire factor (kg per kg Rebar)" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyBindingWireFactor" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10" ToolTip="Example: 0.01 means 1 kg binding wire per 100 kg hosted Rebar."/>
+                        <TextBlock Text="Cover block factor (each per kg Rebar)" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyCoverBlockFactor" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Labour factor (worker-day per kg Rebar)" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyLabourFactor" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Blank or invalid/negative factors export as Input required. Values and source are saved automatically and printed in the workbook." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
 
 

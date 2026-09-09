@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.13.3'
+__version__ = '1.15.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.13.3'
+SCRIPT_VERSION = '1.15.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -250,6 +250,17 @@ from settings_engine import (
     load_app_settings,
     save_app_settings,
 )
+from assembly_engine import normalize_assembly_profile
+
+assembly_profile = {
+    "id": "global-custom",
+    "name": "Global / Custom",
+    "edition": "1.0.0",
+    "source": "Project specification / applicable local SOR",
+    "binding_wire_factor": None,
+    "cover_block_factor": None,
+    "labour_factor": None,
+}
 
 
 # ============================================================
@@ -267,11 +278,15 @@ parameter_metadata = {
 }
 
 
-# safe_text moved to lib/export_engine.py - shared pure-Python
-# safe-string helper used by the XLSX metadata-sheet builders there
-# and by the Revit-bound readers here.
-from export_engine import safe_text
-
+def safe_text(value, fallback="Unknown"):
+    """Return a display-safe string without loading the XLSX engine."""
+    try:
+        if value is None:
+            return fallback
+        text = str(value)
+        return text if text else fallback
+    except:
+        return fallback
 
 def safe_element_id(parameter):
     """
@@ -2347,12 +2362,6 @@ def get_sample_values(data_result, max_rows=3):
 # lib/costing_engine.py and build_shuttering_formula to
 # lib/formwork_engine.py. Only the names the remaining Revit-bound
 # code actually calls are imported back here.
-from export_engine import (
-    write_basic_xlsx,
-    write_site_xlsx,
-    build_default_output_name,
-)
-
 def choose_excel_output_path():
     """Show a standard Windows Save dialog for the XLSX output path."""
     desktop = Environment.GetFolderPath(
@@ -2372,6 +2381,7 @@ def choose_excel_output_path():
     # Professional naming convention:
     # YYYYMMDD-<Project>-CONCRETE_FINISHING_BOQ.xlsx (user can still edit it).
     try:
+        from export_engine import build_default_output_name
         dialog.FileName = build_default_output_name(doc.Title)
     except:
         dialog.FileName = "RCC_BOQ_Report.xlsx"
@@ -4215,6 +4225,25 @@ try:
         except:
             pass
 
+        try:
+            assembly_profile.clear()
+            assembly_profile.update(normalize_assembly_profile(
+                saved_settings.get("assembly_profile", {})
+            ))
+            field_values = (
+                ("AssemblyProfileName", assembly_profile.get("name", "")),
+                ("AssemblyProfileSource", assembly_profile.get("source", "")),
+                ("AssemblyBindingWireFactor", assembly_profile.get("binding_wire_factor")),
+                ("AssemblyCoverBlockFactor", assembly_profile.get("cover_block_factor")),
+                ("AssemblyLabourFactor", assembly_profile.get("labour_factor")),
+            )
+            for field_name, field_value in field_values:
+                field = window.FindName(field_name)
+                if field:
+                    field.Text = "" if field_value is None else str(field_value)
+        except:
+            pass
+
         # Restore the previously selected parameters in saved order.
         saved_selected = {}
 
@@ -4467,6 +4496,22 @@ try:
                 }
             except:
                 pass
+
+            try:
+                raw_assembly = {
+                    "id": assembly_profile.get("id", "global-custom"),
+                    "edition": assembly_profile.get("edition", "1.0.0"),
+                    "name": window.FindName("AssemblyProfileName").Text,
+                    "source": window.FindName("AssemblyProfileSource").Text,
+                    "binding_wire_factor": window.FindName("AssemblyBindingWireFactor").Text,
+                    "cover_block_factor": window.FindName("AssemblyCoverBlockFactor").Text,
+                    "labour_factor": window.FindName("AssemblyLabourFactor").Text,
+                }
+                assembly_profile.clear()
+                assembly_profile.update(normalize_assembly_profile(raw_assembly))
+            except:
+                pass
+            settings["assembly_profile"] = dict(assembly_profile)
 
             save_app_settings(settings)
 
@@ -5435,6 +5480,8 @@ try:
                     if not output_path.lower().endswith(".xlsx"):
                         output_path += ".xlsx"
 
+                    from export_engine import write_basic_xlsx, write_site_xlsx
+
                     workbook_started = time.time()
                     if use_site_format:
 
@@ -5451,7 +5498,8 @@ try:
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
                             include_formwork=is_formwork_enabled(),
-                            selected_parameters=selected_parameters
+                            selected_parameters=selected_parameters,
+                            assembly_profile=assembly_profile
                         )
 
                     else:
@@ -5468,7 +5516,8 @@ try:
                                     SCRIPT_VERSION
                                 )
                             ),
-                            generated_stamp=time.strftime("%Y-%m-%d %H:%M")
+                            generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
+                            assembly_profile=assembly_profile
                         )
 
                     workbook_seconds = time.time() - workbook_started
@@ -5689,16 +5738,20 @@ try:
 
 
 except Exception as ex:
+    startup_details = (
+        "RCC BOQ STARTUP ERROR\n\n{}\n\nDETAILS:\n{}".format(
+            str(ex), traceback.format_exc()
+        )
+    )
+
+    try:
+        print(startup_details)
+    except:
+        pass
 
     forms.alert(
 
-        "RCC BOQ STARTUP ERROR\n\n"
-        "{}\n\n"
-        "DETAILS:\n{}".format(
-
-            str(ex),
-            traceback.format_exc()
-        ),
+        startup_details,
 
         title="RCC BOQ ERROR"
     )

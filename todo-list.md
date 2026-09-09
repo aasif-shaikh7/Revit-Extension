@@ -46,7 +46,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | `testing` (`v1.10.2`) |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.12.4`) |
-| P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | `todo` |
+| P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `todo` |
@@ -61,6 +61,19 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 ---
 
 ## Active roadmap phase
+
+### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
+
+**Built:** a pure `assembly_engine.py` creates category/component take-offs for concrete,
+reinforcement, formwork, binding wire, cover blocks and labour. The Global / Custom profile never
+invents missing local factors: unsupported allowances remain blank with `Input required`. Profile
+and source metadata are exported, saved settings are normalized, and Classic plus Site workbooks
+include a `Structural Assembly` sheet.
+
+**Verified:** compile checks and the complete XLSX harness pass, including hosted Rebar weight
+routing, auditable headers, blank-allowance safety and both workbook layouts. Revit 2025 live QA
+also verified the Assembly Profile UI, saved-profile restore, and both Site and Classic exports;
+their generated workbooks contained the Structural Assembly sheet with the saved profile/source.
 
 ### INT-02 — Codex STDIO MCP adapter — `complete` (`v1.14.1`)
 
