@@ -121,6 +121,13 @@ def run():
           "API must expose exactly one bounded write route")
     check('"/rcc-boq/elements/{elementId:long}/parameter"' in gateway_source,
           "bounded parameter-write route missing")
+    check('"/rcc-boq/boq/last-validation"' in gateway_source,
+          "bounded last-export validation route missing")
+    check(
+        rest_client.endpoint_path("last-validation")
+        == "/rcc-boq/boq/last-validation",
+        "last-export validation client route missing",
+    )
 
     write_service_path = os.path.join(
         ROOT, "RccBoq.RestBridge", "src", "RccBoq.RestRevit", "RevitWriteService.cs"

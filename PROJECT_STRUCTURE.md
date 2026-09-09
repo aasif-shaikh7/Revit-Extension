@@ -103,6 +103,7 @@ Nudge.extension/
     ├── rest_api.py          <- legacy prototype serializers retained for regression coverage
     ├── costing_engine.py    <- per-element rate x quantity costing sheet (pure Python)
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
+    ├── export_validation.py <- canonical XLSX cell validation + bounded report (pure Python)
     └── Resources/
         ├── Brand.Colors.Light.xaml
         ├── Brand.Colors.Dark.xaml
@@ -118,7 +119,7 @@ Nudge.extension/
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
   dictionaries. Since P4 it also hosts six
   **pure-Python engine modules** (`settings_engine`, `quantity_engine`,
-  `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`) that the BOQ
+  `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`, `export_validation`) that the BOQ
   pushbutton imports by plain module name — pyRevit puts the extension
   `lib/` folder on `sys.path` (the mechanism `theme_manager` already
   relied on). The engines must stay dependency-free: stdlib only, no

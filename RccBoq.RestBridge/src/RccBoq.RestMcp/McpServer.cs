@@ -145,6 +145,10 @@ internal sealed class McpServer(
             Tool("rcc_boq_element", "Read bounded identity and parameters for one Revit element.", ElementSchema()),
             Tool("rcc_boq_rebar", "Read native and derived data for one Revit Rebar element.", ElementSchema()),
             Tool(
+                "rcc_boq_last_export_validation",
+                "Read the latest bounded canonical BOQ XLSX validation report produced by the exporter.",
+                EmptySchema()),
+            Tool(
                 "rcc_boq_set_parameter",
                 "Preview or apply one allow-listed Revit parameter edit. Dry-run defaults to true; apply requires temporary user consent in Revit.",
                 SetParameterSchema(),
@@ -174,6 +178,7 @@ internal sealed class McpServer(
             "rcc_boq_selection" => "/rcc-boq/selection",
             "rcc_boq_element" => ElementPath(parameters, "/rcc-boq/elements/"),
             "rcc_boq_rebar" => ElementPath(parameters, "/rcc-boq/rebar/"),
+            "rcc_boq_last_export_validation" => "/rcc-boq/boq/last-validation",
             _ => null,
         };
 

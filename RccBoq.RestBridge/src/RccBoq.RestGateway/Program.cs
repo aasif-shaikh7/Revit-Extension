@@ -55,6 +55,8 @@ app.MapGet("/rcc-boq/elements/{elementId:long}",
 app.MapGet("/rcc-boq/rebar/{elementId:long}",
     (long elementId, RevitPipeClient pipe, CancellationToken token) =>
         ForwardAsync(pipe, new BridgeRequest("rebar", elementId), token));
+app.MapGet("/rcc-boq/boq/last-validation", (RevitPipeClient pipe, CancellationToken token) =>
+    ForwardAsync(pipe, new BridgeRequest("last_export_validation"), token));
 app.MapPost("/rcc-boq/elements/{elementId:long}/parameter",
     (long elementId, SetParameterBody body, RevitPipeClient pipe, CancellationToken token) =>
         ForwardAsync(pipe, new BridgeRequest(

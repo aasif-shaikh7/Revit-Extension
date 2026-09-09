@@ -1548,7 +1548,7 @@ def build_summary_cover_rows(
 
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
-                     site_format=False):
+                     site_format=False, validation_report_path=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -1570,7 +1570,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             data_result,
             project_name=project_name,
             tool_version=tool_version,
-            generated_stamp=generated_stamp
+            generated_stamp=generated_stamp,
+            validation_report_path=validation_report_path
         )
 
     # Only categories that actually contain at least one element produce a
@@ -1986,6 +1987,29 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                 ).encode("utf-8")
             )
 
+    from export_validation import validate_workbook, write_validation_report
+    validation_report = validate_workbook(
+        temp_path,
+        sheet_names,
+        sheet_rows,
+        document_title=project_name,
+        export_format="classic",
+        tool_version=tool_version
+    )
+    validation_report["workbook_name"] = os.path.basename(file_path)[:250]
+
+    if not validation_report.get("ok"):
+        if validation_report_path:
+            write_validation_report(validation_report_path, validation_report)
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+        raise ValueError(
+            "Generated XLSX failed canonical validation with {0} mismatch(es)"
+            .format(validation_report.get("mismatch_count", 0))
+        )
+
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
@@ -1993,6 +2017,9 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             pass
 
     os.rename(temp_path, file_path)
+
+    if validation_report_path:
+        write_validation_report(validation_report_path, validation_report)
 
     return sheet_rows
 
@@ -2546,7 +2573,7 @@ SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
                     include_formwork=True, selected_parameters=None,
-                    assembly_profile=None):
+                    assembly_profile=None, validation_report_path=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2759,6 +2786,29 @@ def write_site_xlsx(file_path, data_result, project_name="",
                 sheet_xml.encode("utf-8")
             )
 
+    from export_validation import validate_workbook, write_validation_report
+    validation_report = validate_workbook(
+        temp_path,
+        sheet_names,
+        sheet_rows,
+        document_title=project_name,
+        export_format="site",
+        tool_version=tool_version
+    )
+    validation_report["workbook_name"] = os.path.basename(file_path)[:250]
+
+    if not validation_report.get("ok"):
+        if validation_report_path:
+            write_validation_report(validation_report_path, validation_report)
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+        raise ValueError(
+            "Generated XLSX failed canonical validation with {0} mismatch(es)"
+            .format(validation_report.get("mismatch_count", 0))
+        )
+
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
@@ -2766,6 +2816,9 @@ def write_site_xlsx(file_path, data_result, project_name="",
             pass
 
     os.rename(temp_path, file_path)
+
+    if validation_report_path:
+        write_validation_report(validation_report_path, validation_report)
 
     # Plain {sheet_name: table} mapping - same contract as
     # write_basic_xlsx, so the export dialog code can treat both

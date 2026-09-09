@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
 using RccBoq.RestCore;
+using System.Text.Json;
 
 namespace RccBoq.RestRevit;
 
@@ -10,6 +11,7 @@ internal static class RevitReadService
     private const int MaxSelection = 100;
     private const int MaxParameters = 250;
     private const int MaxTextLength = 1000;
+    private const int MaxValidationReportBytes = 512 * 1024;
 
     public static BridgeResponse Execute(UIApplication application, BridgeRequest request)
     {
@@ -27,8 +29,79 @@ internal static class RevitReadService
             "selection" => SelectionResponse(application),
             "element" => ElementResponse(application, request.ElementId, false),
             "rebar" => ElementResponse(application, request.ElementId, true),
+            "last_export_validation" => LastExportValidationResponse(application),
             _ => BridgeResponse.Json(400, new { ok = false, error = "Unsupported operation" })
         };
+    }
+
+    private static BridgeResponse LastExportValidationResponse(UIApplication application)
+    {
+        string reportPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RCC_BOQ",
+            "last_boq_validation.json");
+        FileInfo reportFile = new(reportPath);
+        if (!reportFile.Exists)
+        {
+            return BridgeResponse.Json(404, new
+            {
+                ok = false,
+                error = "No BOQ export validation report is available"
+            });
+        }
+        if (reportFile.Length is <= 0 or > MaxValidationReportBytes)
+        {
+            return BridgeResponse.Json(422, new
+            {
+                ok = false,
+                error = "BOQ export validation report is invalid"
+            });
+        }
+
+        try
+        {
+            using JsonDocument report = JsonDocument.Parse(File.ReadAllBytes(reportPath));
+            JsonElement root = report.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("schema", out JsonElement schema)
+                || schema.GetString() != "rcc-boq-export-validation/1.0.0")
+            {
+                return BridgeResponse.Json(422, new
+                {
+                    ok = false,
+                    error = "BOQ export validation report schema is unsupported"
+                });
+            }
+
+            string activeTitle = application.ActiveUIDocument?.Document?.Title ?? string.Empty;
+            string reportTitle = root.TryGetProperty("document_title", out JsonElement title)
+                && title.ValueKind == JsonValueKind.String
+                    ? title.GetString() ?? string.Empty
+                    : string.Empty;
+            return BridgeResponse.Json(200, new
+            {
+                ok = true,
+                matches_active_document = activeTitle.Length > 0
+                    && string.Equals(activeTitle, reportTitle, StringComparison.Ordinal),
+                validation = root.Clone()
+            });
+        }
+        catch (JsonException)
+        {
+            return BridgeResponse.Json(422, new
+            {
+                ok = false,
+                error = "BOQ export validation report is invalid"
+            });
+        }
+        catch (IOException)
+        {
+            return BridgeResponse.Json(503, new
+            {
+                ok = false,
+                error = "BOQ export validation report is temporarily unavailable"
+            });
+        }
     }
 
     private static BridgeResponse DocumentResponse(UIApplication application)

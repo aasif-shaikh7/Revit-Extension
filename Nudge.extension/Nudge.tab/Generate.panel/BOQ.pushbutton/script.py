@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.16.0'
+__version__ = '1.17.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.16.0'
+SCRIPT_VERSION = '1.17.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5481,6 +5481,12 @@ try:
                         output_path += ".xlsx"
 
                     from export_engine import write_basic_xlsx, write_site_xlsx
+                    from export_validation import (
+                        default_validation_report_path,
+                        read_validation_report
+                    )
+
+                    validation_report_path = default_validation_report_path()
 
                     workbook_started = time.time()
                     if use_site_format:
@@ -5499,7 +5505,8 @@ try:
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
                             include_formwork=is_formwork_enabled(),
                             selected_parameters=selected_parameters,
-                            assembly_profile=assembly_profile
+                            assembly_profile=assembly_profile,
+                            validation_report_path=validation_report_path
                         )
 
                     else:
@@ -5517,10 +5524,18 @@ try:
                                 )
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
-                            assembly_profile=assembly_profile
+                            assembly_profile=assembly_profile,
+                            validation_report_path=validation_report_path
                         )
 
                     workbook_seconds = time.time() - workbook_started
+                    validation_report = read_validation_report(
+                        validation_report_path
+                    )
+                    if not validation_report.get("ok"):
+                        raise ValueError(
+                            "Canonical XLSX validation did not pass"
+                        )
 
                     non_empty_sheets = 0
 
@@ -5614,6 +5629,7 @@ try:
                         "Element data rows: {}\n"
                         "Sheets with element data: {}\n"
                         "Quantity columns: {}\n\n"
+                        "Workbook validation: PASS ({} cells, SHA-256 {}...)\n\n"
                         "Processing time: {:.1f} sec "
                         "(metadata {:.1f} + Revit data {:.1f} + workbook {:.1f})\n\n"
                         "Workbook sheets: {}".format(
@@ -5623,6 +5639,8 @@ try:
                             total_rows,
                             non_empty_sheets,
                             quantity_columns,
+                            validation_report.get("actual_cell_count", 0),
+                            validation_report.get("workbook_sha256", "")[:12],
                             metadata_seconds + data_seconds + workbook_seconds,
                             metadata_seconds,
                             data_seconds,

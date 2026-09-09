@@ -28,6 +28,8 @@ def read_token(path=TOKEN_PATH):
 def endpoint_path(command, element_id=None):
     if command in ("status", "document", "selection"):
         return "/rcc-boq/" + command
+    if command == "last-validation":
+        return "/rcc-boq/boq/last-validation"
     if command in ("element", "rebar") and element_id is not None:
         return "/rcc-boq/{0}/{1}".format(command + "s" if command == "element" else command, element_id)
     if command == "set-parameter" and element_id is not None:
@@ -66,7 +68,7 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("status", "document", "selection", "element", "rebar", "set-parameter"),
+        choices=("status", "document", "selection", "element", "rebar", "last-validation", "set-parameter"),
     )
     parser.add_argument("element_id", nargs="?", type=int)
     parser.add_argument("--parameter-name")

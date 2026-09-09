@@ -8,6 +8,7 @@ string input = string.Join('\n',
     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_rebar\",\"arguments\":{\"element_id\":3411763}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_element\",\"arguments\":{\"element_id\":0}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_set_parameter\",\"arguments\":{\"element_id\":3411763,\"parameter_name\":\"Comments\",\"value\":\"QA\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_last_export_validation\",\"arguments\":{}}}",
     string.Empty);
 
 using StringReader reader = new(input);
@@ -19,7 +20,7 @@ await server.RunAsync(CancellationToken.None);
 string[] lines = writer.ToString().Split(
     Environment.NewLine,
     StringSplitOptions.RemoveEmptyEntries);
-Assert(lines.Length == 5, "response count excludes notification");
+Assert(lines.Length == 6, "response count excludes notification");
 
 using JsonDocument initialize = JsonDocument.Parse(lines[0]);
 Assert(initialize.RootElement.GetProperty("result").GetProperty("protocolVersion").GetString()
@@ -27,11 +28,11 @@ Assert(initialize.RootElement.GetProperty("result").GetProperty("protocolVersion
 
 using JsonDocument list = JsonDocument.Parse(lines[1]);
 JsonElement tools = list.RootElement.GetProperty("result").GetProperty("tools");
-Assert(tools.GetArrayLength() == 6, "tool count");
-Assert(tools.EnumerateArray().Take(5).All(tool =>
+Assert(tools.GetArrayLength() == 7, "tool count");
+Assert(tools.EnumerateArray().Take(6).All(tool =>
     tool.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean()),
     "read-only annotations");
-JsonElement writeTool = tools[5];
+JsonElement writeTool = tools[6];
 Assert(!writeTool.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean(),
     "write tool annotation");
 Assert(writeTool.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean(),
@@ -40,7 +41,8 @@ Assert(writeTool.GetProperty("annotations").GetProperty("destructiveHint").GetBo
 using JsonDocument call = JsonDocument.Parse(lines[2]);
 Assert(!call.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),
     "successful tool call");
-Assert(gateway.Paths.SequenceEqual(new[] { "/rcc-boq/rebar/3411763" }),
+Assert(gateway.Paths.SequenceEqual(new[]
+    { "/rcc-boq/rebar/3411763", "/rcc-boq/boq/last-validation" }),
     "fixed endpoint allow-list");
 
 using JsonDocument invalid = JsonDocument.Parse(lines[3]);
@@ -54,6 +56,10 @@ Assert(gateway.PostPaths.SequenceEqual(new[] { "/rcc-boq/elements/3411763/parame
     "write endpoint allow-list");
 Assert(gateway.PostBodies.Single().GetProperty("dryRun").GetBoolean(),
     "parameter edits default to dry-run");
+
+using JsonDocument validation = JsonDocument.Parse(lines[5]);
+Assert(!validation.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),
+    "last export validation tool call");
 
 Console.WriteLine("RCC BOQ MCP tests passed");
 

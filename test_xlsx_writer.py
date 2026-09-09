@@ -12,6 +12,7 @@ python test_xlsx_writer.py
 """
 
 import io
+import json
 import os
 import re
 import sys
@@ -365,6 +366,10 @@ def main():
         os.path.dirname(os.path.abspath(__file__)),
         "_boq_writer_test.xlsx"
     )
+    validation_report_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "_boq_validation_test.json"
+    )
 
     sheet_rows = namespace["write_basic_xlsx"](
         output_path,
@@ -372,7 +377,8 @@ def main():
         parameter_metadata,
         project_name="CHHANYADO HOSPITAL SURAT",
         tool_version="RCC BOQ Parameter Manager v1.4.0",
-        generated_stamp="2026-08-26 10:00"
+        generated_stamp="2026-08-26 10:00",
+        validation_report_path=validation_report_path
     )
 
     try:
@@ -380,6 +386,47 @@ def main():
         check(
             "BOQ Summary" in sheet_rows,
             "BOQ Summary sheet was generated"
+        )
+
+        with io.open(validation_report_path, "r", encoding="utf-8") as report_file:
+            validation_report = json.load(report_file)
+        check(
+            validation_report.get("schema")
+            == "rcc-boq-export-validation/1.0.0"
+            and validation_report.get("ok") is True
+            and validation_report.get("mismatch_count") == 0
+            and validation_report.get("expected_cell_count")
+            == validation_report.get("actual_cell_count")
+            and len(validation_report.get("workbook_sha256", "")) == 64,
+            "Canonical validator rereads every generated Classic XLSX cell"
+        )
+
+        import export_validation
+        with zipfile.ZipFile(output_path, "r") as validation_archive:
+            validation_sheet_names = [
+                item[0]
+                for item in export_validation._workbook_sheet_targets(
+                    validation_archive)
+            ]
+        tampered_rows = dict(
+            (name, [list(row) for row in rows])
+            for name, rows in sheet_rows.items()
+        )
+        tampered_rows["Beam"][1][0] = "unexpected-element-id"
+        tampered_report = export_validation.validate_workbook(
+            output_path,
+            validation_sheet_names,
+            tampered_rows,
+            document_title="CHHANYADO HOSPITAL SURAT",
+            export_format="classic",
+            tool_version="RCC BOQ Parameter Manager v1.17.0"
+        )
+        check(
+            tampered_report.get("ok") is False
+            and tampered_report.get("mismatch_count") == 1
+            and tampered_report.get("mismatches", [])[0].get("sheet")
+            == "Beam",
+            "Canonical validator detects a persisted XLSX cell mismatch"
         )
 
         assembly_table = sheet_rows.get("Structural Assembly", [])
@@ -1669,6 +1716,10 @@ def main():
 
         try:
             os.remove(output_path)
+        except:
+            pass
+        try:
+            os.remove(validation_report_path)
         except:
             pass
 

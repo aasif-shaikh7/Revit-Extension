@@ -117,7 +117,7 @@ internal sealed class RevitPipeServer : IDisposable
     }
 
     private static readonly HashSet<string> AllowedOperations = new(
-        ["status", "document", "selection", "element", "rebar", "set_parameter"],
+        ["status", "document", "selection", "element", "rebar", "last_export_validation", "set_parameter"],
         StringComparer.Ordinal);
 
     public void Dispose()

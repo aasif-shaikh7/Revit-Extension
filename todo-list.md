@@ -57,13 +57,13 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
-| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.16.0`) |
+| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.17.0`) |
 
 ---
 
 ## Active roadmap phase
 
-### INT-03 — Controlled Agent Bridge — `building` (`v1.16.0`, Bridge API `v2.0.0`)
+### INT-03 — Controlled Agent Bridge — `building` (`v1.17.0`, Bridge API `v2.1.0`)
 
 **Built:** native Agent Bridge consent button, 15-minute write window, dry-run-first parameter edit,
 optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
@@ -79,8 +79,17 @@ expected-value write was rejected without changing the model, and manual revocat
 read-only mode. The installed MCP server completed a raw initialize/list/status exchange and is
 registered in Codex as `rcc-boq-v2`.
 
-**Remaining:** native automatic-expiry and forced-failure rollback QA, then canonical BOQ
-snapshot/export/compare tools for background workbook validation.
+**Built in v1.17.0:** Classic and Site exports now validate every persisted non-empty XLSX cell
+against their canonical in-memory Revit-derived rows before publication. A bounded fixed-path
+report carries basename/digest/counts only, and the new read-only REST/MCP/CLI operation returns
+that report plus its active-document match state without accepting an arbitrary filesystem path.
+
+**Verified (host-free):** both workbook formats pass the canonical validator; an intentionally
+changed Beam cell is detected. All Python, .NET Core/MCP/REST and zero-warning bridge builds pass.
+
+**Remaining:** install/restart and verify one fresh live BOQ report, plus native automatic-expiry
+and forced-failure rollback QA. Background export triggering remains a separately gated future
+operation because the current pyRevit workflow owns an interactive Save dialog.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
 

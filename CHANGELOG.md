@@ -22,6 +22,35 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.17.0] - 2026-09-09
+
+### Added (canonical BOQ validation; host-free verified)
+- Added a dependency-free XLSX validator that reopens each temporary Classic or Site workbook and
+  compares every persisted non-empty string, number and formula cell with the canonical in-memory
+  rows derived from the active Revit document.
+- Invalid workbooks are rejected before replacing the destination file. Successful validation
+  publishes a bounded report at `%LOCALAPPDATA%\RCC_BOQ\last_boq_validation.json` containing only
+  the workbook basename, SHA-256 digest, counts and capped mismatch diagnostics; no workbook path
+  or Revit document path is exposed.
+- Upgraded Agent Bridge to `v2.1.0` with read-only REST endpoint
+  `GET /rcc-boq/boq/last-validation`, MCP tool `rcc_boq_last_export_validation`, and matching CLI
+  command `last-validation`. The bridge reports whether the validation belongs to the active
+  document.
+
+### Verified (host-free)
+- Python compilation and the complete XLSX harness pass for Classic and Site output. The harness
+  confirms a clean cell-for-cell validation report and proves that a deliberately changed Beam
+  element ID is detected as a mismatch.
+- Revit add-in, Gateway and MCP builds pass with zero warnings; Core, MCP protocol and REST client
+  regressions pass with seven closed-world MCP tools.
+
+### Verification boundary
+- Install/restart and one fresh live Revit export are required before claiming native report
+  retrieval or active-document matching. This slice validates exporter input against persisted
+  XLSX cells; unattended triggering of the pyRevit export dialog is not exposed.
+
+---
+
 ## [v1.16.0] - 2026-09-09
 
 ### Added (Agent Bridge v2 foundation; host-free verified)
