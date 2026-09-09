@@ -27,6 +27,8 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 ### Added (Agent Bridge v2 foundation; host-free verified)
 - Upgraded the local bridge protocol to `v2.0.0` and added a native Revit **Agent Bridge**
   pushbutton under Add-Ins.
+- Assigned v2 its own current-user mutex, named pipe and localhost port `48885`, allowing migration
+  testing beside a still-running v1 bridge without taking over the user's active Revit session.
 - Added a user-controlled 15-minute write session; writes remain disabled by default and are
   disabled again during Revit shutdown.
 - Added `rcc_boq_set_parameter` to MCP and REST with dry-run default, expected-current-value guard,

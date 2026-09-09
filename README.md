@@ -144,7 +144,7 @@ dependencies imported into the pyRevit host.
 ## Local REST + MCP Integration (`v2.0.0`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
-`http://127.0.0.1:48884/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
+`http://127.0.0.1:48885/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
 current-user-only Named Pipe. The closed operation allow-list supports bounded reads and one
 controlled parameter-write operation; arbitrary Revit calls and code evaluation remain forbidden.
 
@@ -181,7 +181,7 @@ to 250 values per element. Document paths and API tokens are never returned.
 Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
-codex mcp add rcc-boq -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.0.0\Mcp\RccBoq.RestMcp.exe"
+codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.0.0\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 

@@ -9,9 +9,9 @@ public static class BridgeConstants
     public const string Version = "2.0.0";
     public const string ApiVersion = "2.0.0";
     public const string ApiName = "rcc-boq";
-    public const string InstanceMutexName = @"Local\RccBoq.RestBridge.v1";
-    public const string PipeName = "RccBoq.RevitBridge.v1";
-    public const string DefaultUrl = "http://127.0.0.1:48884";
+    public const string InstanceMutexName = @"Local\RccBoq.AgentBridge.v2";
+    public const string PipeName = "RccBoq.RevitBridge.v2";
+    public const string DefaultUrl = "http://127.0.0.1:48885";
     public const int MaxMessageBytes = 1_048_576;
     public const int PipeConnectTimeoutMilliseconds = 1000;
     public const int RequestTimeoutSeconds = 15;
