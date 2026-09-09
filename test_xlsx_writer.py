@@ -15,7 +15,9 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import zipfile
 from xml.dom import minidom
 
@@ -83,6 +85,7 @@ FUNCTION_NAMES = [
     "sanitize_file_name",
     "build_default_output_name",
     "build_summary_cover_rows",
+    "_publish_temp_workbook",
     "write_basic_xlsx",
     "get_parameters",
     "read_metric_parameter",
@@ -251,6 +254,59 @@ def main():
             "{} x{}".format(fname, count)
             for fname, count in sorted(source_tally.items()))
     ))
+
+    class BrokenInteropFloat(object):
+        def __float__(self):
+            raise SystemError("simulated interop null")
+
+    interop_profile = namespace["normalize_assembly_profile"]({
+        "binding_wire_factor": BrokenInteropFloat(),
+        "cover_block_factor": None,
+        "labour_factor": None,
+    })
+    check(
+        interop_profile["binding_wire_factor"] is None
+        and interop_profile["cover_block_factor"] is None
+        and interop_profile["labour_factor"] is None,
+        "Assembly profile treats CPython/.NET null coercion failures as missing factors"
+    )
+
+    retry_root = tempfile.mkdtemp(prefix="rcc-boq-publish-")
+    real_os = namespace["os"]
+    publish_temp = os.path.join(retry_root, "workbook.xlsx.tmp")
+    publish_target = os.path.join(retry_root, "workbook.xlsx")
+
+    class TransientRenameOs(object):
+        def __init__(self):
+            self.path = real_os.path
+            self.rename_calls = 0
+
+        def __getattr__(self, name):
+            return getattr(real_os, name)
+
+        def rename(self, source, destination):
+            self.rename_calls += 1
+            if self.rename_calls < 3:
+                raise OSError(13, "simulated Windows file lock")
+            return real_os.rename(source, destination)
+
+    rename_proxy = TransientRenameOs()
+    published_after_retry = False
+    try:
+        with io.open(publish_temp, "wb") as test_workbook:
+            test_workbook.write(b"validated workbook")
+        namespace["os"] = rename_proxy
+        namespace["_publish_temp_workbook"](
+            publish_temp, publish_target, attempts=3, delay_seconds=0)
+        with io.open(publish_target, "rb") as published_workbook:
+            published_after_retry = published_workbook.read() == b"validated workbook"
+    finally:
+        namespace["os"] = real_os
+        shutil.rmtree(retry_root, ignore_errors=True)
+    check(
+        published_after_retry and rename_proxy.rename_calls == 3,
+        "Validated workbook publish retries transient Windows file locks"
+    )
 
     check(
         namespace["xlsx_sheet_reference"]("Beam") == "Beam"

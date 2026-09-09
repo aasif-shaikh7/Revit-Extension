@@ -22,6 +22,26 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.18.2] - 2026-09-09
+
+### Fixed (live headless export)
+- Assembly-profile normalization now treats CPython/.NET null-coercion `SystemError` as a missing
+  optional factor instead of aborting export.
+- Canonical validation explicitly releases its ZIP wrapper before atomic publication, and workbook
+  publication retries transient Windows file locks. Headless failures retain the innermost bounded
+  traceback so native failures remain actionable without exposing an arbitrary file path.
+
+### Verified (native Revit 2025)
+- Agent Bridge `v2.2.1` queued the existing pyRevit BOQ command against
+  `20260225-BBS_BEAM_RBM_SALES-P1` without opening the BOQ or Save dialogs.
+- Site output passed `70,085 / 70,085` canonical cells across `10 / 10` sheets with zero mismatches.
+  Classic output independently passed `118,101 / 118,101` cells across `14 / 14` sheets with zero
+  mismatches. Each validation SHA-256 matched the published workbook on disk.
+- The consent-off apply guard passed before testing; the 15-minute write session later expired back
+  to disabled automatically. Neither export saved the Revit document.
+
+---
+
 ## [v1.18.1] - 2026-09-09
 
 ### Fixed (live Revit command discovery)

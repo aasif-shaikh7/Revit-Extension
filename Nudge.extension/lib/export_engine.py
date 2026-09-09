@@ -23,6 +23,23 @@ from formwork_engine import (
     get_formwork_factor,
 )
 
+
+def _publish_temp_workbook(temp_path, file_path, attempts=30, delay_seconds=0.2):
+    """Atomically publish a validated workbook despite short Windows locks."""
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    last_error = None
+    for attempt in range(max(1, int(attempts))):
+        try:
+            os.rename(temp_path, file_path)
+            return
+        except OSError as error:
+            last_error = error
+            if attempt + 1 >= max(1, int(attempts)):
+                break
+            time.sleep(max(0.0, float(delay_seconds)))
+    raise last_error
+
 def safe_text(value, fallback="Unknown"):
     """
     Convert a Revit API value to a safe string without allowing
@@ -2010,13 +2027,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             .format(validation_report.get("mismatch_count", 0))
         )
 
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except:
-            pass
-
-    os.rename(temp_path, file_path)
+    _publish_temp_workbook(temp_path, file_path)
 
     if validation_report_path:
         write_validation_report(validation_report_path, validation_report)
@@ -2809,13 +2820,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
             .format(validation_report.get("mismatch_count", 0))
         )
 
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except:
-            pass
-
-    os.rename(temp_path, file_path)
+    _publish_temp_workbook(temp_path, file_path)
 
     if validation_report_path:
         write_validation_report(validation_report_path, validation_report)

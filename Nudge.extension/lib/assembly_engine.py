@@ -28,7 +28,7 @@ def normalize_assembly_profile(raw_profile=None):
         try:
             value = float(raw.get(key, DEFAULT_ASSEMBLY_PROFILE[key]))
             result[key] = value if value >= 0 else None
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, SystemError, OverflowError):
             result[key] = None
     return result
 

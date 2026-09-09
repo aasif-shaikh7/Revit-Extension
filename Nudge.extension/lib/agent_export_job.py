@@ -120,5 +120,16 @@ def fail_export_job(job, error):
     job["status"] = "failed"
     job["completed_at_utc"] = time.strftime(
         "%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    job["error"] = str(error or "Headless BOQ export failed")[:500]
+    error_text = str(error or "Headless BOQ export failed")
+    export_root = agent_export_root()
+    if export_root:
+        error_text = error_text.replace(
+            export_root, "%LOCALAPPDATA%\\RCC_BOQ\\AgentExports")
+    error_text = re.sub(
+        r'File "[^"\r\n]*[\\/](?P<name>[^"\\/\r\n]+)"',
+        r'File "\g<name>"',
+        error_text,
+    )
+    # Keep the innermost frames and final exception from long tracebacks.
+    job["error"] = error_text[-500:]
     _write_job(job)

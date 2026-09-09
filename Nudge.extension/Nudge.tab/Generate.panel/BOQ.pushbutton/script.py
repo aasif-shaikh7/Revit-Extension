@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.18.1'
+__version__ = '1.18.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -55,7 +55,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.18.1'
+SCRIPT_VERSION = '1.18.2'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5712,9 +5712,10 @@ try:
 
                     if _headless_export_job is not None:
                         try:
+                            import traceback as _headless_traceback
                             fail_export_job(
                                 _headless_export_job,
-                                export_error
+                                _headless_traceback.format_exc()
                             )
                         except:
                             pass

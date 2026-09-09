@@ -10,6 +10,7 @@ workbook path is exposed through REST or MCP.
 
 from __future__ import division
 
+import gc
 import hashlib
 import io
 import json
@@ -179,6 +180,12 @@ def validate_workbook(workbook_path, sheet_names, sheet_rows,
                     if len(mismatches) < MAX_REPORTED_MISMATCHES:
                         mismatches.append(_safe_detail(
                             sheet_name, key, expected.get(key), actual.get(key)))
+
+    # IronPython/pythonnet can retain the ZipFile wrapper beyond the context
+    # manager even though close() ran. Drop that last reference and collect it
+    # before the caller atomically renames the validated temporary workbook.
+    archive = None
+    gc.collect()
 
     digest_builder = hashlib.sha256()
     with open(workbook_path, "rb") as workbook_file:

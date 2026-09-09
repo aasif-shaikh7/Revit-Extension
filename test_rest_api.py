@@ -192,6 +192,18 @@ def run():
                 "Agent export job completion result missing",
             )
             job["status"] = "queued"
+            agent_export_job.fail_export_job(
+                job,
+                'Traceback: File "C:\\private\\workspace\\script.py", line 10',
+            )
+            with open(agent_export_job.agent_export_job_path(), "r", encoding="utf-8") as job_file:
+                failed = json.load(job_file)
+            check(
+                'C:\\private' not in failed["error"]
+                and 'File "script.py"' in failed["error"],
+                "Agent export failure leaked an absolute source path",
+            )
+            job["status"] = "queued"
             job["output_path"] = os.path.join(job_root, "outside.xlsx")
             agent_export_job._write_job(job)
             check(

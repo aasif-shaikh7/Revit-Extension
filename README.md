@@ -374,15 +374,17 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.18.1`
-fixes live pyRevit command discovery in Agent Bridge `v2.2.1`; `v1.18.0` added consent-gated
-fixed-folder headless export and job polling. Version
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.18.2`
+hardens live headless export against optional .NET null values and Windows ZIP-handle locks.
+Version `v1.18.1` fixed live pyRevit command discovery in Agent Bridge `v2.2.1`; `v1.18.0` added
+consent-gated fixed-folder headless export and job polling. Version
 `v1.17.0` added canonical cell-for-cell validation and a bounded last-validation tool. The earlier
 `v1.16.0` foundation provides bounded reads plus a dry-run-first,
 consent-gated parameter write. Live Revit QA verifies v2 startup beside v1, bounded reads, dry-run,
 the consent-off write guard, a consent-enabled write/read-back/restore cycle, stale-value rejection,
-manual revocation and Codex registration. Automatic-expiry/forced-rollback QA and a fresh live
-headless-export run remain pending. The earlier `v1.14.1` release established the dependency-free STDIO
+manual revocation, automatic expiry and Codex registration. Native Site and Classic headless exports
+both pass canonical cell-for-cell validation; forced-failure transaction rollback QA remains pending.
+The earlier `v1.14.1` release established the dependency-free STDIO
 MCP adapter over the token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
 testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
 varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension

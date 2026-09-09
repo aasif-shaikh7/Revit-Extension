@@ -57,13 +57,13 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
-| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.18.1`) |
+| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.18.2`) |
 
 ---
 
 ## Active roadmap phase
 
-### INT-03 — Controlled Agent Bridge — `building` (`v1.18.1`, Bridge API `v2.2.1`)
+### INT-03 — Controlled Agent Bridge — `building` (`v1.18.2`, Bridge API `v2.2.1`)
 
 **Built:** native Agent Bridge consent button, 15-minute write window, dry-run-first parameter edit,
 optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
@@ -99,8 +99,13 @@ dry-run-first REST/MCP schemas, nine-tool catalog, Python compilation and all au
 **Fixed in v1.18.1:** Bridge `v2.2.1` uses the fully-qualified BOQ command identifier captured from
 the live Revit journal; the earlier short identifier was not postable by Revit 2025.
 
-**Remaining:** install/restart and verify command discovery plus one fresh live headless export,
-then native automatic-expiry and forced-failure transaction rollback QA.
+**Fixed and live-verified in v1.18.2:** optional .NET-null assembly factors no longer abort export;
+the validator releases its ZIP wrapper before publication and retries transient Windows locks. A
+native headless Site workbook passed 70,085/70,085 cells across 10/10 sheets, and Classic passed
+118,101/118,101 across 14/14 sheets. Both had zero mismatches and their report hashes matched the
+published files. The consent-off guard and automatic return to consent-disabled state also passed.
+
+**Remaining:** native forced-failure transaction rollback QA.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
 
