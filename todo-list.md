@@ -44,8 +44,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P2 | Structural BOQ Grouping (level + concrete grade done) | 4/4/2/5 | **done** (`v1.6.0`) |
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
 | P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
-| P4 | Rebar Quantity Engine | 5/5/3/3 | `testing` (`v1.10.2`) |
-| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.12.4`) |
+| P4 | Rebar Quantity Engine | 5/5/3/3 | **done** (`v1.19.0` QA) |
+| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.19.0` QA) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
@@ -62,6 +62,9 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 ---
 
 ## Active roadmap phase
+
+**Current product focus:** P5 live dialog selection/order persistence. All numeric Rebar/BBS and
+native element/type comparisons are complete; the shared UI-settings check remains below.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 
@@ -186,7 +189,7 @@ add-in logged that it was inactive while the API stayed connected. Closing the o
 also stopped its Gateway and wrote a clean bridge-stopped log entry. Relaunching Revit restored one
 Gateway with `revit_connected=true`. INT-01 is complete; the MCP layer is the next integration phase.
 
-### P4-01 — Rebar Quantity Engine first slice — `testing` (`v1.10.2`)
+### P4-01 — Rebar Quantity Engine first slice — **done** (`v1.19.0` QA)
 
 **Built:** a dedicated Rebar tab collects `OST_Rebar`, discovers raw Revit parameters and writes a
 Rebar sheet in Classic and Site formats. Automatic fields are Bar Mark, Diameter, Shape, included
@@ -200,12 +203,12 @@ be moved into Selected / Export. Costing uses Total Weight first when a rate fie
 columns without formwork, costing integration, UI controls, `OST_Rebar` wiring and every prior
 regression pass. Syntax compilation passes.
 
-**Remaining live QA:** reload `v1.10.2` in Revit 2025 and check one single bar plus one rebar set.
-Confirm Diameter, Quantity, Bar Length, Total Length, Host ID/category, Level and Total Weight against
-a native Revit rebar schedule. Confirm Rebar has no L/W/H or SHUTTERING columns in Site format.
-Variable-length/free-form/fabric reinforcement remain outside this first slice until real-model data
-shows which additional API paths are required. The owner explicitly requested the P5 BBS slice from
-a successful real-project `v1.10.2` export while full P4 schedule comparison remains open.
+**Verified in native Revit 2025 (`v1.19.0` QA):** the isolated Secondary bridge compared a
+Quantity-1 bar and fixed Rebar sets directly with the validated Classic/Site rows. Diameter,
+Quantity, Bar Length, Total Length, Host ID/category, host Level and d²/162 weights matched native
+Revit reads within displayed-unit rounding. All 965 Rebar detail rows reconcile with both BBS and
+diameter summaries at 11,903 bars, 25,439.37 m and 30,130.966 kg. Site Rebar contains no standalone
+L/W/H or SHUTTERING columns. P4-01 is complete.
 
 ### P5-01 — Shape-aware BBS + diameter summary — `testing` (`v1.12.4`)
 
@@ -246,13 +249,17 @@ Rebar Element ID traceability while retaining fixed-bar grouping.
 Rebar Element IDs, `11.17 m` average, blank Cutting Length and `A=Varies`. The old combined row is
 absent, and BBS/Rebar Summary totals reconcile exactly.
 
-**Remaining live QA:** confirm Beam W/H match BEAM WIDTH/BEAM DEPTH on all rows,
-confirm a changed
-parameter selection/order survives dialog
-close and Revit restart, then export the supplied BBS project and compare L-shape,
-C-shape, closed stirrup and hooked U-ring A-H/Cutting Length values with the native Revit schedule.
-Confirm Level now resolves from each host, variable sets are labelled correctly, both new sheets
-open without Excel repair and their quantity/weight totals still reconcile.
+**Verified in native Revit 2025 (`v1.19.0` QA):** all 4,031 Site Beam L/W/H rows match native
+element/type dimensions within the Classic/Site 1 mm formatting boundary. Fixed stirrup, straight,
+L-shape, C-shape and both U-ring samples match native Diameter, A-H, bend, hooks, Cutting Length,
+Quantity, Total Length, host and Level values. Variable Rebar `3411763` remains blank for Cutting
+Length and reports `Variable set / average only`. Both workbook formats are valid Open XML and
+their Rebar/BBS/Summary totals reconcile exactly.
+
+**Remaining live UI QA:** change a non-empty Rebar parameter selection/order in the BOQ dialog,
+close it, restart the dedicated test Revit, and confirm the same order is restored and exported.
+The automated harness proves every derived field is available and every edit/close path saves, but
+the shared user settings file is not modified silently during background QA.
 
 ---
 

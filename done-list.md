@@ -1051,6 +1051,23 @@ INT-02 is closed.
 
 ---
 
+## P4-01 — Rebar Quantity Engine — **done** (`v1.19.0` QA)
+
+**Built.** The Rebar category exports auditable native quantity, host and weight fields in Classic
+and Site workbooks. Total Length prefers Revit `TotalLength`, unit weight uses d²/162 kg/m, and
+automatic fields participate in the same Available → Selected → export contract.
+
+**How it is known.** The full XLSX harness passes. Read-only native Revit 2025 QA on
+`20260225-BBS_BEAM_RBM_SALES-P1` matched a Quantity-1 bar and fixed sets against their workbook
+rows. All 965 Rebar rows, BBS groups and diameter summaries reconcile at 11,903 bars, 25,439.37 m
+and 30,130.966 kg. Site Rebar omits standalone L/W/H and SHUTTERING columns. The working Revit
+document remained untouched throughout the isolated Secondary-channel audit.
+
+**Cost / limits.** Shape-aware BBS and live dialog selection-order persistence remain tracked under
+P5. Fabric reinforcement is not included in the `OST_Rebar` scope.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

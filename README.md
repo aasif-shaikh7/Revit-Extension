@@ -425,4 +425,6 @@ the `v1.11.2` behavior that keeps every
 Available -> Selected parameter choice and its order across dialog close, pyRevit reload and Revit
 restart. It retains the `v1.11.1` P5
 shape-aware Rebar BBS and diameter summary on top of the P4 quantity/weight engine; the harness
-passes and live Revit 2025 verification of the new sheets is pending.
+passes. A `v1.19.0` read-only native Revit audit closed P4 quantity QA and verified P5 numeric/BBS
+parity for fixed and variable samples plus all workbook totals. A changed non-empty selection/order
+across dialog close and Revit restart remains the final P5 UI check.

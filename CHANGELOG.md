@@ -46,6 +46,14 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   temporarily set inside the controlled probe, the forced failure returned transaction status
   `RolledBack`, and fresh read-back restored the original blank value. The audit log recorded
   `verified=True`; the Revit document was not saved.
+- A read-only P4/P5 audit compared the validated Classic and Site workbooks with the dedicated
+  Revit process. All 4,031 Site Beam L/W/H rows matched native element/type dimensions within the
+  formats' 1 mm rounding boundary. Classic/Site Rebar, BBS and diameter summaries independently
+  reconciled at 11,903 bars, 25,439.37 m and 30,130.966 kg.
+- Native reads matched one single bar plus fixed stirrup, straight, L-shape, C-shape and both U-ring
+  samples. Variable Rebar `3411763` retained blank Cutting Length, its native average-only status
+  and unchanged quantity/length. The full XLSX harness also passed. Live dialog selection-order
+  persistence remains a separate UI-bound P5 check.
 
 ---
 
