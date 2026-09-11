@@ -2346,6 +2346,11 @@ def main():
         and "derived_names = REBAR_DERIVED_PARAMETERS" in script_text,
         "Rebar Available list includes every automatic P4 export column"
     )
+    check(
+        "from collections import OrderedDict" in script_text
+        and "row = OrderedDict([" in script_text,
+        "IP27 rows preserve Selected parameter order with OrderedDict"
+    )
 
     def nested_handler_source(name):
         match = re.search(

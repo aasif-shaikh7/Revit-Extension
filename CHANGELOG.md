@@ -22,6 +22,27 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.19.1] - 2026-09-11
+
+### Fixed (IP27 selected-column order)
+- Revit's active IP27 engine no longer builds export rows with an unordered Python 2 `dict`.
+  `OrderedDict` now preserves `Element ID`, grouping fields, the exact Selected-list order, then
+  remaining automatic quantity fields through Classic workbook generation.
+- A regression asserts the IP27-specific ordered-row contract. The defect was found by a fresh
+  native persistence/export test: the JSON settings restored the requested Rebar order correctly,
+  but the `v1.19.0` Classic workbook interleaved automatic fields between those selections.
+
+### Verified (native Revit 2025)
+- Compilation and the full XLSX harness pass. After a fresh test-Revit restart, the saved Rebar
+  selection restored as `Element ID → Diameter → Total Weight`; a `v1.19.0` control export exposed
+  the unordered IP27 header, then the `v1.19.1` export placed those fields consecutively at columns
+  3-5 after `Element ID, Level`.
+- The corrected Classic workbook passed canonical validation across 118,101/118,101 cells and
+  14/14 sheets with zero mismatches. It matched the active BBS test document and Revit did not save
+  the model.
+
+---
+
 ## [v1.19.0] - 2026-09-11
 
 ### Added (isolated multi-Revit rollback QA)

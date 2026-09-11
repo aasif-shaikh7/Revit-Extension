@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.19.0'
+__version__ = '1.19.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -30,6 +30,7 @@ import os
 import traceback
 import re
 import time
+from collections import OrderedDict
 from System import Environment
 from System.Windows.Forms import SaveFileDialog, DialogResult
 
@@ -55,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.19.0'
+SCRIPT_VERSION = '1.19.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2177,15 +2178,16 @@ def build_element_data(include_grade=True):
                 }
 
             try:
-                row = {
-                    "Element ID": str(
-                        element.Id.IntegerValue
+                row = OrderedDict([
+                    (
+                        "Element ID",
+                        str(element.Id.IntegerValue)
                     )
-                }
+                ])
             except:
-                row = {
-                    "Element ID": "N/A"
-                }
+                row = OrderedDict([
+                    ("Element ID", "N/A")
+                ])
 
             # P2: level grouping column, written directly after Element ID so
             # it sits in a deterministic column (B) on every element sheet.

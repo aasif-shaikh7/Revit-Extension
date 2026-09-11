@@ -1068,6 +1068,23 @@ P5. Fabric reinforcement is not included in the `OST_Rebar` scope.
 
 ---
 
+## P5-01 — Shape-aware BBS + diameter summary — **done** (`v1.19.1`)
+
+**Built.** Rebar BBS and diameter summaries preserve shape A-H, bends, hooks, authoritative Revit
+Cutting Length, host/Level traceability, fixed grouping and variable-set average-only safety.
+
+**How it is known.** Native Revit reads matched stirrup, straight, L, C and both U-ring samples;
+all Classic/Site Rebar totals reconcile. All 4,031 Site Beam L/W/H rows also match native
+element/type dimensions. A non-empty Rebar Selected-list order survived dialog close plus a fresh
+test-Revit restart. The live test exposed unordered IP27 rows; `v1.19.1` changed them to
+`OrderedDict`, and the corrected Classic export placed the selected fields consecutively at
+columns 3-5. Canonical validation passed 118,101/118,101 cells across 14/14 sheets.
+
+**Cost / limits.** Variable sets intentionally keep Cutting Length blank and expose only their
+average. Fabric reinforcement remains outside the `OST_Rebar` scope.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

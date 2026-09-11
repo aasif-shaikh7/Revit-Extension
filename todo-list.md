@@ -45,7 +45,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P3 | Formwork Engine (configurable rules) | 5/5/3/4 | **done** (`v1.8.2`) |
 | P3.5 | Structure Wall category integration | 5/5/2/4 | **done** (`v1.9.3`) |
 | P4 | Rebar Quantity Engine | 5/5/3/3 | **done** (`v1.19.0` QA) |
-| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | `testing` (`v1.19.0` QA) |
+| P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
@@ -63,8 +63,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** P5 live dialog selection/order persistence. All numeric Rebar/BBS and
-native element/type comparisons are complete; the shared UI-settings check remains below.
+**Current product focus:** P7 Site / Manual Structural Items. P4 and P5 native Rebar/BBS QA are
+complete through `v1.19.1`.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 
@@ -210,7 +210,7 @@ Revit reads within displayed-unit rounding. All 965 Rebar detail rows reconcile 
 diameter summaries at 11,903 bars, 25,439.37 m and 30,130.966 kg. Site Rebar contains no standalone
 L/W/H or SHUTTERING columns. P4-01 is complete.
 
-### P5-01 — Shape-aware BBS + diameter summary — `testing` (`v1.12.4`)
+### P5-01 — Shape-aware BBS + diameter summary — **done** (`v1.19.1`)
 
 **Built:** automatic A-H dimensions, Bend Diameter, start/end hooks and Cutting Length are read for
 each Rebar. Cutting Length intentionally uses Revit's shape-aware Bar Length instead of assuming one
@@ -256,10 +256,13 @@ Quantity, Total Length, host and Level values. Variable Rebar `3411763` remains 
 Length and reports `Variable set / average only`. Both workbook formats are valid Open XML and
 their Rebar/BBS/Summary totals reconcile exactly.
 
-**Remaining live UI QA:** change a non-empty Rebar parameter selection/order in the BOQ dialog,
-close it, restart the dedicated test Revit, and confirm the same order is restored and exported.
-The automated harness proves every derived field is available and every edit/close path saves, but
-the shared user settings file is not modified silently during background QA.
+**Found and fixed in `v1.19.1`:** the fresh restart restored the exact JSON selection order, but
+the active IP27 engine's plain Python `dict` interleaved automatic columns in the Classic workbook.
+Export rows now use `OrderedDict`, preserving grouping fields followed by the Selected-list order.
+Compilation and the complete harness pass. A corrected native Classic export placed the saved
+`Rebar: Element ID`, `Rebar: Diameter (mm)`, `Rebar: Total Weight (kg)` fields consecutively at
+columns 3-5 after `Element ID, Level`; all 118,101 canonical cells and 14 sheets passed with zero
+mismatches. P5-01 is complete.
 
 ---
 

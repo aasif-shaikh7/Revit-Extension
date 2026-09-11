@@ -388,8 +388,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.19.0`
-adds isolated multi-Revit rollback QA through Agent Bridge `v2.3.0`. Version `v1.18.2` hardened live
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.19.1`
+preserves Selected/export column order under IP27 with ordered row dictionaries. Version `v1.19.0`
+added isolated multi-Revit rollback QA through Agent Bridge `v2.3.0`. Version `v1.18.2` hardened live
 headless export against optional .NET null values and Windows ZIP-handle locks.
 Version `v1.18.1` fixed live pyRevit command discovery in Agent Bridge `v2.2.1`; `v1.18.0` added
 consent-gated fixed-folder headless export and job polling. Version
@@ -427,4 +428,6 @@ restart. It retains the `v1.11.1` P5
 shape-aware Rebar BBS and diameter summary on top of the P4 quantity/weight engine; the harness
 passes. A `v1.19.0` read-only native Revit audit closed P4 quantity QA and verified P5 numeric/BBS
 parity for fixed and variable samples plus all workbook totals. A changed non-empty selection/order
-across dialog close and Revit restart remains the final P5 UI check.
+was restored after a fresh test-Revit restart. Its first Classic export exposed the IP27 ordering
+defect fixed in `v1.19.1`; the corrected native export placed the three selections consecutively
+and passed 118,101/118,101 canonical cells with zero mismatches. P5 is complete.
