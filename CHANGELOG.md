@@ -37,10 +37,15 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   a versioned `-secondary` folder and warns that the normal Primary manifest must be restored after
   the target test process starts.
 
-### Verified (host-free)
+### Verified
 - Primary and Secondary Core/Revit/Gateway builds pass with zero warnings. Pipe serialization,
   MCP forwarding/schema, REST security checks and CLI compilation cover the rollback flag and both
-  fixed loopback channels. Native Secondary-channel rollback evidence remains pending.
+  fixed loopback channels.
+- Native Revit 2025 QA connected the dedicated BBS test document through Secondary `48886` while
+  the working document remained connected through Primary `48885`. Rebar `3411763` `Comments` was
+  temporarily set inside the controlled probe, the forced failure returned transaction status
+  `RolledBack`, and fresh read-back restored the original blank value. The audit log recorded
+  `verified=True`; the Revit document was not saved.
 
 ---
 

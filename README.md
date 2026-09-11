@@ -398,7 +398,8 @@ consent-gated fixed-folder headless export and job polling. Version
 consent-gated parameter write. Live Revit QA verifies v2 startup beside v1, bounded reads, dry-run,
 the consent-off write guard, a consent-enabled write/read-back/restore cycle, stale-value rejection,
 manual revocation, automatic expiry and Codex registration. Native Site and Classic headless exports
-both pass canonical cell-for-cell validation; forced-failure transaction rollback QA remains pending.
+both pass canonical cell-for-cell validation. The isolated Secondary channel also passes native
+forced-failure transaction rollback QA with fresh parameter read-back and no document save.
 The earlier `v1.14.1` release established the dependency-free STDIO
 MCP adapter over the token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
 testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
