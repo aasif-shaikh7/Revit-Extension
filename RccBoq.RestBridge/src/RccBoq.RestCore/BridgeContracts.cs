@@ -6,12 +6,20 @@ namespace RccBoq.RestCore;
 
 public static class BridgeConstants
 {
-    public const string Version = "2.2.1";
-    public const string ApiVersion = "2.2.1";
+    public const string Version = "2.3.0";
+    public const string ApiVersion = "2.3.0";
     public const string ApiName = "rcc-boq";
+#if RCC_BOQ_SECONDARY
+    public const string Channel = "secondary";
+    public const string InstanceMutexName = @"Local\RccBoq.AgentBridge.v2.secondary";
+    public const string PipeName = "RccBoq.RevitBridge.v2.secondary";
+    public const string DefaultUrl = "http://127.0.0.1:48886";
+#else
+    public const string Channel = "primary";
     public const string InstanceMutexName = @"Local\RccBoq.AgentBridge.v2";
     public const string PipeName = "RccBoq.RevitBridge.v2";
     public const string DefaultUrl = "http://127.0.0.1:48885";
+#endif
     public const int MaxMessageBytes = 1_048_576;
     public const int PipeConnectTimeoutMilliseconds = 1000;
     public const int RequestTimeoutSeconds = 15;
@@ -26,7 +34,8 @@ public sealed record BridgeRequest(
     bool DryRun = true,
     string? RequestId = null,
     string? ExportFormat = null,
-    bool IncludeFormwork = true);
+    bool IncludeFormwork = true,
+    bool ForceRollback = false);
 
 public sealed record BridgeResponse(int StatusCode, JsonElement Body)
 {

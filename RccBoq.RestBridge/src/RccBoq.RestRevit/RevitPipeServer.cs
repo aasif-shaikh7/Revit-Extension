@@ -66,6 +66,7 @@ internal sealed class RevitPipeServer : IDisposable
                             api = BridgeConstants.ApiName,
                             api_version = BridgeConstants.ApiVersion,
                             extension_version = BridgeConstants.Version,
+                            channel = BridgeConstants.Channel,
                             access = "local controlled read-write",
                             write_session = WriteSessionConsent.GetState(),
                             revit_connected = true

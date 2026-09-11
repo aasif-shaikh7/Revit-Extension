@@ -81,6 +81,11 @@ def build_parser():
     parser.add_argument("--parameter-name")
     parser.add_argument("--value")
     parser.add_argument("--expected-current-value")
+    parser.add_argument(
+        "--force-rollback",
+        action="store_true",
+        help="QA only: force a post-set exception and verify transaction rollback.",
+    )
     parser.add_argument("--request-id")
     parser.add_argument("--format", choices=("classic", "site"), default="site")
     parser.add_argument("--no-formwork", action="store_true")
@@ -108,6 +113,7 @@ def main(argv=None):
                 "expectedCurrentValue": args.expected_current_value,
                 "dryRun": not args.apply,
                 "requestId": args.request_id,
+                "forceRollback": args.force_rollback,
             }
         elif args.command == "start-export":
             body = {

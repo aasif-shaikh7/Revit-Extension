@@ -267,6 +267,9 @@ internal sealed class McpServer(
 
         bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
             || dryRunElement.ValueKind != JsonValueKind.False;
+        bool forceRollback = arguments.TryGetProperty(
+            "force_rollback", out JsonElement forceRollbackElement)
+            && forceRollbackElement.ValueKind == JsonValueKind.True;
         string? expected = OptionalString(arguments, "expected_current_value");
         string? requestId = OptionalString(arguments, "request_id");
         object body = new
@@ -275,7 +278,8 @@ internal sealed class McpServer(
             value = value.GetString(),
             expectedCurrentValue = expected,
             dryRun,
-            requestId
+            requestId,
+            forceRollback
         };
         try
         {
@@ -401,6 +405,12 @@ internal sealed class McpServer(
                 ["type"] = "boolean",
                 ["default"] = true,
                 ["description"] = "Keep true to preview. False requires a temporary write session enabled in Revit."
+            },
+            ["force_rollback"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = false,
+                ["description"] = "QA only: apply the value, force a controlled exception, roll back, and verify the original value."
             },
             ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
         },

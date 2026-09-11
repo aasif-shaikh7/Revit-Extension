@@ -88,7 +88,8 @@ internal static class RevitWriteService
                 storage_type = parameter.StorageType.ToString(),
                 current,
                 proposed = value,
-                would_change = !string.Equals(current, value, StringComparison.Ordinal)
+                would_change = !string.Equals(current, value, StringComparison.Ordinal),
+                force_rollback = request.ForceRollback
             });
         }
         WriteSessionState session = WriteSessionConsent.GetState();
@@ -111,6 +112,10 @@ internal static class RevitWriteService
                 transaction.RollBack();
                 return BridgeResponse.Json(422, new { ok = false, error = "Revit rejected the parameter value" });
             }
+            if (request.ForceRollback)
+            {
+                throw new ForcedRollbackProbeException();
+            }
             transaction.Commit();
             string updated = DisplayValue(parameter);
             BridgeLog.Write(
@@ -130,9 +135,33 @@ internal static class RevitWriteService
         }
         catch (Exception exception)
         {
+            TransactionStatus rollbackStatus = transaction.GetStatus();
             if (transaction.GetStatus() == TransactionStatus.Started)
             {
-                transaction.RollBack();
+                rollbackStatus = transaction.RollBack();
+            }
+            string restored = DisplayValue(parameter);
+            bool rollbackVerified = rollbackStatus == TransactionStatus.RolledBack
+                && string.Equals(current, restored, StringComparison.Ordinal);
+            if (exception is ForcedRollbackProbeException)
+            {
+                BridgeLog.Write(
+                    $"ROLLBACK QA request={SafeRequestId(request.RequestId)} element={request.ElementId} parameter={parameterName} verified={rollbackVerified}");
+                return BridgeResponse.Json(rollbackVerified ? 200 : 500, new
+                {
+                    ok = rollbackVerified,
+                    dry_run = false,
+                    forced_failure = true,
+                    rolled_back = rollbackVerified,
+                    element_id = request.ElementId,
+                    parameter = parameterName,
+                    previous = current,
+                    attempted = value,
+                    current = restored,
+                    transaction = "RCC BOQ Agent: Set Parameter",
+                    transaction_status = rollbackStatus.ToString(),
+                    document_saved = false
+                });
             }
             BridgeLog.Write("Agent parameter transaction rolled back", exception);
             return BridgeResponse.Json(422, new { ok = false, error = "Parameter update failed and was rolled back" });
@@ -191,5 +220,9 @@ internal static class RevitWriteService
             return "none";
         }
         return new string(value.Take(100).Where(character => char.IsLetterOrDigit(character) || character is '-' or '_').ToArray());
+    }
+
+    private sealed class ForcedRollbackProbeException : Exception
+    {
     }
 }

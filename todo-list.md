@@ -57,13 +57,13 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
-| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.18.2`) |
+| INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `building` (`v1.19.0`) |
 
 ---
 
 ## Active roadmap phase
 
-### INT-03 — Controlled Agent Bridge — `building` (`v1.18.2`, Bridge API `v2.2.1`)
+### INT-03 — Controlled Agent Bridge — `building` (`v1.19.0`, Bridge API `v2.3.0`)
 
 **Built:** native Agent Bridge consent button, 15-minute write window, dry-run-first parameter edit,
 optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
@@ -105,7 +105,12 @@ native headless Site workbook passed 70,085/70,085 cells across 10/10 sheets, an
 118,101/118,101 across 14/14 sheets. Both had zero mismatches and their report hashes matched the
 published files. The consent-off guard and automatic return to consent-disabled state also passed.
 
-**Remaining:** native forced-failure transaction rollback QA.
+**Built in v1.19.0:** Primary (`48885`) and Secondary (`48886`) bridge builds use separate mutexes
+and Named Pipes, so a dedicated test Revit can be targeted without touching the user's working
+Revit process. The consent-gated `force_rollback` probe deliberately fails after a valid parameter
+set, rolls the transaction back and verifies the original value by native read-back.
+
+**Remaining:** native Secondary-channel forced-failure transaction rollback QA.
 
 ### P6 — Structural BOQ Assembly — **done** (`v1.15.0`)
 

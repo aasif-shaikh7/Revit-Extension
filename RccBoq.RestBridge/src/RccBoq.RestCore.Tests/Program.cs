@@ -4,6 +4,15 @@ string temporaryRoot = Path.Combine(Path.GetTempPath(), $"rcc-boq-rest-tests-{Gu
 Directory.CreateDirectory(temporaryRoot);
 try
 {
+#if RCC_BOQ_SECONDARY
+    Assert(BridgeConstants.Channel == "secondary"
+        && BridgeConstants.DefaultUrl == "http://127.0.0.1:48886",
+        "secondary channel constants");
+#else
+    Assert(BridgeConstants.Channel == "primary"
+        && BridgeConstants.DefaultUrl == "http://127.0.0.1:48885",
+        "primary channel constants");
+#endif
     TokenService first = new(temporaryRoot);
     string token = File.ReadAllText(first.TokenPath).Trim();
     Assert(token.Length == 64 && token.All(Uri.IsHexDigit), "token format");
@@ -23,6 +32,23 @@ try
         stream,
         CancellationToken.None);
     Assert(restored == request, "pipe round trip");
+    BridgeRequest rollbackRequest = new(
+        "set_parameter",
+        3411763,
+        "Comments",
+        "rollback probe",
+        string.Empty,
+        false,
+        "core-rollback",
+        ForceRollback: true);
+    await using MemoryStream rollbackStream = new();
+    await PipeProtocol.WriteAsync(rollbackStream, rollbackRequest, CancellationToken.None);
+    rollbackStream.Position = 0;
+    BridgeRequest restoredRollback = await PipeProtocol.ReadAsync<BridgeRequest>(
+        rollbackStream,
+        CancellationToken.None);
+    Assert(restoredRollback == rollbackRequest && restoredRollback.ForceRollback,
+        "forced rollback request pipe round trip");
     Assert(
         Equals(RebarValueRules.NormalizeDimension(string.Empty, false), "Varies"),
         "false HasValue varying dimension");

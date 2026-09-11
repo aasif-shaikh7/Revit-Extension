@@ -2,7 +2,9 @@
 param(
     [ValidateSet("Release", "Debug")]
     [string]$Configuration = "Release",
-    [string]$RevitVersion = "2025"
+    [string]$RevitVersion = "2025",
+    [ValidateSet("Primary", "Secondary")]
+    [string]$BridgeChannel = "Primary"
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,7 +20,8 @@ $revitProject = Join-Path $bridgeRoot "src\RccBoq.RestRevit\RccBoq.RestRevit.csp
 $gatewayProject = Join-Path $bridgeRoot "src\RccBoq.RestGateway\RccBoq.RestGateway.csproj"
 $mcpProject = Join-Path $bridgeRoot "src\RccBoq.RestMcp\RccBoq.RestMcp.csproj"
 $templatePath = Join-Path $bridgeRoot "RccBoq.RestBridge.addin.template"
-$installRoot = Join-Path $env:LOCALAPPDATA "RCC_BOQ\RestBridge\v$bridgeVersion"
+$channelSuffix = if ($BridgeChannel -eq "Secondary") { "-secondary" } else { "" }
+$installRoot = Join-Path $env:LOCALAPPDATA "RCC_BOQ\RestBridge\v$bridgeVersion$channelSuffix"
 $gatewayRoot = Join-Path $installRoot "Gateway"
 $mcpRoot = Join-Path $installRoot "Mcp"
 $manifestRoot = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$RevitVersion"
@@ -28,7 +31,7 @@ if (-not (Test-Path -LiteralPath $revitProject)) {
     throw "Revit bridge project was not found: $revitProject"
 }
 
-dotnet build $revitProject --configuration $Configuration
+dotnet build $revitProject --configuration $Configuration "-p:BridgeChannel=$BridgeChannel"
 if ($LASTEXITCODE -ne 0) {
     throw "Revit bridge build failed."
 }
@@ -43,13 +46,13 @@ Copy-Item -LiteralPath (Join-Path $revitOutput "RccBoq.RestRevit.dll") -Destinat
 Copy-Item -LiteralPath (Join-Path $revitOutput "RccBoq.RestCore.dll") -Destination $installRoot -Force
 
 dotnet publish $gatewayProject --configuration $Configuration --runtime win-x64 `
-    --self-contained false --output $gatewayRoot
+    --self-contained false --output $gatewayRoot "-p:BridgeChannel=$BridgeChannel"
 if ($LASTEXITCODE -ne 0) {
     throw "REST Gateway publish failed."
 }
 
 dotnet publish $mcpProject --configuration $Configuration --runtime win-x64 `
-    --self-contained false --output $mcpRoot
+    --self-contained false --output $mcpRoot "-p:BridgeChannel=$BridgeChannel"
 if ($LASTEXITCODE -ne 0) {
     throw "MCP server publish failed."
 }
@@ -60,10 +63,15 @@ $manifest = (Get-Content -LiteralPath $templatePath -Raw).Replace(
     $assemblyPath)
 Set-Content -LiteralPath $manifestPath -Value $manifest -Encoding UTF8
 
-Write-Output "Installed RCC BOQ REST Bridge v$bridgeVersion"
+Write-Output "Installed RCC BOQ REST Bridge v$bridgeVersion ($BridgeChannel channel)"
 Write-Output "Manifest: $manifestPath"
 Write-Output "Assembly: $assemblyPath"
 Write-Output "MCP server: $(Join-Path $mcpRoot 'RccBoq.RestMcp.exe')"
-Write-Output "Register it with Codex after installation:"
-Write-Output "  codex mcp add rcc-boq-v2 -- `"$(Join-Path $mcpRoot 'RccBoq.RestMcp.exe')`""
+if ($BridgeChannel -eq "Primary") {
+    Write-Output "Register it with Codex after installation:"
+    Write-Output "  codex mcp add rcc-boq-v2 -- `"$(Join-Path $mcpRoot 'RccBoq.RestMcp.exe')`""
+} else {
+    Write-Output "Secondary endpoint: http://127.0.0.1:48886/rcc-boq"
+    Write-Warning "The Revit manifest now targets Secondary. Restore Primary immediately after the test Revit has started."
+}
 Write-Output "Restart Revit 2025 before running live endpoint checks."

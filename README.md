@@ -141,7 +141,7 @@ dependencies imported into the pyRevit host.
 
 ---
 
-## Local REST + MCP Integration (`v2.2.1`)
+## Local REST + MCP Integration (`v2.3.0`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
 `http://127.0.0.1:48885/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
 ```
 
 The installer publishes the Gateway and STDIO MCP server below
-`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.2.1` and creates
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.3.0` and creates
 `%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
 
 The first extension startup creates a random token at
@@ -173,6 +173,7 @@ python scripts/rcc_boq_rest_client.py start-export --format site
 python scripts/rcc_boq_rest_client.py start-export --format site --apply
 python scripts/rcc_boq_rest_client.py export-status
 python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value QA
+python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value "Rollback probe" --expected-current-value "" --force-rollback --apply
 ```
 
 Available REST endpoints are `GET /status`, `/document`, `/selection`,
@@ -187,7 +188,7 @@ Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
 codex mcp remove rcc-boq-v2
-codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.2.1\Mcp\RccBoq.RestMcp.exe"
+codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.3.0\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 
@@ -203,6 +204,19 @@ An applied Agent export posts the same BOQ command in hidden one-shot mode and w
 below `%LOCALAPPDATA%\RCC_BOQ\AgentExports`. It does not overwrite a requested path, open Excel or
 save the Revit document. Poll `rcc_boq_export_status` until `completed`, then read
 `rcc_boq_last_export_validation`.
+
+For isolated native QA while another Revit process keeps the Primary bridge, install the Secondary
+build, start only the test Revit, then immediately restore the Primary manifest:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1 -BridgeChannel Secondary
+# Start/restart the dedicated test Revit process here.
+powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1 -BridgeChannel Primary
+python scripts\rcc_boq_rest_client.py status --base-url http://127.0.0.1:48886
+```
+
+The Secondary channel is fixed to loopback port `48886` with its own current-user mutex and Named
+Pipe. It shares no Revit API context with the Primary channel on `48885`.
 
 Host-free verification:
 
@@ -374,8 +388,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.18.2`
-hardens live headless export against optional .NET null values and Windows ZIP-handle locks.
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.19.0`
+adds isolated multi-Revit rollback QA through Agent Bridge `v2.3.0`. Version `v1.18.2` hardened live
+headless export against optional .NET null values and Windows ZIP-handle locks.
 Version `v1.18.1` fixed live pyRevit command discovery in Agent Bridge `v2.2.1`; `v1.18.0` added
 consent-gated fixed-folder headless export and job polling. Version
 `v1.17.0` added canonical cell-for-cell validation and a bounded last-validation tool. The earlier

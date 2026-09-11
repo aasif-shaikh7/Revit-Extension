@@ -22,6 +22,28 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.19.0] - 2026-09-11
+
+### Added (isolated multi-Revit rollback QA)
+- Upgraded Agent Bridge to `v2.3.0`. Builds now support an explicit `Primary` channel on port
+  `48885` and an isolated `Secondary` channel on port `48886`, each with its own mutex and Named
+  Pipe. This lets native QA target a dedicated Revit process without taking bridge ownership from
+  the user's working Revit session.
+- Added consent-gated `force_rollback` to the existing bounded parameter-write operation. The probe
+  sets one allow-listed parameter inside a normal Revit transaction, deliberately raises a
+  controlled exception before commit, rolls back, and verifies the original value by fresh native
+  read-back. The document is never saved automatically.
+- `install_rest_bridge.ps1` accepts `-BridgeChannel Primary|Secondary`; Secondary installation uses
+  a versioned `-secondary` folder and warns that the normal Primary manifest must be restored after
+  the target test process starts.
+
+### Verified (host-free)
+- Primary and Secondary Core/Revit/Gateway builds pass with zero warnings. Pipe serialization,
+  MCP forwarding/schema, REST security checks and CLI compilation cover the rollback flag and both
+  fixed loopback channels. Native Secondary-channel rollback evidence remains pending.
+
+---
+
 ## [v1.18.2] - 2026-09-09
 
 ### Fixed (live headless export)

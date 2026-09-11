@@ -7,7 +7,7 @@ string input = string.Join('\n',
     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}",
     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_rebar\",\"arguments\":{\"element_id\":3411763}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_element\",\"arguments\":{\"element_id\":0}}}",
-    "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_set_parameter\",\"arguments\":{\"element_id\":3411763,\"parameter_name\":\"Comments\",\"value\":\"QA\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_set_parameter\",\"arguments\":{\"element_id\":3411763,\"parameter_name\":\"Comments\",\"value\":\"QA\",\"force_rollback\":true}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_last_export_validation\",\"arguments\":{}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_export_status\",\"arguments\":{}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_start_export\",\"arguments\":{\"export_format\":\"site\"}}}",
@@ -70,6 +70,8 @@ Assert(gateway.PostPaths.SequenceEqual(new[]
     "write endpoint allow-list");
 Assert(gateway.PostBodies[0].GetProperty("dryRun").GetBoolean(),
     "parameter edits default to dry-run");
+Assert(gateway.PostBodies[0].GetProperty("forceRollback").GetBoolean(),
+    "forced rollback flag forwarded");
 
 using JsonDocument validation = JsonDocument.Parse(lines[5]);
 Assert(!validation.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),

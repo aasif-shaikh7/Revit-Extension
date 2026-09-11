@@ -23,6 +23,7 @@ internal static class RevitReadService
                 api = BridgeConstants.ApiName,
                 api_version = BridgeConstants.ApiVersion,
                 extension_version = BridgeConstants.Version,
+                channel = BridgeConstants.Channel,
                 revit_context = true
             }),
             "document" => DocumentResponse(application),

@@ -76,7 +76,8 @@ app.MapPost("/rcc-boq/elements/{elementId:long}/parameter",
             body.Value,
             body.ExpectedCurrentValue,
             body.DryRun,
-            body.RequestId), token));
+            body.RequestId,
+            ForceRollback: body.ForceRollback), token));
 
 int? parentProcessId = ParseParentProcessId(args);
 if (parentProcessId is not null)
@@ -118,7 +119,8 @@ internal sealed record SetParameterBody(
     string Value,
     string? ExpectedCurrentValue = null,
     bool DryRun = true,
-    string? RequestId = null);
+    string? RequestId = null,
+    bool ForceRollback = false);
 
 internal sealed record StartBoqExportBody(
     string ExportFormat = "site",

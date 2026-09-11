@@ -224,9 +224,31 @@ def run():
     check("request.DryRun" in write_source, "write preview gate missing")
     check("WriteSessionConsent.GetState" in write_source, "write consent gate missing")
     check("transaction.RollBack" in write_source, "transaction rollback missing")
+    check("ForcedRollbackProbeException" in write_source,
+          "controlled forced-failure rollback probe missing")
+    check("rollbackVerified" in write_source,
+          "post-rollback read-back verification missing")
     check("document_saved = false" in write_source, "no-auto-save contract missing")
     check("Evaluate" not in write_source and "InvokeMember" not in write_source,
           "arbitrary execution surface detected")
+
+    rollback_args = rest_client.build_parser().parse_args([
+        "set-parameter", "3411763",
+        "--parameter-name", "Comments",
+        "--value", "rollback probe",
+        "--force-rollback",
+        "--apply",
+    ])
+    check(rollback_args.force_rollback and rollback_args.apply,
+          "forced rollback CLI flags missing")
+
+    installer_path = os.path.join(ROOT, "scripts", "install_rest_bridge.ps1")
+    with open(installer_path, "r", encoding="utf-8-sig") as installer_file:
+        installer_source = installer_file.read()
+    check('ValidateSet("Primary", "Secondary")' in installer_source,
+          "fixed bridge channel installer contract missing")
+    check("48886" in installer_source and "-secondary" in installer_source,
+          "isolated Secondary bridge endpoint missing")
 
     with tempfile.TemporaryDirectory() as directory:
         client_token_path = os.path.join(directory, "token.txt")
