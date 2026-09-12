@@ -22,6 +22,49 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.20.0] - 2026-09-12
+
+### Changed (Agent Bridge write-session window)
+- The Agent Bridge consent window is now **1 hour** instead of 15 minutes. `AgentBridgeCommand`
+  holds the single `WriteDuration` constant (`TimeSpan.FromHours(1)`); the TaskDialog strings are
+  derived from it through `FormatWriteDuration`, so the dialog text can no longer drift from the
+  duration actually granted. `WriteSessionConsent` was untouched and still applies no clamp of its
+  own.
+- The consent model is otherwise unchanged: write access stays opt-in from Revit's Agent Bridge
+  button, "Disable write access now" still revokes immediately, and the longer window only widens
+  the period during which an already-consented agent may write.
+- Bridge installs as **v2.4.0** (`RccBoq.RestRevit`, Gateway and MCP). The `v2.3.0` install tree is
+  left in place, so the `.addin` manifest can be pointed back at it to roll back.
+- `BridgeConstants.Version` and `BridgeConstants.ApiVersion` were bumped to `2.4.0` alongside
+  `Directory.Build.props`. The bridge version lives in those two places and they are not derived
+  from each other: a live `status` probe after the first `v2.4.0` install still reported
+  `api_version 2.3.0` because only the props file had been bumped. Both constants have moved
+  together on every bump since `v2.0.0`, so both were moved here too.
+
+### Verified (native Revit 2025)
+- Live read path confirmed against the running bridge before the change: `status` returned
+  `api_version 2.3.0`, `revit_connected true` and an active 15-minute write session; `document`
+  returned `20260225-BBS_BEAM_RBM_SALES-P1` on Revit build `25.0.2.419`.
+- `dotnet build RccBoq.RestRevit -c Release` and the full install script pass with 0 warnings and
+  0 errors. Binary string inspection confirms the installed `v2.4.0` assembly carries `1 hour` and
+  no longer carries `Enable write access for 15 minutes`, while the retained `v2.3.0` assembly
+  still carries the old strings.
+- Confirmed in a live Revit 2025 session. The project owner restarted Revit and reported the
+  consent dialog reading "Enable write access for 1 hour"; an agent `status` probe against that
+  session returned `RemainingSeconds: 3574`.
+- After the version-constant correction was installed, an agent started Revit 2025 and polled the
+  bridge: it came up in 19s reporting `api_version 2.4.0`, `extension_version 2.4.0` and
+  `revit_connected true`, with `write_session.Enabled false` on a fresh start — the consent gate
+  holding as designed. With no document open, `document` and `selection` returned a clean
+  `No active Revit document` error and `last-validation` served its cached record while correctly
+  flagging `matches_active_document false`.
+- **Not agent-verifiable:** enabling write consent requires clicking the Agent Bridge TaskDialog in
+  Revit, so the 1-hour grant itself rests on the project owner's confirmation above. The dialog
+  code is byte-identical between that build and the reinstalled one; only the version constants
+  changed.
+
+---
+
 ## [v1.19.1] - 2026-09-11
 
 ### Fixed (IP27 selected-column order)

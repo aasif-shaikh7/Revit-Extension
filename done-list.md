@@ -1068,6 +1068,43 @@ P5. Fabric reinforcement is not included in the `OST_Rebar` scope.
 
 ---
 
+## INT-03b — Agent Bridge 1-hour write window — **done** (`v1.20.0`, Bridge `v2.4.0`)
+
+**Asked for:** "15min limit ko 1 hour kardena" — after a live agent connection to Revit through the
+bridge was demonstrated.
+
+**Built:** `AgentBridgeCommand.WriteDuration` is now `TimeSpan.FromHours(1)`, and the three
+TaskDialog strings that used to hard-code "15 minutes" are derived from that constant through a new
+`FormatWriteDuration` helper, so the dialog can no longer promise a different window than the one
+granted. `WriteSessionConsent` was not touched — it never clamped the duration, so the constant
+remains the single source. Installed as Bridge `v2.4.0`; the `v2.3.0` install tree was deliberately
+left in place as the rollback target.
+
+**How it is known to work:** Reported for the live read path — before the change, `status` returned
+`revit_connected true` with an active write session and `document` returned
+`20260225-BBS_BEAM_RBM_SALES-P1` on Revit build `25.0.2.419`. Tested for the build — zero-warning
+Release build and a clean full install of add-in, Gateway and MCP. Binary inspection confirms the
+installed `v2.4.0` assembly carries `1 hour` and no longer carries the 15-minute strings, which the
+retained `v2.3.0` assembly still has. `test_xlsx_writer.py` passes after the version bump.
+
+**Confirmed live by the project owner:** after a Revit 2025 restart the consent dialog reads
+"Enable write access for 1 hour", and a `status` probe against the running bridge returned
+`RemainingSeconds: 3574` with `revit_connected true`.
+
+**Caught by that same probe:** `status` still reported `api_version`/`extension_version` `2.3.0`,
+because the bridge version is held in two independent places — `Directory.Build.props` and the
+`BridgeConstants.Version`/`ApiVersion` literals — and only the first had been bumped. Both
+constants were moved to `2.4.0`, matching how they have moved together on every bump since
+`v2.0.0`, then rebuilt and reinstalled. Binary inspection of all four installed assemblies
+(`RccBoq.RestRevit.dll` and the `RccBoq.RestCore.dll` copies under the install root, `Mcp\` and
+`Gateway\`) shows `2.4.0` present and `2.3.0` absent in every one.
+
+**What it cost:** the write-access exposure window is four times longer. The mitigations are
+unchanged and deliberate — localhost/current-user only, opt-in per session, immediate manual
+revoke, and no delete/save/code-execution surface.
+
+---
+
 ## P5-01 — Shape-aware BBS + diameter summary — **done** (`v1.19.1`)
 
 **Built.** Rebar BBS and diameter summaries preserve shape A-H, bends, hooks, authoritative Revit

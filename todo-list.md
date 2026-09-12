@@ -64,11 +64,12 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 ## Active roadmap phase
 
 **Current product focus:** P7 Site / Manual Structural Items. P4 and P5 native Rebar/BBS QA are
-complete through `v1.19.1`.
+complete through `v1.19.1`. Agent Bridge runs at `v2.4.0` from `v1.20.0`.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 
-**Built:** native Agent Bridge consent button, 15-minute write window, dry-run-first parameter edit,
+**Built:** native Agent Bridge consent button, a consent-gated write window (15 minutes through
+`v1.19.1`, 1 hour from `v1.20.0` / Bridge `v2.4.0`), dry-run-first parameter edit,
 optimistic current-value check, bounded REST/MCP schemas, Revit transaction rollback and audit log.
 Arbitrary code/API dispatch, delete and automatic document save remain forbidden.
 

@@ -6,8 +6,8 @@ namespace RccBoq.RestCore;
 
 public static class BridgeConstants
 {
-    public const string Version = "2.3.0";
-    public const string ApiVersion = "2.3.0";
+    public const string Version = "2.4.0";
+    public const string ApiVersion = "2.4.0";
     public const string ApiName = "rcc-boq";
 #if RCC_BOQ_SECONDARY
     public const string Channel = "secondary";
