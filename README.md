@@ -394,8 +394,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.22.1`
-also resolves concrete grade from `Structural Material`. Version `v1.22.0`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.22.2`
+uses only the owner-confirmed `GRADE OF CONCRETE` and `Grade` Text parameters as authoritative
+grade sources; material/name inference is deliberately excluded. Version `v1.22.0`
 adds missing structural material to the Unmapped Element Report. Version `v1.21.1`
 lists workbook sheets in their real order in the export popup. Version `v1.21.0`
 adds the P10 Unmapped Element Report: an `Unmapped Elements` sheet in Classic and Site workbooks

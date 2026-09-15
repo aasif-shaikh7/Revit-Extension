@@ -67,14 +67,20 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 closed in `v1.21.0`). P4 and P5 native Rebar/BBS QA are
 complete through `v1.19.1`. Agent Bridge runs at `v2.4.0` from `v1.20.0`.
 
-### P10-03 - Unmapped Element Report follow-ups - `testing` (`v1.22.1`)
+### P10-03 - Unmapped Element Report follow-ups - `testing` (`v1.22.2`)
 
-**Built:** `resolve_concrete_grade` reads `Structural Material` (instance, then type) before
-`Material`, trying every candidate (owner decision, 2026-09-15).
-**Tested (harness):** the P10-03 check inside the 188-check suite, plus a before/after run on the real
-function source.
-**Remaining:** a live export on a model whose material names carry a grade token; routing findings
-on a model with `Other` Slab/Foundation routes are still unexercised live.
+**Built:** `resolve_concrete_grade` treats only the case-insensitive `GRADE OF CONCRETE` and `Grade`
+Text parameters as authoritative (owner correction, 2026-09-15). `Grade of Concrete` precedes
+`Grade`; each field falls through from instance to type when blank or invalid. Structural Material,
+Material and identity text are no longer grade sources.
+**Tested (harness):** syntax checks and all 189 checks pass, including field/scope precedence and
+rejection of material/name inference.
+**Tested (live):** an isolated Secondary Revit 2025 Classic export of the AMANI model validated
+93,623/93,623 cells across 12 sheets with zero mismatches. `M40` populated all five concrete
+categories and `BOQ by Grade`; 36 `(No Grade)` Structure Walls were confirmed by read-only
+instance/type inspection to have blank or absent authoritative grade data.
+**Remaining:** routing findings on a model with `Other` Slab/Foundation routes are still
+unexercised live.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

@@ -2858,6 +2858,18 @@ def main():
         "skips Rebar, rows without those columns and non-exported routing IDs"
     )
     check(
+        all(
+            row[4] == validation_engine.MISSING_GRADE_DETAIL
+            for row in p10_report[1:]
+            if row[3] == validation_engine.ISSUE_MISSING_GRADE
+        )
+        and "GRADE OF CONCRETE" in validation_engine.MISSING_GRADE_DETAIL
+        and "Grade" in validation_engine.MISSING_GRADE_DETAIL
+        and "material" not in validation_engine.MISSING_GRADE_DETAIL.lower()
+        and "identity" not in validation_engine.MISSING_GRADE_DETAIL.lower(),
+        "P10 missing-grade detail names only the two authoritative fields"
+    )
+    check(
         all(row[2] == "L3" for row in p10_report[1:] if row[1] == other_id),
         "P10 routing findings inherit the exported element category and level"
     )
@@ -2944,20 +2956,15 @@ def main():
         "falls back to Material and treats <By Category> as missing"
     )
 
-    # v1.22.1 P10-03: concrete grade also resolves from Structural Material.
+    # v1.22.2 P10-03: only owner-confirmed grade fields are authoritative.
     grade_ns = {
         "re": re,
         "safe_parameter_value": material_ns["safe_parameter_value"],
-        "get_element_identity_text": lambda element, context=None: (
-            getattr(element, "identity", "")
-        ),
     }
-    for grade_constant in (
-        "CONCRETE_GRADE_VALUES",
-        "STRUCTURAL_MATERIAL_PARAMETER_NAMES",
-    ):
-        grade_line, _ = extract_constant_from_sources(texts, grade_constant)
-        exec(grade_line, grade_ns)
+    grade_line, _ = extract_constant_from_sources(
+        texts, "CONCRETE_GRADE_VALUES"
+    )
+    exec(grade_line, grade_ns)
     exec(
         re.search(
             r"^CONCRETE_GRADE_PARAMETER_HINTS = \(.*?\)$",
@@ -2968,8 +2975,7 @@ def main():
     )
     for grade_helper in (
         "normalize_concrete_grade",
-        "find_parameter_in_context",
-        "structural_material_candidates",
+        "concrete_grade_parameter_candidates",
         "resolve_concrete_grade",
     ):
         grade_block, _ = extract_from_sources(texts, grade_helper)
@@ -2995,32 +3001,33 @@ def main():
 
     check(
         resolve_grade(FakeGradeElement(), grade_context({
-            "Grade of Concrete": "M30",
+            "GRADE OF CONCRETE": "M30",
+            "Grade": "M20",
             "Structural Material": "Concrete - M25",
         })) == "M30"
         and resolve_grade(FakeGradeElement(), grade_context({
-            "Structural Material": "Concrete - M25",
-        })) == "M25"
-        and resolve_grade(FakeGradeElement(), grade_context(
-            {"Structural Material": ""},
-            {"Structural Material": "M35 RCC"},
-        )) == "M35"
-        and resolve_grade(FakeGradeElement(), grade_context({
-            "Structural Material": "RCC_BEAM",
-            "Material": "M40 mix",
+            "Grade": "M40",
         })) == "M40"
+        and resolve_grade(FakeGradeElement(), grade_context(
+            {"Grade of Concrete": ""},
+            {"Grade of Concrete": "M35"},
+        )) == "M35"
+        and resolve_grade(FakeGradeElement(), grade_context(
+            {"Grade of Concrete": "TBD"},
+            {"Grade of Concrete": "M25"},
+        )) == "M25"
         and resolve_grade(FakeGradeElement(), grade_context({
             "Grade of Concrete": "TBD",
-            "Structural Material": "M20",
+            "Grade": "M20",
         })) == "M20"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Structural Material": "Concrete - M25",
+        })) == "(No Grade)"
         and resolve_grade(FakeGradeElement("B1 M45"), grade_context({
             "Structural Material": "RCC_BEAM",
-        })) == "M45"
-        and resolve_grade(FakeGradeElement(), grade_context({
-            "Structural Material": "RCC_BEAM",
         })) == "(No Grade)",
-        "P10-03 grade resolver tries Structural Material (instance, then type) "
-        "and Material after the grade parameter and before identity text"
+        "P10-03 grade resolver uses only Grade of Concrete then Grade, "
+        "falls through instance to type, and never infers from material or identity"
     )
     check(
         "element_materials = {}" in export_handler_source

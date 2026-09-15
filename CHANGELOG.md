@@ -22,6 +22,40 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.22.2] - 2026-09-15
+
+### Fixed (authoritative concrete-grade fields)
+- Concrete grade now comes only from the owner-confirmed Text parameters `GRADE OF CONCRETE`
+  and `Grade`, matched case-insensitively. `Grade of Concrete` has deterministic precedence over
+  `Grade`; for each name, a blank or invalid instance value falls through to its type value.
+- Removed grade inference from `Structural Material`, `Material` and element/type identity text.
+  Those fallbacks could hide missing `GRADE OF CONCRETE` model data by inventing a grade from a
+  secondary source. Structural Material remains independently available to the P10 missing-material
+  rule; only grade resolution changed.
+- Grade spellings `M40`, `M-40` and `M 40` still normalize to canonical `M40`. If neither
+  authoritative field contains a recognized M10-M80 token, the export writes `(No Grade)` and P10
+  reports the element as missing concrete grade.
+- Corrected the P10 missing-grade detail so it names only `GRADE OF CONCRETE` and `Grade`; it no
+  longer claims that material or identity-text fallback was attempted.
+
+### Verified
+- `python -m py_compile` passes for `script.py`, `validation_engine.py` and `export_engine.py`.
+- `python test_xlsx_writer.py` passes (189 checks), including uppercase-name matching, field
+  precedence, instance-to-type fallback, invalid-value fallback to the second authoritative field,
+  explicit rejection of material and identity-text inference, and authoritative P10 detail text.
+- **Tested (live):** an isolated Secondary Revit 2025 Classic export of
+  `RVT-25-AMANI_KNOWLEDGE_PARK-ST` ran `v1.22.2` without saving the model. The published workbook
+  validated 93,623 of 93,623 non-empty cells across 12 sheets with zero mismatches. Its element
+  sheets read `M40` for 2,404 Beams, 729 Columns, 271 Structure Walls, 1,089 Slabs and 13
+  Foundations, and `BOQ by Grade` grouped all five categories under `M40`. The final workbook hash
+  after the P10 wording correction is
+  `9513748d6dcbca7e6ab4d29476250f9496ff7355301cc2db214262aa52da0e9d`.
+- The same live export reported 36 Structure Walls as `(No Grade)`. Read-only API inspection of
+  sample instances and their types confirmed the authoritative grade field is blank/absent, so
+  these are genuine model-data findings rather than resolver false positives.
+
+---
+
 ## [v1.22.1] - 2026-09-15
 
 ### Fixed (P10-03 concrete grade from structural material)

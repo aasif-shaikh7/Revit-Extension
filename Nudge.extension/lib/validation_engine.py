@@ -21,6 +21,11 @@ ISSUE_MISSING_MATERIAL = "Missing structural material"
 ISSUE_UNCERTAIN_ROUTING = "Uncertain Slab/Foundation mapping"
 ISSUE_DUPLICATE_ROUTING = "Duplicate routing source"
 
+MISSING_GRADE_DETAIL = (
+    "Neither GRADE OF CONCRETE nor Grade contains a recognized "
+    "IS 456 grade (M10-M80) on the element or its type"
+)
+
 
 def _text(value):
     """Return stripped display text, never None."""
@@ -144,8 +149,7 @@ def build_unmapped_element_report(data_result, routing_findings=None,
                 if not grade or grade == NO_GRADE:
                     table.append([
                         category, element_id, level, ISSUE_MISSING_GRADE,
-                        "No grade parameter, material name or identity "
-                        "token resolved to an IS 456 grade (M10-M80)"
+                        MISSING_GRADE_DETAIL
                     ])
 
             if (

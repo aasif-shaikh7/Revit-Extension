@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.22.1'
+__version__ = '1.22.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -56,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.22.1'
+SCRIPT_VERSION = '1.22.2'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -1905,18 +1905,12 @@ def get_element_level(element, level_cache=None):
 # Kept on one line so the regression harness can lift the constant.
 CONCRETE_GRADE_VALUES = ("M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60", "M65", "M70", "M75", "M80")
 
-# Parameter names commonly carrying the mix in Indian structural
-# models. Matched by exact name (case-insensitive) on the element
-# first, then its type, via the existing scope resolver.
+# Owner-confirmed authoritative concrete-grade fields. Matched by exact
+# name (case-insensitive); Grade of Concrete takes precedence over Grade.
+# Material and identity text are deliberately not grade sources.
 CONCRETE_GRADE_PARAMETER_HINTS = (
-    "Concrete Grade",
     "Grade of Concrete",
-    "Concrete Grade (fck)",
-    "Grade",
-    "Concrete Type",
-    "Concrete Mix",
-    "Mix",
-    "Mix Design"
+    "Grade"
 )
 
 
@@ -1949,21 +1943,31 @@ def normalize_concrete_grade(text):
     return ""
 
 
-def find_grade_parameter(element, hint):
+def concrete_grade_parameter_candidates(element, parameter_context=None):
     """
-    P2: case-insensitive grade parameter lookup.
+    Yield authoritative grade parameters in deterministic precedence order.
 
-    Project parameter names arrive in any casing ("GRADE OF CONCRETE",
-    "Grade of Concrete", ...), while the regular UI-selected parameter
-    path matches exact names. Checks the element first, then its type
-    and symbol, mirroring find_parameter_with_scope's scope order.
+    Field precedence is Grade of Concrete, then Grade. Within each field,
+    the instance value is tried before the type value. Blank or invalid
+    instance text therefore falls through to the matching type parameter.
+    Names are matched case-insensitively so the Properties-palette label
+    "GRADE OF CONCRETE" matches the authoritative field.
     """
-    if element is None:
-        return None
+    if isinstance(parameter_context, dict):
+        for hint in CONCRETE_GRADE_PARAMETER_HINTS:
+            key = hint.lower()
+            for scope in ("instance", "type"):
+                try:
+                    parameter = parameter_context.get(scope, {}).get(key)
+                except:
+                    parameter = None
+                if parameter is not None:
+                    yield parameter
+        return
 
-    lowered = str(hint or "").lower()
-
-    candidates = [element]
+    candidates = []
+    if element is not None:
+        candidates.append(element)
 
     try:
         if element.Symbol is not None:
@@ -1973,115 +1977,53 @@ def find_grade_parameter(element, hint):
 
     try:
         type_id = element.GetTypeId()
-
         if (
             type_id is not None
             and not type_id.Equals(DB.ElementId.InvalidElementId)
         ):
             type_element = doc.GetElement(type_id)
-
-            if type_element is not None:
+            if type_element is not None and type_element not in candidates:
                 candidates.append(type_element)
     except:
         pass
 
-    for candidate in candidates:
-
-        try:
-            for parameter in candidate.Parameters:
-
+    for hint in CONCRETE_GRADE_PARAMETER_HINTS:
+        lowered = hint.lower()
+        for candidate in candidates:
+            try:
+                parameters = candidate.Parameters
+            except:
+                parameters = []
+            for parameter in parameters:
                 try:
                     definition = parameter.Definition
-
-                    if not definition:
-                        continue
-
-                    if str(definition.Name).lower() == lowered:
-                        return parameter
-
+                    if definition and str(definition.Name).lower() == lowered:
+                        yield parameter
+                        break
                 except:
                     continue
-
-        except:
-            pass
-
-    return None
 
 
 def resolve_concrete_grade(element, parameter_context=None):
     """
     P2: resolve one element's concrete grade for grade-wise grouping.
 
-    Tries, in order:
-      1. A recognized grade parameter (see CONCRETE_GRADE_PARAMETER_HINTS)
-         on the element or its type, read with the existing scope helpers.
-      2. The structural material name - "Structural Material" before
-         "Material", instance before type (Revit material names often
-         carry the mix, e.g. "Concrete - M25"). Every candidate is tried,
-         so a mix-free "Structural Material" never hides a graded
-         "Material".
-      3. A grade token inside the element's identity text
-         (element name | type | family | common labels).
+    Only the owner-confirmed Grade of Concrete and Grade Text parameters
+    are authoritative. Material names and element/type identity text are
+    never used to infer a grade because doing so can hide missing model data.
 
     Returns the canonical token ("M25") or "(No Grade)" so every row
     still groups deterministically. Never raises.
     """
-    for hint in CONCRETE_GRADE_PARAMETER_HINTS:
-
-        if parameter_context is not None:
-            parameter, _scope = find_parameter_in_context(
-                parameter_context,
-                hint
-            )
-        else:
-            parameter = find_grade_parameter(element, hint)
-
-        if parameter is None:
-            continue
-
+    for parameter in concrete_grade_parameter_candidates(
+        element,
+        parameter_context
+    ):
         grade = normalize_concrete_grade(
             safe_parameter_value(parameter)
         )
-
         if grade:
             return grade
-
-    try:
-        if parameter_context is not None:
-            material_names = list(
-                structural_material_candidates(parameter_context)
-            )
-        else:
-            material_names = []
-
-            for material_hint in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
-                material_parameter = find_grade_parameter(
-                    element,
-                    material_hint
-                )
-
-                if material_parameter is not None:
-                    material_names.append(
-                        safe_parameter_value(material_parameter)
-                    )
-
-        for material_name in material_names:
-            grade = normalize_concrete_grade(material_name)
-
-            if grade:
-                return grade
-    except:
-        pass
-
-    try:
-        grade = normalize_concrete_grade(
-            get_element_identity_text(element, parameter_context)
-        )
-
-        if grade:
-            return grade
-    except:
-        pass
 
     return "(No Grade)"
 
