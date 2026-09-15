@@ -75,7 +75,15 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   Authenticated REST status and the installed MCP `rcc_boq_status` tool both returned API `2.5.0`,
   channel `primary`, `revit_connected=true` and write consent disabled; an unauthenticated request
   returned `401`. With no model open, document and material-catalog reads returned the bounded
-  `No active Revit document` error. Primary reads against an open project remain owner-driven.
+  `No active Revit document` error.
+- **Tested (live, Primary, open model):** Revit 2025 was relaunched on the saved UMA NIWAS
+  `TEST COPY`. The document read returned `TEST COPY`; REST and installed-MCP material catalogs each
+  returned all 631 materials untruncated, including `RCC_SLAB`, `RCC_FOOTING` and `PCC_FOOTING`.
+  A generic read of type `3070326` (`F1 - 600MM`, Structural Foundations) returned Structural
+  Material `RCC_FOOTING`, matching the Secondary-assigned persisted value. Revit closed without a
+  save prompt, and the RVT size, timestamp and SHA-256 were unchanged. **Unverified on Primary:**
+  the Structural Material dry-run/apply path (an agent-side permission policy blocked the dry-run
+  call; it remains verified only on Secondary).
 
 ---
 
