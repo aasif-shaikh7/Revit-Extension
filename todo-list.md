@@ -49,8 +49,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
-| P9 | Validation Engine (compact report) | 4/4/3/4 | `todo` |
-| P10 | Unmapped Element Report | 4/4/2/4 | `todo` |
+| P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
+| P10 | Unmapped Element Report | 4/4/2/4 | **first slice done** (`v1.21.0`); missing-material slice `todo` |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | `todo` |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `todo` |
 | P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | `todo` |
@@ -63,8 +63,15 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** P7 Site / Manual Structural Items. P4 and P5 native Rebar/BBS QA are
+**Current product focus:** P7 Site / Manual Structural Items (suggested next; the P10 first slice
+closed in `v1.21.0`). P4 and P5 native Rebar/BBS QA are
 complete through `v1.19.1`. Agent Bridge runs at `v2.4.0` from `v1.20.0`.
+
+### P10-02 - Unmapped Element Report: missing material - `todo`
+
+The first slice is done (`v1.21.0`, see `done-list.md`). Next: report elements with no structural
+material, which needs one new guarded per-element Revit read. Also still unexercised live: routing
+findings on a model that has `Other` Slab/Foundation routes.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

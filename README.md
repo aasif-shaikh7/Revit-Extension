@@ -388,7 +388,10 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.20.0`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.21.0`
+adds the P10 Unmapped Element Report: an `Unmapped Elements` sheet in Classic and Site workbooks
+listing exported elements with missing concrete grade, missing/zero volume or uncertain
+Slab/Foundation routing, backed by the new pure `lib/validation_engine.py`. Version `v1.20.0`
 widens the Agent Bridge write-consent window to 1 hour and derives the consent dialog text from the
 single duration constant, installed as Agent Bridge `v2.4.0`. Version `v1.19.1`
 preserves Selected/export column order under IP27 with ordered row dictionaries. Version `v1.19.0`

@@ -1122,6 +1122,36 @@ average. Fabric reinforcement remains outside the `OST_Rebar` scope.
 
 ---
 
+## P10-01 — Unmapped Element Report first slice — **done** (`v1.21.0`)
+
+**Asked for:** P10 started ahead of P7/P8/P9 on 2026-09-15, after a live read showed the BBS beam
+model exporting a BOQ by Grade silently collapsed into `(No Grade)`. Owner choices: the report is a
+workbook sheet that appears only when findings exist, and it runs in the Site format too.
+
+**Built:** a new pure `lib/validation_engine.py` (`build_unmapped_element_report`,
+`collect_routing_findings`) reporting missing concrete grade, missing/zero volume, uncertain
+Slab/Foundation routing and duplicate routing sources, limited to elements present in the export.
+The `Unmapped Elements` sheet follows Costing in Classic (listed on the Summary cover) and follows
+Structural Assembly in Site (under the `RCC - MODEL VALIDATION` band). A header-only report adds no
+tab. The completion popup gains a finding-count line. Site export now resolves grade, while Site
+detail sheets still hide the column.
+
+**How it is known to work:** Tested (harness) - 10 P10 checks inside the 182-check suite. Tested
+(live, headless) on `20260225-BBS_BEAM_RBM_SALES-P1`: Site 118,821 and Classic 166,835 cells
+validated with zero mismatches and the same 8,696 findings in both; missing-grade counts equal the
+`(No Grade)` element rows in every category; volume findings confirmed against Revit (Beams
+`2970078`-`2970080` with an empty Volume, Slab `3026042` at `0.00 m3`). **Confirmed live by the
+project owner (2026-09-15):** the interactive Classic export popup ended with the
+`Unmapped elements: 8696 finding(s)` line.
+
+**Unverified:** routing findings on a model with `Other` routes; Site export time against v1.20.0.
+
+**What it cost:** Site export now resolves grade for every concrete element, not measured against a
+baseline. On a model with no grades the sheet lists every element (8,696 rows here) instead of
+summarising. Missing material is deferred to P10-02 because it needs a new per-element Revit read.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

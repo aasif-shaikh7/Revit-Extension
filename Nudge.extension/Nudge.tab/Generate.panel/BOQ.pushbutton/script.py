@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.20.0'
+__version__ = '1.21.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -56,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.20.0'
+SCRIPT_VERSION = '1.21.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5473,7 +5473,9 @@ try:
                         total_rows,
                         missing_values
                     ) = build_element_data(
-                        include_grade=not use_site_format
+                        # P10 reports missing concrete grade in both
+                        # formats; the Site writer still hides the column.
+                        include_grade=True
                     )
                     data_seconds = time.time() - data_started
 
@@ -5523,6 +5525,32 @@ try:
 
                     validation_report_path = default_validation_report_path()
 
+                    # P10: list exported elements the BOQ cannot fully count
+                    # (missing grade, missing/zero volume, uncertain
+                    # Slab/Foundation routing) from the rows just built.
+                    from validation_engine import (
+                        UNMAPPED_SHEET_NAME,
+                        build_unmapped_element_report,
+                        collect_routing_findings
+                    )
+
+                    routing_audit = classification_audit or {}
+                    unmapped_report = build_unmapped_element_report(
+                        element_data,
+                        collect_routing_findings(
+                            classification_audit_detail_results(
+                                routing_audit
+                            ),
+                            list(routing_audit.get(
+                                "source_duplicate_ids", []
+                            ))
+                            + list(routing_audit.get(
+                                "destination_duplicate_ids", []
+                            ))
+                        )
+                    )
+                    unmapped_count = len(unmapped_report) - 1
+
                     workbook_started = time.time()
                     if use_site_format:
 
@@ -5541,7 +5569,8 @@ try:
                             include_formwork=is_formwork_enabled(),
                             selected_parameters=selected_parameters,
                             assembly_profile=assembly_profile,
-                            validation_report_path=validation_report_path
+                            validation_report_path=validation_report_path,
+                            unmapped_report=unmapped_report
                         )
 
                     else:
@@ -5560,7 +5589,8 @@ try:
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
                             assembly_profile=assembly_profile,
-                            validation_report_path=validation_report_path
+                            validation_report_path=validation_report_path,
+                            unmapped_report=unmapped_report
                         )
 
                     workbook_seconds = time.time() - workbook_started
@@ -5698,6 +5728,16 @@ try:
                                     compact_findings
                                 )
                             )
+
+                    if unmapped_count > 0:
+                        completion_message += (
+                            "\n\nUnmapped elements: {} finding(s) - "
+                            "see the '{}' sheet and use Manage > Select "
+                            "by ID to fix them in the model.".format(
+                                unmapped_count,
+                                UNMAPPED_SHEET_NAME
+                            )
+                        )
 
                     if _headless_export_job is not None:
                         complete_export_job(

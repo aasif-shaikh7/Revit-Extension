@@ -104,6 +104,7 @@ Nudge.extension/
     ├── costing_engine.py    <- per-element rate x quantity costing sheet (pure Python)
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
     ├── export_validation.py <- canonical XLSX cell validation + bounded report (pure Python)
+    ├── validation_engine.py <- P9/P10 model-quality checks + unmapped element report (pure Python)
     ├── agent_export_job.py  <- fixed-path headless export job contract (pure Python)
     └── Resources/
         ├── Brand.Colors.Light.xaml
@@ -121,7 +122,7 @@ Nudge.extension/
   dictionaries. Since P4 it also hosts six
   **pure-Python engine modules** (`settings_engine`, `quantity_engine`,
   `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`, `export_validation`,
-  `agent_export_job`) that the BOQ
+  `agent_export_job`, `validation_engine`) that the BOQ
   pushbutton imports by plain module name — pyRevit puts the extension
   `lib/` folder on `sys.path` (the mechanism `theme_manager` already
   relied on). The engines must stay dependency-free: stdlib only, no
@@ -296,8 +297,8 @@ every phase:
 | P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
 | P7 Site items | settings + element sheets |
 | P8 Rule Engine | `rule_engine.py` |
-| P9 Validation Engine | `validation_engine.py` |
-| P10 Unmapped report | reuse validation engine |
+| P9 Validation Engine | `lib/validation_engine.py` (**exists since v1.21.0** as the P10 foundation) |
+| P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
 | P12 Rate Database | settings + data module |
 | P13 Professional Excel BOQ | `lib/export_engine.py` (**exists since v1.8.6**) |

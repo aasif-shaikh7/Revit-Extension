@@ -2400,11 +2400,11 @@ def main():
     check(
         "if use_site_format:" in export_handler_source
         and "parameter_metadata = {}" in export_handler_source
-        and "include_grade=not use_site_format" in export_handler_source
+        and "include_grade=True" in export_handler_source
         and "metadata_seconds" in export_handler_source
         and "data_seconds" in export_handler_source
         and "workbook_seconds" in export_handler_source,
-        "Fast Site export skips Classic metadata/grade work and reports phase timings"
+        "Fast Site export skips Classic metadata work, keeps P10 grade resolution and reports phase timings"
     )
     check(
         'needs_bbox = element_name in ("Slab", "Foundation")' in script_text
@@ -2777,6 +2777,203 @@ def main():
         and "S1" not in compact_other
         and "S2" not in compact_other,
         "Completion popup compactly identifies only Other routing elements"
+    )
+
+    # -----------------------------------------------------------------
+    # v1.21.0 P10 Unmapped Element Report (pure validation engine).
+    # Feeds the real classifier audit rows above through the engine so the
+    # routing contract between script.py and lib/validation_engine.py stays
+    # exercised, then proves both workbook writers publish the sheet.
+    # -----------------------------------------------------------------
+    import validation_engine
+
+    other_id = str(other_details[0]["element_id"])
+    unmapped_data = {
+        "Beam": [
+            {"Element ID": "1", "Level": "L1", "Grade": "M30",
+             "Qty: Volume (m3)": 0.5},
+            {"Element ID": "2", "Level": "L1", "Grade": "(No Grade)",
+             "Qty: Volume (m3)": 0.4},
+        ],
+        "Column": [
+            {"Element ID": "3", "Level": "L2", "Grade": "",
+             "Qty: Volume (m3)": ""},
+            {"Element ID": "4", "Level": "L2", "Grade": "M40",
+             "Qty: Volume (m3)": "0"},
+            {"Element ID": "5", "Level": "L2", "Grade": "M40",
+             "Qty: Volume (m3)": "n/a"},
+        ],
+        "Slab": [
+            {"Element ID": "6", "Level": "L3"},
+            {"Element ID": other_id, "Level": "L3", "Grade": "M25",
+             "Qty: Volume (m3)": 1.2},
+        ],
+        "Rebar": [
+            {"Element ID": "9", "Level": "L1",
+             "Rebar: Total Weight (kg)": ""},
+        ],
+    }
+    p10_findings = validation_engine.collect_routing_findings(
+        list(other_details) + [{
+            "element_id": "777", "subtype": "Other",
+            "logical_group": "Slab", "reason": "Filtered out of export",
+        }],
+        ["888", other_id]
+    )
+    check(
+        [(item["element_id"], item["issue"]) for item in p10_findings] == [
+            (other_id, validation_engine.ISSUE_UNCERTAIN_ROUTING),
+            (other_id, validation_engine.ISSUE_DUPLICATE_ROUTING),
+            ("777", validation_engine.ISSUE_UNCERTAIN_ROUTING),
+            ("888", validation_engine.ISSUE_DUPLICATE_ROUTING),
+        ]
+        and "Unknown identity retained" in p10_findings[0]["detail"],
+        "P10 routing findings flatten real classifier audit rows and duplicate IDs"
+    )
+    p10_report = validation_engine.build_unmapped_element_report(
+        unmapped_data, p10_findings
+    )
+    check(
+        p10_report[0] == ["Category", "Element ID", "Level", "Issue", "Detail"],
+        "P10 report headers are Category / Element ID / Level / Issue / Detail"
+    )
+    check(
+        [(row[0], row[1], row[3]) for row in p10_report[1:]] == [
+            ("Beam", "2", validation_engine.ISSUE_MISSING_GRADE),
+            ("Column", "3", validation_engine.ISSUE_MISSING_GRADE),
+            ("Column", "3", validation_engine.ISSUE_MISSING_VOLUME),
+            ("Column", "4", validation_engine.ISSUE_MISSING_VOLUME),
+            ("Column", "5", validation_engine.ISSUE_MISSING_VOLUME),
+            ("Slab", other_id, validation_engine.ISSUE_UNCERTAIN_ROUTING),
+            ("Slab", other_id, validation_engine.ISSUE_DUPLICATE_ROUTING),
+        ],
+        "P10 flags (No Grade)/blank grade and blank/zero/non-numeric volume; "
+        "skips Rebar, rows without those columns and non-exported routing IDs"
+    )
+    check(
+        all(row[2] == "L3" for row in p10_report[1:] if row[1] == other_id),
+        "P10 routing findings inherit the exported element category and level"
+    )
+    check(
+        validation_engine.build_unmapped_element_report(
+            {"Beam": [{"Element ID": "1", "Level": "L1", "Grade": "M30",
+                       "Qty: Volume (m3)": 0.5}]},
+            []
+        ) == [["Category", "Element ID", "Level", "Issue", "Detail"]],
+        "P10 clean export yields a header-only report"
+    )
+
+    def p10_sheet_order(workbook_path):
+        with zipfile.ZipFile(workbook_path, "r") as p10_archive:
+            return re.findall(
+                r'<sheet name="([^"]+)"',
+                p10_archive.read("xl/workbook.xml").decode("utf-8")
+            )
+
+    def p10_validation(report_path):
+        with io.open(report_path, "r", encoding="utf-8") as p10_json:
+            return json.load(p10_json)
+
+    p10_root = tempfile.mkdtemp(prefix="rcc-boq-p10-")
+    try:
+        p10_classic_data = {
+            "Beam": [
+                {"Element ID": "1", "Level": "L1", "Grade": "M30",
+                 "Mark": "B1", "Qty: Volume (m3)": 0.5, "Qty: Count": 1},
+                {"Element ID": "2", "Level": "L1", "Grade": "(No Grade)",
+                 "Mark": "B2", "Qty: Volume (m3)": 0.4, "Qty: Count": 1},
+            ],
+        }
+        classic_report = validation_engine.build_unmapped_element_report(
+            p10_classic_data, []
+        )
+        classic_rows = namespace["write_basic_xlsx"](
+            os.path.join(p10_root, "classic.xlsx"),
+            p10_classic_data,
+            {},
+            project_name="P10 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.21.0",
+            generated_stamp="2026-09-15 12:00",
+            validation_report_path=os.path.join(p10_root, "classic.json"),
+            unmapped_report=classic_report
+        )
+        classic_order = p10_sheet_order(os.path.join(p10_root, "classic.xlsx"))
+        cover_names = set(
+            row[0] for row in classic_rows["Summary"] if row
+        )
+        check(
+            classic_order[-1] == validation_engine.UNMAPPED_SHEET_NAME
+            and classic_order[-2] == "Costing"
+            and classic_rows[validation_engine.UNMAPPED_SHEET_NAME]
+            == classic_report
+            and validation_engine.UNMAPPED_SHEET_NAME in cover_names
+            and p10_validation(
+                os.path.join(p10_root, "classic.json")
+            ).get("ok") is True,
+            "P10 Classic workbook appends a validated Unmapped Elements "
+            "sheet after Costing and lists it on the cover"
+        )
+
+        namespace["write_basic_xlsx"](
+            os.path.join(p10_root, "clean.xlsx"),
+            p10_classic_data,
+            {},
+            validation_report_path=os.path.join(p10_root, "clean.json"),
+            unmapped_report=[list(validation_engine.UNMAPPED_HEADERS)]
+        )
+        check(
+            validation_engine.UNMAPPED_SHEET_NAME
+            not in p10_sheet_order(os.path.join(p10_root, "clean.xlsx")),
+            "P10 header-only report adds no empty tab to the workbook"
+        )
+
+        p10_site_data = {
+            "Beam": [
+                {"Element ID": "1", "Level": "L1", "Grade": "(No Grade)",
+                 "Mark": "B1", "Qty: Volume (m3)": 0.5,
+                 "Qty: Dim L (m)": 3.0, "Qty: Dim W (m)": 0.23,
+                 "Qty: Dim H (m)": 0.6, "Qty: Shuttering (m2)": 4.29},
+            ],
+        }
+        site_report = validation_engine.build_unmapped_element_report(
+            p10_site_data, []
+        )
+        site_rows = namespace["write_site_xlsx"](
+            os.path.join(p10_root, "site.xlsx"),
+            p10_site_data,
+            project_name="P10 TEST",
+            selected_parameters={"Beam": ["Mark"]},
+            validation_report_path=os.path.join(p10_root, "site.json"),
+            unmapped_report=site_report
+        )
+        site_unmapped = site_rows.get(validation_engine.UNMAPPED_SHEET_NAME, [])
+        check(
+            p10_sheet_order(os.path.join(p10_root, "site.xlsx"))[-1]
+            == validation_engine.UNMAPPED_SHEET_NAME
+            and len(site_unmapped) > 6
+            and site_unmapped[1] == ["RCC - MODEL VALIDATION"]
+            and site_unmapped[2] == ["UNMAPPED ELEMENTS"]
+            and site_unmapped[4][3] == ("MERGE_V", "ISSUE")
+            and site_unmapped[6] == site_report[1]
+            and p10_validation(
+                os.path.join(p10_root, "site.json")
+            ).get("ok") is True,
+            "P10 Site workbook appends a validated Unmapped Elements sheet "
+            "inside the site title bands"
+        )
+        check(
+            all("GRADE" not in str(cell) for cell in site_rows["Beam"][4]),
+            "P10 grade resolution adds no Grade column to Site detail sheets"
+        )
+    finally:
+        shutil.rmtree(p10_root, ignore_errors=True)
+
+    check(
+        export_handler_source.count("unmapped_report=unmapped_report") == 2
+        and "build_unmapped_element_report(" in export_handler_source
+        and "classification_audit_detail_results(" in export_handler_source
+        and "UNMAPPED_SHEET_NAME" in export_handler_source,
+        "P10 export handler builds one report and passes it to both workbook writers"
     )
 
     engine_guard_block, _ = extract_from_sources(

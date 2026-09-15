@@ -1565,7 +1565,8 @@ def build_summary_cover_rows(
 
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
-                     site_format=False, validation_report_path=None):
+                     site_format=False, validation_report_path=None,
+                     unmapped_report=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -1588,7 +1589,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             project_name=project_name,
             tool_version=tool_version,
             generated_stamp=generated_stamp,
-            validation_report_path=validation_report_path
+            validation_report_path=validation_report_path,
+            unmapped_report=unmapped_report
         )
 
     # Only categories that actually contain at least one element produce a
@@ -1932,6 +1934,15 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append("Costing")
         sheet_rows["Costing"] = costing_sheet
         quantity_column_map["Costing"] = [3, 4, 5]
+
+    # P10: unmapped element report, appended only when the exporter found
+    # something to fix so a clean model keeps its familiar workbook.
+    if unmapped_report and len(unmapped_report) > 1:
+        from validation_engine import UNMAPPED_SHEET_NAME
+        sheet_names.append(UNMAPPED_SHEET_NAME)
+        sheet_rows[UNMAPPED_SHEET_NAME] = [
+            list(row) for row in unmapped_report
+        ]
 
     # Professional output: front Summary cover as the first sheet.
     summary_cover = build_summary_cover_rows(
@@ -2545,7 +2556,8 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name,
     return (out_rows, meta)
 
 
-def build_site_tabular_sheet(project_name, title, plain_table):
+def build_site_tabular_sheet(project_name, title, plain_table,
+                             band_title="RCC - REINFORCEMENT BBS"):
     """Wrap a plain summary/BBS table in the site workbook title bands."""
     table = list(plain_table or [])
     if not table:
@@ -2553,7 +2565,7 @@ def build_site_tabular_sheet(project_name, title, plain_table):
     headers = list(table[0])
     out_rows = [
         [str(project_name or "")],
-        ["RCC - REINFORCEMENT BBS"],
+        [str(band_title or "")],
         [str(title or "")],
         [""],
         [("MERGE_V", str(header).upper()) for header in headers],
@@ -2573,6 +2585,10 @@ def build_site_tabular_sheet(project_name, title, plain_table):
             widths.append(18)
         elif header_text == "Length Status":
             widths.append(28)
+        elif header_text == "Issue":
+            widths.append(32)
+        elif header_text == "Detail":
+            widths.append(60)
         else:
             widths.append(14)
     return (out_rows, widths)
@@ -2584,7 +2600,8 @@ SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
                     include_formwork=True, selected_parameters=None,
-                    assembly_profile=None, validation_report_path=None):
+                    assembly_profile=None, validation_report_path=None,
+                    unmapped_report=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2692,6 +2709,20 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append("Structural Assembly")
         sheet_rows["Structural Assembly"] = assembly_table
         sheet_widths["Structural Assembly"] = assembly_widths
+
+    # P10: same unmapped element report as the classic workbook, wrapped in
+    # the site title bands and appended only when findings exist.
+    if unmapped_report and len(unmapped_report) > 1:
+        from validation_engine import UNMAPPED_SHEET_NAME
+        unmapped_table, unmapped_widths = build_site_tabular_sheet(
+            project_name,
+            "UNMAPPED ELEMENTS",
+            unmapped_report,
+            band_title="RCC - MODEL VALIDATION"
+        )
+        sheet_names.append(UNMAPPED_SHEET_NAME)
+        sheet_rows[UNMAPPED_SHEET_NAME] = unmapped_table
+        sheet_widths[UNMAPPED_SHEET_NAME] = unmapped_widths
 
     summary_table, summary_meta = build_site_summary_sheet(
         data_result,

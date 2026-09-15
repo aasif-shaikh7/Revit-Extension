@@ -22,6 +22,71 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.21.0] - 2026-09-15
+
+### Added (P10 Unmapped Element Report - first slice)
+- New dependency-free `lib/validation_engine.py`, the planned P9 landing point
+  (`PROJECT_STRUCTURE.md` section 9), now carrying the P10 first slice.
+  `build_unmapped_element_report(data_result, routing_findings)` lists exported Beam, Column,
+  Structure Wall, Slab and Foundation elements with a missing concrete grade (blank or
+  `(No Grade)`), a missing, zero or non-numeric `Qty: Volume (m3)`, or an uncertain Slab/Foundation
+  route. `collect_routing_findings` flattens the existing v1.8.10 classifier audit (`Other` routes
+  and duplicate routing sources) into plain rows, so the engine never touches Revit objects.
+- Only elements present in the export are reported, so Slab/Foundation subtype filters and
+  "Export selected only" never list elements missing from the workbook. Grade and volume are judged
+  only when the row carries those columns; Rebar is excluded.
+- Both workbook writers accept `unmapped_report`. When it holds findings, an `Unmapped Elements`
+  sheet (Category, Element ID, Level, Issue, Detail) is appended: after Costing in the Classic
+  workbook, where the Summary cover lists it, and after Structural Assembly in the Site workbook,
+  inside the site title bands under `RCC - MODEL VALIDATION`. A header-only report adds no tab, so a
+  clean model keeps its familiar workbook.
+- The completion popup adds one line with the finding count. The existing routing note is kept.
+
+### Changed
+- Site export now resolves concrete grade as well (`build_element_data(include_grade=True)`) so the
+  P10 grade check runs in the default Site format. Site detail sheets still hide the Grade column,
+  and costing, assembly and the site summary ignore the key. The harness contract that asserted
+  "Site skips grade work" now asserts that Site keeps P10 grade resolution.
+- `build_site_tabular_sheet` gains an optional `band_title` (default unchanged,
+  `RCC - REINFORCEMENT BBS`) and column widths for the Issue and Detail headers.
+
+### Roadmap order
+- P10 was taken before P7, P8 and P9 by owner decision on 2026-09-15. A live agent read of
+  `20260225-BBS_BEAM_RBM_SALES-P1` found `GRADE OF CONCRETE` present but empty on 400 of 400
+  sampled structural elements, which today exports a BOQ by Grade collapsed into `(No Grade)` with no
+  warning. `todo-list.md` allows code- and data-driven reordering.
+
+### Verified
+- `python test_xlsx_writer.py` passes (182 checks), including 10 new P10 checks: engine rules fed by
+  the real classifier audit output, Classic and Site workbooks re-read by the canonical validator,
+  no empty tab for a clean report, no Grade column on Site detail sheets, and export-handler wiring.
+- Live pyRevit export of `20260225-BBS_BEAM_RBM_SALES-P1` on Revit 2025 build `25.0.2.419`, run
+  through the Agent Bridge headless export with owner-granted write consent. The model was not saved.
+  - Site: 118,821 of 118,821 cells validated across 11 sheets with zero mismatches. `Unmapped
+    Elements` is the last sheet, under `RCC - MODEL VALIDATION`, with 8,696 findings: 8,667 missing
+    concrete grade and 29 missing or zero volume (28 Beam, 1 Slab). The Beam site sheet carries no
+    Grade column. Job time 124 s.
+  - Classic: 166,835 of 166,835 cells validated across 15 sheets with zero mismatches. `Unmapped
+    Elements` follows Costing, the Summary cover lists it, and it holds the same 8,696 findings.
+    Job time 149 s.
+  - Cross-check: missing-grade findings equal the `(No Grade)` rows on every element sheet (Beam
+    4,031, Column 1,311, Structure Wall 849, Slab 2,318, Foundation 158), and BOQ by Grade holds only
+    `(No Grade)`, the silent collapse this phase exists to surface.
+  - Spot check: Beams `2970078`, `2970079` and `2970080` read back through the bridge with an empty
+    Revit Volume despite lengths of 3141, 2697 and 775 mm, and Slab `3026042` reads `0.00 m3`. These
+    are real model issues, not false positives. No uncertain routing occurred on this model.
+- Owner-confirmed in the interactive dialog on the same model: a Classic export (validation PASS,
+  166,835 cells) ended with `Unmapped elements: 8696 finding(s) - see the 'Unmapped Elements' sheet
+  and use Manage > Select by ID to fix them in the model.` Processing time 57.2 s (Revit data
+  36.4 s, workbook 20.8 s).
+- **Unverified:** routing findings on a model with `Other` routes, and Site export time against a
+  v1.20.0 baseline.
+- **Observed, pre-existing:** the popup "Workbook sheets" listing prints in scrambled order under
+  IP27 because it joins the keys of a plain `dict`. The workbook itself keeps the correct order.
+  Not introduced by this release.
+
+---
+
 ## [v1.20.0] - 2026-09-12
 
 ### Changed (Agent Bridge write-session window)
