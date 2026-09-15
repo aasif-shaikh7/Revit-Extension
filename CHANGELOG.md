@@ -39,8 +39,11 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   workbook began with it. After the fix both key orders match `workbook.xml` exactly.
 - `python test_xlsx_writer.py` passes (184 checks), including 2 new checks that compare each
   writer's returned key order with the sheet order read back from `workbook.xml`.
-- **Unverified (live):** the ordered listing in the interactive popup under IP27 has not been seen
-  yet; the project owner confirms it on the next dialog export.
+- Owner-confirmed in the interactive dialog on `20260225-BBS_BEAM_RBM_SALES-P1` (2026-09-15): the
+  `1.21.1` popup lists `Summary, Beam, Column, Structure Wall, Slab, Foundation, Rebar, Rebar
+  Summary, Rebar BBS, BOQ Summary, Structural Assembly, BOQ by Level, BOQ by Grade, Costing,
+  Unmapped Elements`, matching the workbook, with validation PASS on 166,835 cells and the same
+  8,696 unmapped findings.
 
 ---
 
