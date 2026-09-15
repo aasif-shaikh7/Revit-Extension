@@ -320,7 +320,7 @@ separate live verification item.
 
 ---
 
-## P2 — Structural BOQ Grouping (code complete)
+## P2 — Structural BOQ Grouping (done)
 
 ### P2-01 — Level-wise BOQ grouping — **done** (`v1.2.0`)
 **Built:** every element row carries an engine-added `Level` column (deterministic column B),
@@ -333,7 +333,7 @@ Beam/Column/Foundation/BOQ Summary/BOQ by Level/Costing.
 **Confirmed live (`v1.2.0`).** Owner verified Level resolution, grouped totals and the full export
 in Revit 2025; tagged `v1.2.0`.
 
-### P2-02 — Concrete-grade BOQ grouping — **code complete** (`v1.6.0`, live QA pending)
+### P2-02 — Concrete-grade BOQ grouping — **done** (`v1.6.0`)
 **Decision (owner):** grade of concrete — material-wise grouping collapses into grade grouping.
 **Built:** every element row now also carries an engine-added `Grade` column (deterministic
 column C, right after Level), resolved by `resolve_concrete_grade`: (1) recognized grade

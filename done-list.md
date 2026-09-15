@@ -349,7 +349,7 @@ where installed (Segoe UI fallback). Same engine reality as v1.4.2 — the insta
 
 ---
 
-## P2-02 — Concrete-grade BOQ grouping — code complete (`v1.6.0`)
+## P2-02 — Concrete-grade BOQ grouping — **done** (`v1.6.0`)
 
 **Asked for.** P2's remaining half: "grade of concrete" grouping (owner folded material-wise
 into grade-wise).
@@ -411,7 +411,7 @@ confirmed both workbooks export correctly; everything else in v1.6.0 is also liv
 
 ---
 
-## Grade fix (case-insensitive) + classic column cleanup — code complete (`v1.6.2`)
+## Grade fix (case-insensitive) + classic column cleanup — **done** (`v1.6.2`)
 
 **Asked for.** Owner's live export showed the engine `Grade` column as `(No Grade)` even though
 the project's shared parameter `GRADE OF CONCRETE` (all-caps) carried `M40` — and asked how to
@@ -736,7 +736,7 @@ future work once the owner confirms the detail figures.
 
 ---
 
-## Formwork flag order fix + Summary honours Include formwork — code complete (`v1.8.2`)
+## Formwork flag order fix + Summary honours Include formwork — **done** (`v1.8.2`)
 
 **Asked for (owner live test of `v1.8.1`).** Two defects:
 1. Site format + Include formwork **checked** → the SHUTTERING (SQM) column appeared on the detail
