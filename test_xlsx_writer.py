@@ -220,6 +220,8 @@ def main():
 
     from xml.sax.saxutils import escape as xml_escape
     namespace["xml_escape"] = xml_escape
+    from collections import OrderedDict
+    namespace["OrderedDict"] = OrderedDict
 
     source_tally = {}
     for name in FUNCTION_NAMES:
@@ -1672,6 +1674,11 @@ def main():
         )
 
         check(
+            list(sheet_rows.keys()) == sheet_order,
+            "Classic writer returns sheets in workbook order for the export popup listing"
+        )
+
+        check(
             "Parameter Metadata" not in sheet_order
             and "Missing Values Summary" not in sheet_order
             and "Slab" not in sheet_order,
@@ -2964,6 +2971,11 @@ def main():
         check(
             all("GRADE" not in str(cell) for cell in site_rows["Beam"][4]),
             "P10 grade resolution adds no Grade column to Site detail sheets"
+        )
+        check(
+            list(site_rows.keys())
+            == p10_sheet_order(os.path.join(p10_root, "site.xlsx")),
+            "Site writer returns sheets in workbook order for the export popup listing"
         )
     finally:
         shutil.rmtree(p10_root, ignore_errors=True)

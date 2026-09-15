@@ -22,6 +22,28 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.21.1] - 2026-09-15
+
+### Fixed (export popup sheet listing order)
+- The completion popup "Workbook sheets" line now lists sheets in the same order as the workbook.
+  It joins the keys of the mapping returned by the workbook writers, and both writers returned a
+  plain `dict`: IP27 keeps no key order (the owner saw a scrambled list in the `v1.21.0` popup), and
+  even on CPython `Summary` was stored last although it is the first workbook sheet.
+- `write_basic_xlsx` and `write_site_xlsx` now return an `OrderedDict` built from `sheet_names`,
+  the same list that writes `workbook.xml`. The export popup code in `script.py` is unchanged; only
+  the version moves to `1.21.1`. The workbook contents and sheet order were already correct and do
+  not change.
+
+### Verified
+- Reproduced before the fix on CPython: both writers returned keys ending in `Summary` while the
+  workbook began with it. After the fix both key orders match `workbook.xml` exactly.
+- `python test_xlsx_writer.py` passes (184 checks), including 2 new checks that compare each
+  writer's returned key order with the sheet order read back from `workbook.xml`.
+- **Unverified (live):** the ordered listing in the interactive popup under IP27 has not been seen
+  yet; the project owner confirms it on the next dialog export.
+
+---
+
 ## [v1.21.0] - 2026-09-15
 
 ### Added (P10 Unmapped Element Report - first slice)

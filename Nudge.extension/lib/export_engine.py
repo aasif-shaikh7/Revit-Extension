@@ -16,6 +16,7 @@ import os
 import re
 import time
 import zipfile
+from collections import OrderedDict
 from xml.sax.saxutils import escape as xml_escape
 
 from formwork_engine import (
@@ -2043,7 +2044,10 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     if validation_report_path:
         write_validation_report(validation_report_path, validation_report)
 
-    return sheet_rows
+    # Return sheets in workbook order. The export popup lists these keys;
+    # a plain dict keeps no order under IP27, and Summary is stored last
+    # even on CPython although it is the first workbook sheet.
+    return OrderedDict((name, sheet_rows[name]) for name in sheet_names)
 
 
 # ============================================================
@@ -2856,10 +2860,10 @@ def write_site_xlsx(file_path, data_result, project_name="",
     if validation_report_path:
         write_validation_report(validation_report_path, validation_report)
 
-    # Plain {sheet_name: table} mapping - same contract as
-    # write_basic_xlsx, so the export dialog code can treat both
-    # writers uniformly.
-    return sheet_rows
+    # {sheet_name: table} mapping in workbook order - same contract as
+    # write_basic_xlsx, so the export dialog code can treat both writers
+    # uniformly and list sheets in the order Excel shows them.
+    return OrderedDict((name, sheet_rows[name]) for name in sheet_names)
 
 
 def enforce_uniform_grid_borders(styles_xml):
