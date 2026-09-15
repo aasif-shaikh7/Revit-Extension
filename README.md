@@ -141,12 +141,13 @@ dependencies imported into the pyRevit host.
 
 ---
 
-## Local REST + MCP Integration (`v2.4.0`)
+## Local REST + MCP Integration (`v2.5.0`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
 `http://127.0.0.1:48885/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
-current-user-only Named Pipe. The closed operation allow-list supports bounded reads and one
-controlled parameter-write operation; arbitrary Revit calls and code evaluation remain forbidden.
+current-user-only Named Pipe. The closed operation allow-list supports bounded reads, controlled
+text-parameter edits and controlled structural-material type assignments; arbitrary Revit calls and
+code evaluation remain forbidden.
 
 Close Revit 2025, then build and install the bridge for the current Windows user:
 
@@ -155,7 +156,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
 ```
 
 The installer publishes the Gateway and STDIO MCP server below
-`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.4.0` and creates
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.5.0` and creates
 `%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
 
 The first extension startup creates a random token at
@@ -168,35 +169,49 @@ python scripts/rcc_boq_rest_client.py document
 python scripts/rcc_boq_rest_client.py selection
 python scripts/rcc_boq_rest_client.py element 3411763
 python scripts/rcc_boq_rest_client.py rebar 3411763
+python scripts/rcc_boq_rest_client.py materials
 python scripts/rcc_boq_rest_client.py last-validation
 python scripts/rcc_boq_rest_client.py start-export --format site
 python scripts/rcc_boq_rest_client.py start-export --format site --apply
 python scripts/rcc_boq_rest_client.py export-status
 python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value QA
 python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value "Rollback probe" --expected-current-value "" --force-rollback --apply
+$materialId = 123456 # replace with an ID returned by the materials command
+python scripts/rcc_boq_rest_client.py set-structural-material 3070326 --material-id $materialId --expected-current-material-id 0
+python scripts/rcc_boq_rest_client.py set-structural-material 3070326 --material-id $materialId --expected-current-material-id 0 --apply
 ```
 
 Available REST endpoints are `GET /status`, `/document`, `/selection`,
-`/elements/<element_id>`, `/rebar/<element_id>`, `/boq/last-validation` and
-`/boq/export-status`, plus `POST /boq/export` and `/elements/<element_id>/parameter`, below the
-`/rcc-boq` root. Parameter writes and Agent exports default to dry-run. Actual apply also requires a
-write session enabled from Revit's Agent Bridge button; the
-bridge never saves the document. Selection output is limited to 100 elements and parameter output
-to 250 values per element. Document paths and API tokens are never returned.
+`/elements/<element_id>`, `/rebar/<element_id>`, `/materials`, `/boq/last-validation` and
+`/boq/export-status`, plus `POST /boq/export`, `/elements/<element_id>/parameter` and
+`/element-types/<element_id>/structural-material`, below the `/rcc-boq` root. Writes and Agent
+exports default to dry-run. Actual apply also requires a write session enabled from Revit's Agent
+Bridge button; the bridge never saves the document. The material catalog is limited to 1,000
+active-document materials. Structural-material assignment accepts only an explicit catalog material ID and
+an ElementType in Structural Foundations, Floors, Structural Framing, Structural Columns or Walls;
+`expected_current_material_id=0` means the current material must be blank. Selection output is
+limited to 100 elements and parameter output to 250 values per element. Document paths and API
+tokens are never returned.
+
+For family types, assignment uses Revit's built-in Structural Material parameter. For system types
+where that parameter is derived/read-only, the bridge accepts only one unambiguous compound-structure
+layer whose function is `Structure`, assigns its material, and designates that layer as the
+structural-material source. It never adds, removes or reorders compound-structure layers.
 
 Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
 codex mcp remove rcc-boq-v2
-codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.4.0\Mcp\RccBoq.RestMcp.exe"
+codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.5.0\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 
 The MCP tools are `rcc_boq_status`, `rcc_boq_document`, `rcc_boq_selection`,
-`rcc_boq_element`, `rcc_boq_rebar`, `rcc_boq_last_export_validation`,
-`rcc_boq_export_status`, `rcc_boq_start_export` and `rcc_boq_set_parameter`. The MCP process reads the same
-per-user token itself; the token is not stored in agent configuration or emitted in tool results.
-The write tool is explicitly annotated non-read-only/destructive and defaults to dry-run.
+`rcc_boq_element`, `rcc_boq_rebar`, `rcc_boq_materials`, `rcc_boq_last_export_validation`,
+`rcc_boq_export_status`, `rcc_boq_start_export`, `rcc_boq_set_parameter` and
+`rcc_boq_set_structural_material`. The MCP process reads the same per-user token itself; the token is
+not stored in agent configuration or emitted in tool results. Both write tools are explicitly
+annotated non-read-only/destructive and default to dry-run.
 Every successful BOQ export is reread before publication and compared cell-for-cell with its
 canonical Revit-derived rows. The completion dialog shows `Workbook validation: PASS`; the Agent
 Bridge returns only the fixed, bounded latest report and never accepts an arbitrary workbook path.
@@ -394,9 +409,12 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.22.2`
-uses only the owner-confirmed `GRADE OF CONCRETE` and `Grade` Text parameters as authoritative
-grade sources; material/name inference is deliberately excluded. Version `v1.22.0`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.0`
+adds a bounded material catalog and a guarded, dry-run-first Structural Material type assignment
+through Agent Bridge `v2.5.0`; isolated live assignment, rollback, export and save/reopen persistence
+checks pass. Version `v1.22.2` uses only the
+owner-confirmed `GRADE OF CONCRETE` and `Grade` Text parameters as authoritative grade sources;
+material/name inference is deliberately excluded. Version `v1.22.0`
 adds missing structural material to the Unmapped Element Report. Version `v1.21.1`
 lists workbook sheets in their real order in the export popup. Version `v1.21.0`
 adds the P10 Unmapped Element Report: an `Unmapped Elements` sheet in Classic and Site workbooks

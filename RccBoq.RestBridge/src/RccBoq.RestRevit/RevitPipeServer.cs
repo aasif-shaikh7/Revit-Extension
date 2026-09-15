@@ -49,7 +49,8 @@ internal sealed class RevitPipeServer : IDisposable
                             400,
                             new { ok = false, error = "Unsupported bridge operation" });
                     }
-                    else if ((operation is "element" or "rebar" or "set_parameter")
+                    else if ((operation is "element" or "rebar" or "set_parameter"
+                              or "set_structural_material")
                              && request.ElementId is null or <= 0)
                     {
                         response = BridgeResponse.Json(
@@ -120,6 +121,7 @@ internal sealed class RevitPipeServer : IDisposable
     private static readonly HashSet<string> AllowedOperations = new(
         [
             "status", "document", "selection", "element", "rebar",
+            "materials", "set_structural_material",
             "last_export_validation", "boq_export_status", "start_boq_export",
             "set_parameter"
         ],

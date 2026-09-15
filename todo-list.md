@@ -58,6 +58,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
 | INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `done` (`v1.19.0`) |
+| INT-04 | Controlled Structural Material assignment | — | **done** (`v1.23.0`, Bridge `v2.5.0`) |
 
 ---
 
@@ -65,7 +66,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 **Current product focus:** P7 Site / Manual Structural Items (suggested next; the P10 first slice
 closed in `v1.21.0`). P4 and P5 native Rebar/BBS QA are
-complete through `v1.19.1`. Agent Bridge runs at `v2.4.0` from `v1.20.0`.
+complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material assignment is done
+after isolated Secondary rollback, assignment, export and save/reopen persistence QA (`v1.23.0`).
 
 ### P10-03 - Unmapped Element Report follow-ups - `testing` (`v1.22.2`)
 
@@ -79,6 +81,14 @@ rejection of material/name inference.
 93,623/93,623 cells across 12 sheets with zero mismatches. `M40` populated all five concrete
 categories and `BOQ by Grade`; 36 `(No Grade)` Structure Walls were confirmed by read-only
 instance/type inspection to have blank or absent authoritative grade data.
+An isolated UMA NIWAS Classic export also validated 13,895/13,895 cells across 12 sheets with zero
+mismatches. Its 12 `(No Grade)` findings (3 Beams and 9 Columns) were confirmed across every
+instance and all three unique types as genuine blank/absent authoritative grade data.
+After owner-confirmed M30/M40 values were written to those 12 instances through guarded Secondary
+API transactions, fresh reads verified every value and a new Classic export contained zero
+`(No Grade)` elements while validating 13,745/13,745 cells across 12 sheets with zero mismatches.
+The test document remains unsaved; Volume and Structural Material findings are separate model-data
+work.
 **Remaining:** routing findings on a model with `Other` Slab/Foundation routes are still
 unexercised live.
 

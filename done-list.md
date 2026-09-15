@@ -1178,6 +1178,33 @@ is running, so the README now restores the manifest from a saved copy.
 
 ---
 
+## INT-04 — Controlled Structural Material assignment — **done** (`v1.23.0`, Bridge `v2.5.0`)
+
+**Asked for:** diagnose and fix the 316 Slab/Foundation `Missing structural material` findings in
+the UMA NIWAS workbook through the isolated second Revit window.
+
+**Built:** a bounded 1,000-item active-document material catalog and a dedicated type/material write
+operation across REST, CLI and the 11-tool MCP server. Writes are dry-run-first, consent-gated and
+expected-current guarded (`0` means blank), with native read-back and forced rollback. Family types
+use the built-in Structural Material parameter. Read-only system types accept only one unambiguous
+compound-structure `Structure` layer; no layer is added, removed or reordered. Generic ElementId
+writes, document save, delete, arbitrary paths and arbitrary code remain unavailable.
+
+**How it is known to work:** Primary/Secondary zero-warning builds, Core/MCP tests, Python compile
+and all 189 XLSX checks pass. In isolated Secondary Revit 2025, the saved UMA NIWAS `TEST COPY`
+returned 631 materials. Thirteen affected types resolved layer 0 with their already-correct layer
+material. Consent-off rejection and a consented F1 forced rollback passed; all 13 guarded writes and
+independent reads then returned `RCC_SLAB`, `RCC_FOOTING` or `PCC_FOOTING`. A Classic export
+validated 12,165/12,165 cells across 12 sheets with zero mismatch and SHA-256
+`0d0dbde94cf562825c34b3fb2e0be03c954420702de843e5d226a8b040864e27`: zero `(No Grade)`, zero
+missing Structural Material, and only 20 independent Beam missing/zero-volume findings. After the
+owner saved, a normal close/reopen with write consent disabled preserved all 13 values.
+
+**Cost / limits:** actual writes affect the open document but the bridge never saves it; the owner
+must save manually. Ambiguous or absent structural layers are rejected instead of guessed.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

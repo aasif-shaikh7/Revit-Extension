@@ -26,7 +26,7 @@ def read_token(path=TOKEN_PATH):
 
 
 def endpoint_path(command, element_id=None):
-    if command in ("status", "document", "selection"):
+    if command in ("status", "document", "selection", "materials"):
         return "/rcc-boq/" + command
     if command == "last-validation":
         return "/rcc-boq/boq/last-validation"
@@ -38,6 +38,8 @@ def endpoint_path(command, element_id=None):
         return "/rcc-boq/{0}/{1}".format(command + "s" if command == "element" else command, element_id)
     if command == "set-parameter" and element_id is not None:
         return "/rcc-boq/elements/{0}/parameter".format(element_id)
+    if command == "set-structural-material" and element_id is not None:
+        return "/rcc-boq/element-types/{0}/structural-material".format(element_id)
     raise ValueError("An element ID is required")
 
 
@@ -74,13 +76,16 @@ def build_parser():
         "command",
         choices=(
             "status", "document", "selection", "element", "rebar",
-            "last-validation", "export-status", "start-export", "set-parameter",
+            "materials", "last-validation", "export-status", "start-export",
+            "set-parameter", "set-structural-material",
         ),
     )
     parser.add_argument("element_id", nargs="?", type=int)
     parser.add_argument("--parameter-name")
     parser.add_argument("--value")
     parser.add_argument("--expected-current-value")
+    parser.add_argument("--material-id", type=int)
+    parser.add_argument("--expected-current-material-id", type=int)
     parser.add_argument(
         "--force-rollback",
         action="store_true",
@@ -92,7 +97,7 @@ def build_parser():
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="Apply the edit; without this flag set-parameter is a dry-run preview.",
+        help="Apply a write/export; without this flag write operations are dry-run previews.",
     )
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--token-file", default=TOKEN_PATH)
@@ -111,6 +116,21 @@ def main(argv=None):
                 "parameterName": args.parameter_name,
                 "value": args.value,
                 "expectedCurrentValue": args.expected_current_value,
+                "dryRun": not args.apply,
+                "requestId": args.request_id,
+                "forceRollback": args.force_rollback,
+            }
+        elif args.command == "set-structural-material":
+            if args.material_id is None or args.material_id <= 0:
+                raise ValueError("--material-id must be a positive integer")
+            if (
+                args.expected_current_material_id is not None
+                and args.expected_current_material_id < 0
+            ):
+                raise ValueError("--expected-current-material-id must be zero or positive")
+            body = {
+                "materialId": args.material_id,
+                "expectedCurrentMaterialId": args.expected_current_material_id,
                 "dryRun": not args.apply,
                 "requestId": args.request_id,
                 "forceRollback": args.force_rollback,

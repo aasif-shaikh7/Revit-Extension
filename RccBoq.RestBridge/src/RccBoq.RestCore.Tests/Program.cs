@@ -49,6 +49,26 @@ try
         CancellationToken.None);
     Assert(restoredRollback == rollbackRequest && restoredRollback.ForceRollback,
         "forced rollback request pipe round trip");
+    BridgeRequest materialRequest = new(
+        "set_structural_material",
+        3070326,
+        DryRun: false,
+        RequestId: "core-material-rollback",
+        ForceRollback: true,
+        MaterialId: 123456,
+        ExpectedCurrentMaterialId: 0);
+    await using MemoryStream materialStream = new();
+    await PipeProtocol.WriteAsync(materialStream, materialRequest, CancellationToken.None);
+    materialStream.Position = 0;
+    BridgeRequest restoredMaterial = await PipeProtocol.ReadAsync<BridgeRequest>(
+        materialStream,
+        CancellationToken.None);
+    Assert(restoredMaterial == materialRequest
+        && restoredMaterial.MaterialId == 123456
+        && restoredMaterial.ExpectedCurrentMaterialId == 0,
+        "structural material request pipe round trip");
+    Assert(BridgeConstants.Version == "2.5.0" && BridgeConstants.ApiVersion == "2.5.0",
+        "bridge semantic version");
     Assert(
         Equals(RebarValueRules.NormalizeDimension(string.Empty, false), "Varies"),
         "false HasValue varying dimension");

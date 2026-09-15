@@ -11,6 +11,9 @@ string input = string.Join('\n',
     "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_last_export_validation\",\"arguments\":{}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_export_status\",\"arguments\":{}}}",
     "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_start_export\",\"arguments\":{\"export_format\":\"site\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_materials\",\"arguments\":{}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_set_structural_material\",\"arguments\":{\"element_id\":3070326,\"material_id\":123456,\"expected_current_material_id\":0,\"force_rollback\":true}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\",\"params\":{\"name\":\"rcc_boq_set_structural_material\",\"arguments\":{\"element_id\":3070326,\"material_id\":0}}}",
     string.Empty);
 
 using StringReader reader = new(input);
@@ -22,7 +25,7 @@ await server.RunAsync(CancellationToken.None);
 string[] lines = writer.ToString().Split(
     Environment.NewLine,
     StringSplitOptions.RemoveEmptyEntries);
-Assert(lines.Length == 8, "response count excludes notification");
+Assert(lines.Length == 11, "response count excludes notification");
 
 using JsonDocument initialize = JsonDocument.Parse(lines[0]);
 Assert(initialize.RootElement.GetProperty("result").GetProperty("protocolVersion").GetString()
@@ -30,22 +33,31 @@ Assert(initialize.RootElement.GetProperty("result").GetProperty("protocolVersion
 
 using JsonDocument list = JsonDocument.Parse(lines[1]);
 JsonElement tools = list.RootElement.GetProperty("result").GetProperty("tools");
-Assert(tools.GetArrayLength() == 9, "tool count");
-Assert(tools.EnumerateArray().Take(7).All(tool =>
+Assert(tools.GetArrayLength() == 11, "tool count");
+Assert(tools[5].GetProperty("name").GetString() == "rcc_boq_materials",
+    "material catalog tool name");
+Assert(tools[10].GetProperty("name").GetString() == "rcc_boq_set_structural_material",
+    "structural material write tool name");
+Assert(tools.EnumerateArray().Take(8).All(tool =>
     tool.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean()),
     "read-only annotations");
-JsonElement exportTool = tools[7];
+JsonElement exportTool = tools[8];
 Assert(!exportTool.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean(),
     "export tool annotation");
 Assert(!exportTool.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean(),
     "export tool non-destructive annotation");
 Assert(!exportTool.GetProperty("annotations").GetProperty("idempotentHint").GetBoolean(),
     "export tool non-idempotent annotation");
-JsonElement writeTool = tools[8];
+JsonElement writeTool = tools[9];
 Assert(!writeTool.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean(),
     "write tool annotation");
 Assert(writeTool.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean(),
     "write tool destructive annotation");
+JsonElement materialWriteTool = tools[10];
+Assert(!materialWriteTool.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean(),
+    "material write tool annotation");
+Assert(materialWriteTool.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean(),
+    "material write tool destructive annotation");
 
 using JsonDocument call = JsonDocument.Parse(lines[2]);
 Assert(!call.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),
@@ -54,7 +66,8 @@ Assert(gateway.Paths.SequenceEqual(new[]
     {
         "/rcc-boq/rebar/3411763",
         "/rcc-boq/boq/last-validation",
-        "/rcc-boq/boq/export-status"
+        "/rcc-boq/boq/export-status",
+        "/rcc-boq/materials"
     }),
     "fixed endpoint allow-list");
 
@@ -65,9 +78,6 @@ Assert(invalid.RootElement.GetProperty("error").GetProperty("code").GetInt32() =
 using JsonDocument write = JsonDocument.Parse(lines[4]);
 Assert(!write.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),
     "parameter dry-run tool call");
-Assert(gateway.PostPaths.SequenceEqual(new[]
-    { "/rcc-boq/elements/3411763/parameter", "/rcc-boq/boq/export" }),
-    "write endpoint allow-list");
 Assert(gateway.PostBodies[0].GetProperty("dryRun").GetBoolean(),
     "parameter edits default to dry-run");
 Assert(gateway.PostBodies[0].GetProperty("forceRollback").GetBoolean(),
@@ -86,6 +96,33 @@ Assert(!startExport.RootElement.GetProperty("result").GetProperty("isError").Get
     "start export dry-run tool call");
 Assert(gateway.PostBodies[1].GetProperty("dryRun").GetBoolean(),
     "BOQ export defaults to dry-run");
+
+using JsonDocument materials = JsonDocument.Parse(lines[8]);
+Assert(!materials.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),
+    "material catalog tool call");
+
+using JsonDocument setMaterial = JsonDocument.Parse(lines[9]);
+Assert(!setMaterial.RootElement.GetProperty("result").GetProperty("isError").GetBoolean(),
+    "structural material dry-run tool call");
+Assert(gateway.PostPaths.SequenceEqual(new[]
+    {
+        "/rcc-boq/elements/3411763/parameter",
+        "/rcc-boq/boq/export",
+        "/rcc-boq/element-types/3070326/structural-material"
+    }),
+    "write endpoint allow-list");
+Assert(gateway.PostBodies[2].GetProperty("dryRun").GetBoolean(),
+    "structural material assignment defaults to dry-run");
+Assert(gateway.PostBodies[2].GetProperty("materialId").GetInt64() == 123456,
+    "material ID forwarded");
+Assert(gateway.PostBodies[2].GetProperty("expectedCurrentMaterialId").GetInt64() == 0,
+    "blank expected material guard forwarded");
+Assert(gateway.PostBodies[2].GetProperty("forceRollback").GetBoolean(),
+    "material forced rollback flag forwarded");
+
+using JsonDocument invalidMaterial = JsonDocument.Parse(lines[10]);
+Assert(invalidMaterial.RootElement.GetProperty("error").GetProperty("code").GetInt32() == -32602,
+    "invalid material ID rejected");
 
 Console.WriteLine("RCC BOQ MCP tests passed");
 

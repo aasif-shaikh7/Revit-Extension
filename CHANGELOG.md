@@ -22,6 +22,63 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.23.0] - 2026-09-15
+
+### Added (controlled Structural Material assignment)
+- Agent Bridge `v2.5.0` adds a read-only `GET /rcc-boq/materials` catalog, bounded to 1,000
+  materials from the active document, plus matching CLI and `rcc_boq_materials` MCP access.
+- Added a dedicated `POST /rcc-boq/element-types/<element_id>/structural-material` operation and
+  `rcc_boq_set_structural_material` MCP tool. It accepts only an explicit active-document material
+  ID and an ElementType in Structural Foundations, Floors, Structural Framing, Structural Columns
+  or Walls.
+- Structural Material writes default to dry-run, require the temporary Revit write session for
+  apply, support an optimistic `expected_current_material_id` guard (`0` means blank), perform
+  native read-back, and expose a forced-failure rollback probe for isolated QA.
+- Writable family types use the built-in type parameter. System types whose Structural Material is
+  derived/read-only use only an unambiguous compound-structure `Structure` layer; the operation sets
+  that layer's material and designates its structural-material index without adding/deleting layers.
+
+### Safety
+- The general `set_parameter` operation still rejects every `ElementId` parameter. Structural
+  Material is available only through the new narrow type/material endpoint; arbitrary ElementId
+  writes remain unavailable.
+- The bridge still exposes no save, delete, arbitrary path or arbitrary code operation. A successful
+  assignment changes only the open Revit document and reports `document_saved=false`.
+
+### Verified / remaining
+- **Tested (host-free):** Primary and Secondary Revit add-in/Gateway builds pass with zero warnings
+  and errors; Primary and Secondary Core and 11-tool MCP protocol suites pass; Python compilation
+  and the complete 189-check XLSX regression harness pass.
+- **Tested (live):** isolated Secondary Revit 2025 loaded `v2.5.0` on the saved `TEST COPY` of UMA
+  NIWAS while the shared manifest was restored to Primary. Its bounded catalog returned all 631
+  materials. All 13 affected Slab/Foundation types resolved one structural layer at index 0 with
+  the correct existing layer material (`RCC_SLAB`, `RCC_FOOTING` or `PCC_FOOTING`).
+- Consent-disabled apply was rejected without change. A consented F1 forced-failure probe returned
+  `RolledBack`, and fresh read-back confirmed effective Structural Material returned to blank while
+  the layer's existing `RCC_FOOTING` material remained unchanged.
+- With owner-enabled consent, all 13 guarded type transactions committed and independent generic
+  element reads returned the expected Structural Material. The 316 prior missing-material findings
+  dropped to zero. The final Classic workbook contains zero `(No Grade)`, only the independent 20
+  Beam missing/zero-volume findings, and validates 12,165/12,165 cells across 12 sheets with zero
+  mismatches (SHA-256
+  `0d0dbde94cf562825c34b3fb2e0be03c954420702de843e5d226a8b040864e27`).
+- **Persistence verified:** after the owner manually saved `TEST COPY`, the Secondary Revit process
+  was normally closed and the saved RVT reopened with write consent disabled. Fresh reads of all 13
+  types matched their expected `RCC_SLAB`, `RCC_FOOTING` or `PCC_FOOTING` values.
+- **Installed (Primary production):** with Revit 2025 closed, `scripts/install_rest_bridge.ps1`
+  published Primary `v2.5.0` with zero warnings/errors and pointed the Revit manifest at
+  `RestBridge\v2.5.0\RccBoq.RestRevit.dll` (previous `v2.4.0` manifest backed up). Installed
+  binaries carry the Primary pipe/port constants, and the installed STDIO MCP server completed an
+  initialize/tools-list handshake reporting `v2.5.0` with all 11 tools. Codex `rcc-boq-v2` now
+  targets the `v2.5.0` MCP server (previous config backed up).
+- **Tested (live, Primary):** a fresh Revit 2025 (`25.0.2`) launch opened port `48885` within ~35 s.
+  Authenticated REST status and the installed MCP `rcc_boq_status` tool both returned API `2.5.0`,
+  channel `primary`, `revit_connected=true` and write consent disabled; an unauthenticated request
+  returned `401`. With no model open, document and material-catalog reads returned the bounded
+  `No active Revit document` error. Primary reads against an open project remain owner-driven.
+
+---
+
 ## [v1.22.2] - 2026-09-15
 
 ### Fixed (authoritative concrete-grade fields)
@@ -53,6 +110,25 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - The same live export reported 36 Structure Walls as `(No Grade)`. Read-only API inspection of
   sample instances and their types confirmed the authoritative grade field is blank/absent, so
   these are genuine model-data findings rather than resolver false positives.
+- **Second-project live verification:** an isolated Secondary Classic export of
+  `R25-UMA NIWAS BUILDING-ST-31-08-2026` validated 13,895/13,895 cells across 12 sheets with zero
+  mismatches and did not save the model. The authoritative fields produced M30/M40/M10 groups,
+  including M40 for 3 Beams, 185 Columns, 12 Structure Walls, 2 Slabs and 10 Foundations.
+  The remaining `(No Grade)` set is 3 Beams plus 9 Columns. Read-only inspection of all 12
+  instances and their three unique types (`B43(a)`, `B55(h)` and `FC1`) confirmed blank/absent
+  `GRADE OF CONCRETE`/`Grade` data. Final workbook SHA-256:
+  `2a59e0d5ef056ac41f8314c1892a41eca4d1e366ea8b3ed2c8085347388e71ba`.
+- With the owner's explicit grade confirmation, the Secondary Agent Bridge set M30 on the three
+  Beam instances and M40 on the nine FC1 Column instances. All 12 writes passed blank-current-value
+  guards and fresh native read-back; the document remained unsaved. The post-fill Classic export
+  contains zero `(No Grade)` elements and validates 13,745/13,745 cells across 12 sheets with zero
+  mismatches (SHA-256
+  `844f64a89aec50a7ba8d61cd5ebf9b43095b4993da08916415e86e109e42572f`).
+- The post-fill workbook still correctly reports independent model-quality issues: 20 Beams with
+  missing/zero computed Volume and 316 Slab/Foundation elements with missing Structural Material.
+  Six zero-volume Beam IDs from the earlier workbook were already unresolvable through the active
+  document API before the grade writes and are absent from the later snapshot; the bridge exposes
+  no delete operation.
 
 ---
 

@@ -131,7 +131,7 @@ internal sealed class McpServer(
                 ["name"] = "rcc-boq-revit",
                 ["version"] = BridgeConstants.Version,
             },
-            ["instructions"] = "Controlled access to the active Revit 2025 document through the local RCC BOQ Agent Bridge. Reads and dry-runs are always available. Actual parameter writes and fixed-folder BOQ exports require the user to enable a short write session from Revit's Agent Bridge pushbutton. Never claim a write or export succeeded unless its result reports completion; the bridge never saves the Revit document automatically.",
+            ["instructions"] = "Controlled access to the active Revit 2025 document through the local RCC BOQ Agent Bridge. Reads and dry-runs are always available. Actual parameter writes, structural-material assignments and fixed-folder BOQ exports require the user to enable a short write session from Revit's Agent Bridge pushbutton. Never claim a write or export succeeded unless its result reports completion; the bridge never saves the Revit document automatically.",
         });
     }
 
@@ -144,6 +144,10 @@ internal sealed class McpServer(
             Tool("rcc_boq_selection", "Read bounded identity for the current Revit selection.", EmptySchema()),
             Tool("rcc_boq_element", "Read bounded identity and parameters for one Revit element.", ElementSchema()),
             Tool("rcc_boq_rebar", "Read native and derived data for one Revit Rebar element.", ElementSchema()),
+            Tool(
+                "rcc_boq_materials",
+                "Read a bounded material catalog from the active Revit document.",
+                EmptySchema()),
             Tool(
                 "rcc_boq_last_export_validation",
                 "Read the latest bounded canonical BOQ XLSX validation report produced by the exporter.",
@@ -163,6 +167,12 @@ internal sealed class McpServer(
                 "rcc_boq_set_parameter",
                 "Preview or apply one allow-listed Revit parameter edit. Dry-run defaults to true; apply requires temporary user consent in Revit.",
                 SetParameterSchema(),
+                readOnly: false,
+                destructive: true),
+            Tool(
+                "rcc_boq_set_structural_material",
+                "Preview or assign one active-document material to an allow-listed structural element type. Dry-run defaults to true; apply requires temporary user consent in Revit.",
+                SetStructuralMaterialSchema(),
                 readOnly: false,
                 destructive: true),
         ];
@@ -189,6 +199,7 @@ internal sealed class McpServer(
             "rcc_boq_selection" => "/rcc-boq/selection",
             "rcc_boq_element" => ElementPath(parameters, "/rcc-boq/elements/"),
             "rcc_boq_rebar" => ElementPath(parameters, "/rcc-boq/rebar/"),
+            "rcc_boq_materials" => "/rcc-boq/materials",
             "rcc_boq_last_export_validation" => "/rcc-boq/boq/last-validation",
             "rcc_boq_export_status" => "/rcc-boq/boq/export-status",
             _ => null,
@@ -197,6 +208,12 @@ internal sealed class McpServer(
         if (name == "rcc_boq_set_parameter")
         {
             return await CallSetParameterAsync(id, parameters, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (name == "rcc_boq_set_structural_material")
+        {
+            return await CallSetStructuralMaterialAsync(id, parameters, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -335,6 +352,63 @@ internal sealed class McpServer(
         }
     }
 
+    private async Task<JsonObject> CallSetStructuralMaterialAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(parameters, out JsonElement arguments)
+            || !arguments.TryGetProperty("element_id", out JsonElement elementId)
+            || !elementId.TryGetInt64(out long elementIdValue)
+            || elementIdValue <= 0
+            || !arguments.TryGetProperty("material_id", out JsonElement materialId)
+            || !materialId.TryGetInt64(out long materialIdValue)
+            || materialIdValue <= 0)
+        {
+            return Error(id, -32602, "Positive element_id and material_id are required");
+        }
+
+        long? expectedCurrentMaterialId = null;
+        if (arguments.TryGetProperty(
+                "expected_current_material_id", out JsonElement expectedElement))
+        {
+            if (!expectedElement.TryGetInt64(out long expectedValue) || expectedValue < 0)
+            {
+                return Error(
+                    id,
+                    -32602,
+                    "expected_current_material_id must be zero or a positive integer");
+            }
+            expectedCurrentMaterialId = expectedValue;
+        }
+
+        bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
+            || dryRunElement.ValueKind != JsonValueKind.False;
+        bool forceRollback = arguments.TryGetProperty(
+            "force_rollback", out JsonElement forceRollbackElement)
+            && forceRollbackElement.ValueKind == JsonValueKind.True;
+        object body = new
+        {
+            materialId = materialIdValue,
+            expectedCurrentMaterialId,
+            dryRun,
+            requestId = OptionalString(arguments, "request_id"),
+            forceRollback
+        };
+        try
+        {
+            GatewayResult result = await gateway.PostAsync(
+                $"/rcc-boq/element-types/{elementIdValue}/structural-material",
+                body,
+                cancellationToken).ConfigureAwait(false);
+            return ToolResult(id, result);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return BridgeUnavailable(id, exception);
+        }
+    }
+
     private static string? ElementPath(JsonElement parameters, string prefix)
     {
         if (!parameters.TryGetProperty("arguments", out JsonElement arguments)
@@ -415,6 +489,47 @@ internal sealed class McpServer(
             ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
         },
         ["required"] = new JsonArray("element_id", "parameter_name", "value"),
+        ["additionalProperties"] = false,
+    };
+
+    private static JsonObject SetStructuralMaterialSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["element_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+                ["description"] = "Positive Revit element type ID."
+            },
+            ["material_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+                ["description"] = "Positive material ID from rcc_boq_materials."
+            },
+            ["expected_current_material_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 0,
+                ["description"] = "Optimistic concurrency guard. Use 0 to require the current material to be blank."
+            },
+            ["dry_run"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true,
+                ["description"] = "Keep true to preview. False requires a temporary write session enabled in Revit."
+            },
+            ["force_rollback"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = false,
+                ["description"] = "QA only: assign the material, force a controlled exception, roll back, and verify the original material."
+            },
+            ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
+        },
+        ["required"] = new JsonArray("element_id", "material_id"),
         ["additionalProperties"] = false,
     };
 

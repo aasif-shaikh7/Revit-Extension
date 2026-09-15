@@ -72,6 +72,9 @@ internal sealed class RevitExternalEventHandler : IExternalEventHandler, IDispos
             BridgeResponse response = pending.Request.Operation switch
             {
                 "set_parameter" => RevitWriteService.SetParameter(application, pending.Request),
+                "materials" => RevitMaterialService.List(application),
+                "set_structural_material" => RevitMaterialService.SetStructuralMaterial(
+                    application, pending.Request),
                 "start_boq_export" => HeadlessBoqExportService.Start(application, pending.Request),
                 _ => RevitReadService.Execute(application, pending.Request)
             };
