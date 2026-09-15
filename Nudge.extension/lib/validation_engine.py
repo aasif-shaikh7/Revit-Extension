@@ -17,6 +17,7 @@ CONCRETE_CATEGORIES = ("Beam", "Column", "Structure Wall", "Slab", "Foundation")
 
 ISSUE_MISSING_GRADE = "Missing concrete grade"
 ISSUE_MISSING_VOLUME = "Missing or zero volume"
+ISSUE_MISSING_MATERIAL = "Missing structural material"
 ISSUE_UNCERTAIN_ROUTING = "Uncertain Slab/Foundation mapping"
 ISSUE_DUPLICATE_ROUTING = "Duplicate routing source"
 
@@ -27,6 +28,11 @@ def _text(value):
         return str(value if value is not None else "").strip()
     except Exception:
         return ""
+
+
+def _is_missing_material(value):
+    """True when a resolved material name gives the BOQ nothing to use."""
+    return _text(value) in ("", "<By Category>", "<None>")
 
 
 def _is_missing_volume(value):
@@ -104,17 +110,23 @@ def collect_routing_findings(detail_results, duplicate_ids=None):
     return findings
 
 
-def build_unmapped_element_report(data_result, routing_findings=None):
+def build_unmapped_element_report(data_result, routing_findings=None,
+                                  element_materials=None):
     """Return the P10 report table: headers plus one row per finding.
 
     Only elements present in this export are reported, so Slab/Foundation
     subtype filters and "Export selected only" never list elements that are
     absent from the workbook. Grade and volume are judged only when the row
     carries those columns. A header-only table means nothing was found.
+
+    element_materials maps Element ID to the resolved structural material
+    name. Material is judged only for IDs present in that mapping, so an
+    export that never resolved materials reports no material findings.
     """
     data = data_result if isinstance(data_result, dict) else {}
     table = [list(UNMAPPED_HEADERS)]
     exported = {}
+    materials = element_materials if isinstance(element_materials, dict) else None
 
     for category in CONCRETE_CATEGORIES:
         for row in data.get(category) or []:
@@ -135,6 +147,17 @@ def build_unmapped_element_report(data_result, routing_findings=None):
                         "No grade parameter, material name or identity "
                         "token resolved to an IS 456 grade (M10-M80)"
                     ])
+
+            if (
+                materials is not None
+                and element_id in materials
+                and _is_missing_material(materials.get(element_id))
+            ):
+                table.append([
+                    category, element_id, level, ISSUE_MISSING_MATERIAL,
+                    "No Structural Material on the element or its type; "
+                    "material-wise quantities cannot use this element"
+                ])
 
             if (
                 "Qty: Volume (m3)" in row

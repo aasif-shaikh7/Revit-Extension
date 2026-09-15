@@ -22,6 +22,53 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.22.0] - 2026-09-15
+
+### Added (P10-02 missing structural material)
+- The Unmapped Element Report also flags `Missing structural material` for exported concrete
+  elements whose structural material resolves to blank or `<By Category>`.
+- `resolve_structural_material` in `script.py` reads the per-element parameter index the export
+  already builds: instance `Structural Material`, then type `Structural Material`, then `Material`.
+  An instance value that is blank falls through to the type. No extra ParameterSet iteration is
+  added.
+- Materials reach the report through a separate Element ID map, so no workbook column is added.
+  Material is judged only for elements whose parameters were indexed.
+- Live survey that shaped the rule, on a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026`:
+  Beams (56) and Columns (16) carry an instance value (`RCC_BEAM`, `RCC_COLUMN`); Walls and
+  Foundation Slabs expose it on the type, and 32 of 34 sampled Foundation Slab types were blank.
+  No sampled element had a parameter literally named `Material`.
+
+### Observed, not changed
+- `resolve_concrete_grade` step 2 looks up a parameter named `Material`, which the surveyed models
+  do not have; their material lives in `Structural Material`, so grade-from-material never fires
+  there. It has no effect on these models because their material names carry no M-grade token.
+  Left for a separate owner decision.
+
+### Docs
+- `README.md` Secondary-channel QA now restores the Primary manifest by copying a saved backup.
+  Re-running the installer for Primary fails while the Primary Revit is running, because its
+  add-in and Gateway files are locked, and would leave the shared manifest on Secondary.
+
+### Verified
+- `python test_xlsx_writer.py` passes (187 checks), including 3 new P10-02 checks: the report rule
+  for blank, `<By Category>`, present and unresolved materials; the resolver scope order and
+  fallbacks; and export-handler wiring that only records indexed elements.
+- The survey ran in an isolated second Revit 2025 window on the Secondary bridge (port 48886) against
+  a scratch copy of the model. The owner's working Revit and the Primary bridge were never called,
+  and the shared add-in manifest was restored to Primary (hash verified) as soon as the test Revit
+  had loaded.
+- Live pyRevit Site export of the scratch copy in the isolated test Revit, with write consent
+  granted by the owner in that window only; the model was not saved. 8,245 of 8,245 cells
+  validated across 8 sheets with zero mismatches. `Unmapped Elements` lists 354 findings: 294 on
+  the Slab sheet and 22 on the Foundation sheet for missing structural material, 3 Beam and
+  9 Column for missing concrete grade, and 26 Beam for missing or zero volume.
+- No Beam, Column or Structure Wall reported missing material, matching the survey (`RCC_BEAM`,
+  `RCC_COLUMN`, `RCC_WALL`). Spot check through the Secondary bridge: Foundation Slab elements
+  `3141335` and `3178190` (`BS_300MM`) and `3313456` and `3313469` (`RCC_SLAB_125MM`) have no
+  instance Structural Material and a blank type Structural Material, so they are true findings.
+
+---
+
 ## [v1.21.1] - 2026-09-15
 
 ### Fixed (export popup sheet listing order)

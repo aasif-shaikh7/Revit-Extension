@@ -2870,6 +2870,85 @@ def main():
         "P10 clean export yields a header-only report"
     )
 
+    # v1.22.0 P10-02: missing structural material.
+    material_report = validation_engine.build_unmapped_element_report(
+        {
+            "Beam": [
+                {"Element ID": "11", "Level": "L1", "Grade": "M30",
+                 "Qty: Volume (m3)": 0.5},
+                {"Element ID": "12", "Level": "L1", "Grade": "M30",
+                 "Qty: Volume (m3)": 0.5},
+                {"Element ID": "13", "Level": "L1", "Grade": "M30",
+                 "Qty: Volume (m3)": 0.5},
+            ],
+            "Foundation": [
+                {"Element ID": "14", "Level": "L0", "Grade": "M30",
+                 "Qty: Volume (m3)": 1.0},
+                {"Element ID": "15", "Level": "L0", "Grade": "M30",
+                 "Qty: Volume (m3)": 1.0},
+            ],
+        },
+        [],
+        {"11": "RCC_BEAM", "12": "", "14": "<By Category>", "15": "GRADE_SLAB"}
+    )
+    check(
+        [(row[0], row[1], row[3]) for row in material_report[1:]] == [
+            ("Beam", "12", validation_engine.ISSUE_MISSING_MATERIAL),
+            ("Foundation", "14", validation_engine.ISSUE_MISSING_MATERIAL),
+        ],
+        "P10-02 flags blank and <By Category> structural material; skips "
+        "present materials and elements the export never resolved"
+    )
+
+    material_ns = {
+        "safe_parameter_value": lambda parameter: (
+            "" if parameter is None else parameter.value
+        ),
+    }
+    material_constant, _ = extract_constant_from_sources(
+        texts, "STRUCTURAL_MATERIAL_PARAMETER_NAMES"
+    )
+    exec(material_constant, material_ns)
+    material_block, _ = extract_from_sources(
+        texts, "resolve_structural_material"
+    )
+    exec(material_block, material_ns)
+    resolve_material = material_ns["resolve_structural_material"]
+
+    class FakeMaterialParameter(object):
+        def __init__(self, value):
+            self.value = value
+
+    check(
+        resolve_material({
+            "instance": {"structural material": FakeMaterialParameter("RCC_BEAM")},
+            "type": {},
+        }) == "RCC_BEAM"
+        and resolve_material({
+            "instance": {"structural material": FakeMaterialParameter("")},
+            "type": {"structural material": FakeMaterialParameter("RCC_WALL")},
+        }) == "RCC_WALL"
+        and resolve_material({
+            "instance": {},
+            "type": {"structural material": FakeMaterialParameter("<By Category>")},
+        }) == ""
+        and resolve_material({
+            "instance": {"material": FakeMaterialParameter("Concrete M25")},
+            "type": {},
+        }) == "Concrete M25"
+        and resolve_material({"instance": {}, "type": {}}) == ""
+        and resolve_material(None) == "",
+        "P10-02 material resolver reads instance then type Structural Material, "
+        "falls back to Material and treats <By Category> as missing"
+    )
+    check(
+        "element_materials = {}" in export_handler_source
+        and "material_sink=element_materials" in export_handler_source
+        and "material_sink[" in script_text
+        and "and needs_parameter_context" in script_text,
+        "P10-02 export collects materials only for indexed elements and feeds the report"
+    )
+
     def p10_sheet_order(workbook_path):
         with zipfile.ZipFile(workbook_path, "r") as p10_archive:
             return re.findall(

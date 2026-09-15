@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.21.1'
+__version__ = '1.22.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -56,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.21.1'
+SCRIPT_VERSION = '1.22.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2078,7 +2078,48 @@ def resolve_concrete_grade(element, parameter_context=None):
     return "(No Grade)"
 
 
-def build_element_data(include_grade=True):
+# P10-02: material parameter names read from the per-element parameter
+# index, instance before type. Kept on one line for the regression harness.
+STRUCTURAL_MATERIAL_PARAMETER_NAMES = ("Structural Material", "Material")
+
+
+def resolve_structural_material(parameter_context):
+    """
+    P10-02: return the element's structural material name, or "".
+
+    Beams and Columns carry an instance "Structural Material"; Walls and
+    Foundation Slabs expose it on their type (observed on live Revit 2025
+    models). The export has already indexed both scopes for this element,
+    so this is a dictionary lookup plus one value read - no extra
+    ParameterSet iteration. "<By Category>" counts as missing.
+    """
+    if not isinstance(parameter_context, dict):
+        return ""
+
+    for parameter_name in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
+        key = parameter_name.lower()
+
+        for scope in ("instance", "type"):
+            try:
+                parameter = parameter_context.get(scope, {}).get(key)
+            except:
+                parameter = None
+
+            if parameter is None:
+                continue
+
+            try:
+                value = str(safe_parameter_value(parameter) or "").strip()
+            except:
+                value = ""
+
+            if value and value not in ("<By Category>", "<None>"):
+                return value
+
+    return ""
+
+
+def build_element_data(include_grade=True, material_sink=None):
     """
     Read actual values from the parameters currently selected in the UI.
     The current Selected / Export order is preserved.
@@ -2199,6 +2240,18 @@ def build_element_data(include_grade=True):
                 row["Grade"] = resolve_concrete_grade(
                     element,
                     parameter_context
+                )
+
+            # P10-02: remember the structural material for the unmapped
+            # report without adding a visible workbook column. Only an
+            # indexed element can be judged; an empty context is skipped.
+            if (
+                material_sink is not None
+                and needs_parameter_context
+                and element_name != "Rebar"
+            ):
+                material_sink[row["Element ID"]] = (
+                    resolve_structural_material(parameter_context)
                 )
 
             quantity_values = []
@@ -5468,6 +5521,7 @@ try:
                     metadata_seconds = time.time() - metadata_started
 
                     data_started = time.time()
+                    element_materials = {}
                     (
                         element_data,
                         total_rows,
@@ -5475,7 +5529,8 @@ try:
                     ) = build_element_data(
                         # P10 reports missing concrete grade in both
                         # formats; the Site writer still hides the column.
-                        include_grade=True
+                        include_grade=True,
+                        material_sink=element_materials
                     )
                     data_seconds = time.time() - data_started
 
@@ -5547,7 +5602,8 @@ try:
                             + list(routing_audit.get(
                                 "destination_duplicate_ids", []
                             ))
-                        )
+                        ),
+                        element_materials
                     )
                     unmapped_count = len(unmapped_report) - 1
 

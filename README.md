@@ -205,15 +205,21 @@ below `%LOCALAPPDATA%\RCC_BOQ\AgentExports`. It does not overwrite a requested p
 save the Revit document. Poll `rcc_boq_export_status` until `completed`, then read
 `rcc_boq_last_export_validation`.
 
-For isolated native QA while another Revit process keeps the Primary bridge, install the Secondary
-build, start only the test Revit, then immediately restore the Primary manifest:
+For isolated native QA while another Revit process keeps the Primary bridge, save the Primary
+manifest, install the Secondary build, start only the test Revit, then immediately copy the saved
+manifest back:
 
 ```powershell
+$manifest = "$env:APPDATA\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin"
+Copy-Item $manifest "$env:TEMP\RccBoq.RestBridge.addin.primary"
 powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1 -BridgeChannel Secondary
-# Start/restart the dedicated test Revit process here.
-powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1 -BridgeChannel Primary
+# Start the dedicated test Revit process here and wait until port 48886 answers.
+Copy-Item "$env:TEMP\RccBoq.RestBridge.addin.primary" $manifest -Force
 python scripts\rcc_boq_rest_client.py status --base-url http://127.0.0.1:48886
 ```
+
+Do not restore by re-running the installer for Primary while the Primary Revit is running: its
+add-in and Gateway files are locked, the copy fails, and the shared manifest stays on Secondary.
 
 The Secondary channel is fixed to loopback port `48886` with its own current-user mutex and Named
 Pipe. It shares no Revit API context with the Primary channel on `48885`.
@@ -388,7 +394,8 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.21.1`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.22.0`
+adds missing structural material to the Unmapped Element Report. Version `v1.21.1`
 lists workbook sheets in their real order in the export popup. Version `v1.21.0`
 adds the P10 Unmapped Element Report: an `Unmapped Elements` sheet in Classic and Site workbooks
 listing exported elements with missing concrete grade, missing/zero volume or uncertain

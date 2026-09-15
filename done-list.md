@@ -1152,6 +1152,32 @@ summarising. Missing material is deferred to P10-02 because it needs a new per-e
 
 ---
 
+## P10-02 — Unmapped Element Report: missing structural material — **done** (`v1.22.0`)
+
+**Asked for:** the P10 follow-up slice that reports elements with no structural material.
+
+**Built:** `resolve_structural_material` reads the export's per-element parameter index (instance
+`Structural Material`, then type, then `Material`; blank and `<By Category>` count as missing).
+Results travel in an Element ID map into `build_unmapped_element_report`, which adds
+`Missing structural material` rows without adding any workbook column.
+
+**How it is known to work:** Tested (harness) - 3 P10-02 checks inside the 187-check suite. A live
+survey of a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026` shaped the scope rule: Beam and
+Column material on the instance, Wall and Foundation Slab material on the type. Tested (live,
+headless) in an isolated second Revit 2025 window on the Secondary bridge: Site export validated
+8,245 cells with zero mismatches and reported 316 missing-material findings (294 Slab sheet,
+22 Foundation), none on Beam, Column or Structure Wall. Four spot-checked Foundation Slab elements
+had a blank type Structural Material. The owner's working Revit was never called.
+
+**Unverified:** the Classic format on this model, and routing findings on a model with `Other`
+routes.
+
+**What it cost:** one parameter value read per concrete element from an index the export already
+built. The QA also showed that the documented Secondary restore step fails while the Primary Revit
+is running, so the README now restores the manifest from a saved copy.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.
