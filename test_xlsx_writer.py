@@ -2909,10 +2909,12 @@ def main():
         texts, "STRUCTURAL_MATERIAL_PARAMETER_NAMES"
     )
     exec(material_constant, material_ns)
-    material_block, _ = extract_from_sources(
-        texts, "resolve_structural_material"
-    )
-    exec(material_block, material_ns)
+    for material_helper in (
+        "structural_material_candidates",
+        "resolve_structural_material",
+    ):
+        material_block, _ = extract_from_sources(texts, material_helper)
+        exec(material_block, material_ns)
     resolve_material = material_ns["resolve_structural_material"]
 
     class FakeMaterialParameter(object):
@@ -2940,6 +2942,85 @@ def main():
         and resolve_material(None) == "",
         "P10-02 material resolver reads instance then type Structural Material, "
         "falls back to Material and treats <By Category> as missing"
+    )
+
+    # v1.22.1 P10-03: concrete grade also resolves from Structural Material.
+    grade_ns = {
+        "re": re,
+        "safe_parameter_value": material_ns["safe_parameter_value"],
+        "get_element_identity_text": lambda element, context=None: (
+            getattr(element, "identity", "")
+        ),
+    }
+    for grade_constant in (
+        "CONCRETE_GRADE_VALUES",
+        "STRUCTURAL_MATERIAL_PARAMETER_NAMES",
+    ):
+        grade_line, _ = extract_constant_from_sources(texts, grade_constant)
+        exec(grade_line, grade_ns)
+    exec(
+        re.search(
+            r"^CONCRETE_GRADE_PARAMETER_HINTS = \(.*?\)$",
+            script_text,
+            re.S | re.M
+        ).group(0),
+        grade_ns
+    )
+    for grade_helper in (
+        "normalize_concrete_grade",
+        "find_parameter_in_context",
+        "structural_material_candidates",
+        "resolve_concrete_grade",
+    ):
+        grade_block, _ = extract_from_sources(texts, grade_helper)
+        exec(grade_block, grade_ns)
+    resolve_grade = grade_ns["resolve_concrete_grade"]
+
+    class FakeGradeElement(object):
+        def __init__(self, identity=""):
+            self.identity = identity
+
+    def grade_context(instance=None, type_values=None):
+        return {
+            "instance": dict(
+                (name.lower(), FakeMaterialParameter(value))
+                for name, value in (instance or {}).items()
+            ),
+            "type": dict(
+                (name.lower(), FakeMaterialParameter(value))
+                for name, value in (type_values or {}).items()
+            ),
+            "type_element": None,
+        }
+
+    check(
+        resolve_grade(FakeGradeElement(), grade_context({
+            "Grade of Concrete": "M30",
+            "Structural Material": "Concrete - M25",
+        })) == "M30"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Structural Material": "Concrete - M25",
+        })) == "M25"
+        and resolve_grade(FakeGradeElement(), grade_context(
+            {"Structural Material": ""},
+            {"Structural Material": "M35 RCC"},
+        )) == "M35"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Structural Material": "RCC_BEAM",
+            "Material": "M40 mix",
+        })) == "M40"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Grade of Concrete": "TBD",
+            "Structural Material": "M20",
+        })) == "M20"
+        and resolve_grade(FakeGradeElement("B1 M45"), grade_context({
+            "Structural Material": "RCC_BEAM",
+        })) == "M45"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Structural Material": "RCC_BEAM",
+        })) == "(No Grade)",
+        "P10-03 grade resolver tries Structural Material (instance, then type) "
+        "and Material after the grade parameter and before identity text"
     )
     check(
         "element_materials = {}" in export_handler_source

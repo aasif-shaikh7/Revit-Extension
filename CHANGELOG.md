@@ -22,6 +22,35 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.22.1] - 2026-09-15
+
+### Fixed (P10-03 concrete grade from structural material)
+- `resolve_concrete_grade` step 2 now reads `Structural Material` (instance, then type) before
+  `Material`. Before, it looked up only a parameter named `Material`, which the surveyed Revit 2025
+  models do not have, so a grade carried in a structural material name (for example
+  `Concrete - M25`) was never used and such elements fell through to identity text or `(No Grade)`.
+- A new `structural_material_candidates` helper yields every non-empty material name in priority
+  order. The grade resolver tries each one, so a mix-free `Structural Material` such as `RCC_BEAM`
+  never hides a graded `Material`. `resolve_structural_material` (P10-02) now returns the first
+  candidate, so the missing-material check is unchanged.
+- Grade precedence is unchanged: grade parameter, then material, then identity text. Where a model
+  carries different grades in its material name and its identity text, the material grade now wins,
+  as the documented order always intended.
+
+### Verified
+- Before and after on the real function source: with an instance `Structural Material` of
+  `Concrete - M25` or a type value of `M35 RCC`, the `v1.22.0` resolver returns `(No Grade)`;
+  `v1.22.1` returns `M25` and `M35`.
+- `python test_xlsx_writer.py` passes (188 checks), including a new P10-03 check covering
+  grade-parameter precedence, instance and type Structural Material, a `Material` fallback behind a
+  mix-free Structural Material, an invalid grade parameter falling through, identity text and
+  `(No Grade)`. The P10-02 material checks still pass after the helper refactor.
+- **Unverified (live):** the two surveyed models name materials without a grade token (`RCC_BEAM`,
+  `RCC_COLUMN`, `RCC_WALL`, `Concrete, Cast-in-Place gray`), so a live export there cannot show a
+  changed grade. No live export has been run for this release.
+
+---
+
 ## [v1.22.0] - 2026-09-15
 
 ### Added (P10-02 missing structural material)

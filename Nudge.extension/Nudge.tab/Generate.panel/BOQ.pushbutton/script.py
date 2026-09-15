@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.22.0'
+__version__ = '1.22.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -56,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.22.0'
+SCRIPT_VERSION = '1.22.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2015,8 +2015,11 @@ def resolve_concrete_grade(element, parameter_context=None):
     Tries, in order:
       1. A recognized grade parameter (see CONCRETE_GRADE_PARAMETER_HINTS)
          on the element or its type, read with the existing scope helpers.
-      2. The Material parameter's target material name (Revit material
-         names often carry the mix, e.g. "Concrete - M25").
+      2. The structural material name - "Structural Material" before
+         "Material", instance before type (Revit material names often
+         carry the mix, e.g. "Concrete - M25"). Every candidate is tried,
+         so a mix-free "Structural Material" never hides a graded
+         "Material".
       3. A grade token inside the element's identity text
          (element name | type | family | common labels).
 
@@ -2045,23 +2048,28 @@ def resolve_concrete_grade(element, parameter_context=None):
 
     try:
         if parameter_context is not None:
-            material_parameter, _scope = find_parameter_in_context(
-                parameter_context,
-                "Material"
+            material_names = list(
+                structural_material_candidates(parameter_context)
             )
         else:
-            material_parameter = element.LookupParameter("Material")
+            material_names = []
 
-        material_id = material_parameter.AsElementId()
+            for material_hint in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
+                material_parameter = find_grade_parameter(
+                    element,
+                    material_hint
+                )
 
-        if material_id is not None:
-            material = doc.GetElement(material_id)
+                if material_parameter is not None:
+                    material_names.append(
+                        safe_parameter_value(material_parameter)
+                    )
 
-            if material is not None:
-                grade = normalize_concrete_grade(material.Name)
+        for material_name in material_names:
+            grade = normalize_concrete_grade(material_name)
 
-                if grade:
-                    return grade
+            if grade:
+                return grade
     except:
         pass
 
@@ -2083,18 +2091,19 @@ def resolve_concrete_grade(element, parameter_context=None):
 STRUCTURAL_MATERIAL_PARAMETER_NAMES = ("Structural Material", "Material")
 
 
-def resolve_structural_material(parameter_context):
+def structural_material_candidates(parameter_context):
     """
-    P10-02: return the element's structural material name, or "".
+    P10-02/P10-03: yield every non-empty material name from the export's
+    parameter index in priority order - "Structural Material" before
+    "Material", instance before type. "<By Category>" is skipped.
 
     Beams and Columns carry an instance "Structural Material"; Walls and
     Foundation Slabs expose it on their type (observed on live Revit 2025
     models). The export has already indexed both scopes for this element,
-    so this is a dictionary lookup plus one value read - no extra
-    ParameterSet iteration. "<By Category>" counts as missing.
+    so each candidate is a dictionary lookup plus one value read.
     """
     if not isinstance(parameter_context, dict):
-        return ""
+        return
 
     for parameter_name in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
         key = parameter_name.lower()
@@ -2114,7 +2123,13 @@ def resolve_structural_material(parameter_context):
                 value = ""
 
             if value and value not in ("<By Category>", "<None>"):
-                return value
+                yield value
+
+
+def resolve_structural_material(parameter_context):
+    """P10-02: return the highest-priority structural material name, or ""."""
+    for material_name in structural_material_candidates(parameter_context):
+        return material_name
 
     return ""
 

@@ -67,12 +67,14 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 closed in `v1.21.0`). P4 and P5 native Rebar/BBS QA are
 complete through `v1.19.1`. Agent Bridge runs at `v2.4.0` from `v1.20.0`.
 
-### P10-03 - Unmapped Element Report follow-ups - `todo`
+### P10-03 - Unmapped Element Report follow-ups - `testing` (`v1.22.1`)
 
-The material slice is done (`v1.22.0`, see `done-list.md`). Still open: routing findings on a
-model with `Other` Slab/Foundation routes have not been exercised live, and the owner decides
-whether `resolve_concrete_grade` should also read `Structural Material`, since the surveyed models
-carry no parameter named `Material`.
+**Built:** `resolve_concrete_grade` reads `Structural Material` (instance, then type) before
+`Material`, trying every candidate (owner decision, 2026-09-15).
+**Tested (harness):** the P10-03 check inside the 188-check suite, plus a before/after run on the real
+function source.
+**Remaining:** a live export on a model whose material names carry a grade token; routing findings
+on a model with `Other` Slab/Foundation routes are still unexercised live.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 
