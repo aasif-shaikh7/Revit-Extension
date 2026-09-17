@@ -1850,7 +1850,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 
     if len(summary_table) > 1:
 
-        summary_data_end = len(summary_table) - 1
+        # Row 1 is the header, so the last category sits on this row.
+        summary_data_end = len(summary_table)
 
         grand_values = ["GRAND TOTAL"]
 

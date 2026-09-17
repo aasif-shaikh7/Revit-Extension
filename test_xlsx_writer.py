@@ -1752,6 +1752,23 @@ def main():
             "BOQ Summary has a GRAND TOTAL row"
         )
 
+        summary_row_numbers = [
+            int(number)
+            for number in re.findall(r'<row r="(\d+)"', summary_xml)
+        ]
+        grand_total_row = max(summary_row_numbers)
+        last_category_row = grand_total_row - 1
+
+        check(
+            last_category_row >= 2
+            and all(
+                "<f>SUM({0}2:{0}{1})</f>".format(letter, last_category_row)
+                in summary_xml
+                for letter in ("B", "C", "D", "E")
+            ),
+            "BOQ Summary GRAND TOTAL sums every category row, including the last"
+        )
+
         styles_xml = archive.read("xl/styles.xml").decode("utf-8")
 
         check(

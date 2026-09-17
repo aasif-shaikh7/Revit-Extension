@@ -22,6 +22,48 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.23.1] - 2026-09-17
+
+### Fixed (Classic BOQ Summary GRAND TOTAL)
+- The Classic `BOQ Summary` GRAND TOTAL formulas ended one row early (`SUM(B2:B5)` with five
+  category rows), so the last exported category - Foundation whenever it was present - was left out
+  of every grand total. The range now ends on the last category row (`SUM(B2:B6)`). The per-category
+  rows, element sheets, Site Summary and `BOQ by Level`/`BOQ by Grade` SUMIF sheets were unaffected.
+- The workbook validator compares cell text/formulas against canonical rows built by the same
+  engine, so it could not detect this wrong-but-consistent formula; the harness now asserts the
+  GRAND TOTAL range explicitly.
+
+### Tests
+- `test_xlsx_writer.py` adds a GRAND TOTAL range check. It fails against the `v1.23.0` engine and
+  passes after the fix; all checks pass.
+- `test_rest_api.py` was stale since `v1.23.0` (it still required exactly two POST routes and failed).
+  It now requires the three bounded write routes, including the structural-material route, and
+  passes. RestCore and RestMcp suites pass unchanged.
+
+### Verified (live) / findings
+- **Tested (live):** isolated Secondary Revit 2025 (`25.0.2.419`, Bridge `v2.5.0` channel
+  `secondary`) opened a scratch copy of `STRUCTURE - KINDER GARTEN.rvt`
+  (`P10-03-TEST-KINDER-GARTEN-ST`) while the owner's Primary Revit was untouched; the shared add-in
+  manifest was restored to Primary right after port `48886` opened. The model was not saved.
+- Before the fix, Classic (5,121/5,121 cells, 12 sheets) and Site (3,413/3,413 cells, 8 sheets)
+  validated with zero mismatches and showed `GRAND TOTAL =SUM(B2:B5)` over 137 Beam, 60 Column,
+  8 Structure Wall, 73 Slab and 30 Foundation rows. The final `v1.23.1` Classic export validated
+  5,121/5,121 cells across 12 sheets with zero mismatches, labels the tool `v1.23.1` and reads
+  `=SUM(B2:B6)` (SHA-256 `b1bf91146ceb64d3a843af186b490ea64f774eae854e2b9b2585adf2bb2a671f`).
+- T-02 sample: 20 exported rows (four each from Beam, Column, Structure Wall, Slab, Foundation)
+  match native Revit Volume/Area **at Revit's displayed precision** (0.01 m3, 1 m2). The bridge
+  returns display strings, so full-precision agreement is not claimed.
+- P10 reported 314 findings (308 missing concrete grade, 6 Column missing structural material) and
+  **zero routing findings**: every Structural Foundation in this model uses the `Foundation Slab`
+  family, so the generic `slab` wording routes any non-exact code to Slab and no element reaches
+  `Other`. P10-03 `Other`-route findings therefore remain unexercised live.
+- **Open classification question (not changed):** `F2A` (2), `WF1` and `WF2` footings at
+  `-02-Foundation Level` (0.5-0.6 m) are routed to the Slab sheet, because `F2A`/`WF1` are not exact
+  `F<number>` codes and the family name contains `Slab`. Whether these codes are footings is an
+  owner decision before any classifier change.
+
+---
+
 ## [v1.23.0] - 2026-09-15
 
 ### Added (controlled Structural Material assignment)

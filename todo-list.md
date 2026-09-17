@@ -90,7 +90,13 @@ API transactions, fresh reads verified every value and a new Classic export cont
 The test document remains unsaved; Volume and Structural Material findings are separate model-data
 work.
 **Remaining:** routing findings on a model with `Other` Slab/Foundation routes are still
-unexercised live.
+unexercised live. The `v1.23.1` Kinder Garten scratch-copy export also produced zero `Other`
+routes (all foundations use the `Foundation Slab` family, so generic `slab` wording wins). A model
+whose Floor/Foundation identities contain neither a known code nor `slab`/`foundation` wording is
+still needed.
+**Owner decision needed (`v1.23.1` finding):** `F2A`, `WF1` and `WF2` footings at Foundation Level
+route to the Slab sheet. Confirm whether `F<number><letter>` and `WF<number>` are footing codes
+before the classifier is changed.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 
@@ -304,6 +310,9 @@ fix in the same Revit session. Remaining for full P0 closure: dual-engine parity
 still pending (T-03).
 
 ### T-02 — Quantity accuracy on real materials — `testing`
+**Tested (live, `v1.23.1`, display precision):** 20 Classic rows from the Kinder Garten scratch copy
+(four per Beam/Column/Structure Wall/Slab/Foundation) match native Revit Volume and Area at Revit's
+displayed precision (0.01 m3, 1 m2). Full-precision comparison still needs a raw-value read.
 **State:** Metric conversion logic is deterministic and harness-tested with sample data, but true
 `Qty: Volume/Area/Length` values on actual Revit elements are
 
@@ -388,6 +397,10 @@ generation stamp, tool version and the sheet listing.
 **Tested (harness):** cover meta/listing checks, sanitization and default-name regex all pass.
 **Remaining:** live Revit confirmation of the suggested filename and cover contents; then tag
 `v1.3.0`.
+**Partly verified (live, `v1.23.1`):** a headless Classic Agent export's `Summary` cover shows the
+project title, generation stamp, `RCC BOQ Parameter Manager v1.23.1` and all 11 following sheets in
+order. The interactive Save-dialog filename suggestion is not reachable headlessly and remains
+unverified.
 
 ### OUT-02 — 3D view snapshot — `decision pending`
 A true/embedded Revit 3D view inside Excel is **not feasible** via the supported API. The realistic

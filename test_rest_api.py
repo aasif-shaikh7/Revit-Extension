@@ -118,10 +118,12 @@ def run():
         gateway_source = gateway_file.read()
     check("127.0.0.1" not in gateway_source, "gateway URL must come from shared constants")
     check("Headers.Authorization" in gateway_source, "Bearer authorization is missing")
-    check(gateway_source.count("app.MapPost(") == 2,
-          "API must expose exactly two bounded write routes")
+    check(gateway_source.count("app.MapPost(") == 3,
+          "API must expose exactly three bounded write routes")
     check('"/rcc-boq/elements/{elementId:long}/parameter"' in gateway_source,
           "bounded parameter-write route missing")
+    check('"/rcc-boq/element-types/{elementId:long}/structural-material"' in gateway_source,
+          "bounded structural-material write route missing")
     check('"/rcc-boq/boq/last-validation"' in gateway_source,
           "bounded last-export validation route missing")
     check('"/rcc-boq/boq/export-status"' in gateway_source,

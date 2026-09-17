@@ -409,7 +409,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.0`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.1`
+fixes the Classic `BOQ Summary` GRAND TOTAL, which previously omitted the last category row
+(Foundation). Version `v1.23.0`
 adds a bounded material catalog and a guarded, dry-run-first Structural Material type assignment
 through Agent Bridge `v2.5.0`; isolated live assignment, rollback, export and save/reopen persistence
 checks pass. Version `v1.22.2` uses only the
