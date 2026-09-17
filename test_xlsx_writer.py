@@ -2597,6 +2597,11 @@ def main():
         ("F1", "Floors", "Foundation", "Footing"),
         ("F10", "Floors", "Foundation", "Footing"),
         ("CF2", "Floors", "Foundation", "Combined Footing"),
+        ("F2A", "Structural Foundations", "Foundation", "Footing"),
+        ("CF1A", "Floors", "Foundation", "Combined Footing"),
+        ("WF1", "Structural Foundations", "Foundation", "Footing"),
+        ("Foundation Slab: F2A", "Structural Foundations", "Foundation", "Footing"),
+        ("Foundation Slab: WF2", "Structural Foundations", "Foundation", "Footing"),
         ("PCC_FOOTING", "Floors", "Foundation", "PCC"),
         ("RAFT_PCC", "Floors", "Foundation", "PCC"),
         ("RCC_SLAB_F1", "Floors", "Foundation", "Footing"),
@@ -2619,7 +2624,7 @@ def main():
             )
         )
 
-    for unsafe_name in ("F", "SF", "FLOOR", "FOLD"):
+    for unsafe_name in ("F", "SF", "FLOOR", "FOLD", "WF", "F2AB"):
         unsafe = classify_name(unsafe_name, "Floors")
         check(
             unsafe["logical_group"] == "Slab"

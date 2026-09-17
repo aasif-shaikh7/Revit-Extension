@@ -111,8 +111,8 @@ dependencies imported into the pyRevit host.
 - **Add / Remove selection** with a live search box per tab.
 - **Central logical classification** for Slab and Foundation. Floors and Structural Foundations
   are both routed by construction identity, not physical category: `S1`, `GS`, Grade/Fold Slab
-  and Chajja go to Slab; exact `F<number>` / `CF<number>`, PCC and raft identities go to
-  Foundation. A pre-export audit prevents duplicate or missing element IDs and retains unknowns
+  and Chajja go to Slab; exact `F<number>` / `CF<number>` / `WF<number>` codes (optionally with one
+  variant letter, such as `F2A`), PCC and raft identities go to Foundation. A pre-export audit prevents duplicate or missing element IDs and retains unknowns
   under a controlled `Other` subtype.
 - **Export scope** — optionally restrict output to exactly the elements selected in the current
   Revit view.
@@ -409,7 +409,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.1`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.2`
+routes owner-confirmed footing codes with a variant letter (`F2A`) and wall-footing codes (`WF1`)
+to Foundation / Footing. Version `v1.23.1`
 fixes the Classic `BOQ Summary` GRAND TOTAL, which previously omitted the last category row
 (Foundation). Version `v1.23.0`
 adds a bounded material catalog and a guarded, dry-run-first Structural Material type assignment

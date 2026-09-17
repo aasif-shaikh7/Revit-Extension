@@ -94,9 +94,9 @@ unexercised live. The `v1.23.1` Kinder Garten scratch-copy export also produced 
 routes (all foundations use the `Foundation Slab` family, so generic `slab` wording wins). A model
 whose Floor/Foundation identities contain neither a known code nor `slab`/`foundation` wording is
 still needed.
-**Owner decision needed (`v1.23.1` finding):** `F2A`, `WF1` and `WF2` footings at Foundation Level
-route to the Slab sheet. Confirm whether `F<number><letter>` and `WF<number>` are footing codes
-before the classifier is changed.
+**Resolved in `v1.23.2`:** the owner confirmed `F2A`-style and `WF<number>` codes are footings.
+They now route to Foundation / Footing; live Kinder Garten export moved exactly the four affected
+elements from Slab to Foundation with zero validation mismatches.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

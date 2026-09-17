@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.23.1'
+__version__ = '1.23.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -56,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.23.1'
+SCRIPT_VERSION = '1.23.2'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2612,7 +2612,7 @@ def _contains_rcc_identity_signal(value):
     ):
         return True
     return (
-        code_token_match(text, ('f', 'cf', 's'))
+        code_token_match(text, ('f', 'cf', 'wf', 's'))
         or code_token_match(text, ('gs',))
     )
 
@@ -2793,7 +2793,11 @@ def code_token_match(text, prefixes):
         alternatives = []
         for prefix in prefixes:
             prefix_text = str(prefix or '').lower()
-            if prefix_text in ('f', 'cf', 's'):
+            if prefix_text in ('f', 'cf', 'wf'):
+                # Owner-confirmed footing codes may carry one variant
+                # letter after the number (F2A, CF1A, WF1).
+                alternatives.append(re.escape(prefix_text) + r'[0-9]+[a-z]?')
+            elif prefix_text == 's':
                 alternatives.append(re.escape(prefix_text) + r'[0-9]+')
             elif prefix_text:
                 alternatives.append(re.escape(prefix_text) + r'[0-9]*')
@@ -2918,9 +2922,9 @@ def classify_rcc_element(element, source_category=''):
     ):
         logical_group, subtype = 'Foundation', 'Combined Footing'
         reason = 'Combined footing name or exact CF<number> code'
-    elif 'footing' in text or code_token_match(text, ('f',)):
+    elif 'footing' in text or code_token_match(text, ('f', 'wf')):
         logical_group, subtype = 'Foundation', 'Footing'
-        reason = 'Footing name or exact F<number> code'
+        reason = 'Footing name or exact F<number>/WF<number> code'
     elif 'combined raft' in text or 'combine raft' in text:
         logical_group, subtype = 'Foundation', 'Combined Raft'
         reason = 'Combined raft identity'

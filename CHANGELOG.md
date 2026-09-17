@@ -22,6 +22,38 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.23.2] - 2026-09-17
+
+### Fixed (footing code routing)
+- **Owner decision (2026-09-17):** `F<number><letter>` codes such as `F2A` and wall-footing codes
+  such as `WF1`/`WF2` are footings, with no separate Wall Footing subtype.
+- `code_token_match` now accepts one optional variant letter after the number for `F`, `CF` and the
+  new `WF` prefix (`F2A`, `CF1A`, `WF1`). `S<number>` stays strict. Bare `WF` and two-letter
+  suffixes such as `F2AB` are still rejected.
+- The Footing branch matches `F` and `WF` codes, so a `Foundation Slab: F2A` identity routes to
+  Foundation / Footing before the generic `slab` wording is considered. `CF1A` routes to Combined
+  Footing.
+
+### Tests
+- `test_xlsx_writer.py` adds routing cases for `F2A`, `CF1A`, `WF1`, `Foundation Slab: F2A`,
+  `Foundation Slab: WF2`, plus strict-boundary rejection of `WF` and `F2AB`. The five new routing
+  cases fail on the `v1.23.1` classifier and pass after the change; all checks pass.
+
+### Verified (live)
+- **Tested (live):** isolated Secondary Revit 2025 (`25.0.2.419`) opened the owner-saved Revit 2025
+  scratch copy `R25-P10-03-TEST-KINDER-GARTEN-ST`; the owner's Primary Revit was untouched and the
+  model was not saved by the bridge.
+- Classic validated 5,116/5,116 cells across 12 sheets and Site 3,413/3,413 across 8 sheets, both
+  with zero mismatches (Classic SHA-256
+  `edf47f82c84a66bf064cb09d890cca3fdf595d8d4e4e608292aea4e18f711dc6`).
+- Compared with the `v1.23.1` export, exactly four elements moved from Slab to Foundation, confirmed
+  by native reads as `F2A` (`347475`, `347539`), `WF2` (`348393`) and `WF1` (`376917`), all
+  `Structural Foundations` / `Foundation Slab`. Slab went from 73 to 69 and Foundation from 30 to 34;
+  the combined ID set is unchanged with no overlap. `BOQ by Level` lost only its now-empty
+  Foundation Level x Slab row (the 5-cell difference). GRAND TOTAL remains `=SUM(B2:B6)`.
+
+---
+
 ## [v1.23.1] - 2026-09-17
 
 ### Fixed (Classic BOQ Summary GRAND TOTAL)
