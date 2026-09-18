@@ -35,7 +35,8 @@ Revit-Extension/
 ├── todo-list.md
 ├── scripts/
 │   ├── install_rest_bridge.ps1  <- build/publish/install the Revit bridge
-│   └── rcc_boq_rest_client.py   <- dependency-free local Gateway client
+│   ├── rcc_boq_rest_client.py   <- dependency-free local Gateway client
+│   └── revit_authoring.py       <- Revit-bound model builder, run via `pyrevit run`
 ├── RccBoq.RestBridge/
 │   ├── RccBoq.RestBridge.addin.template
 │   └── src/
@@ -105,6 +106,8 @@ Nudge.extension/
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
     ├── export_validation.py <- canonical XLSX cell validation + bounded report (pure Python)
     ├── validation_engine.py <- P9/P10 model-quality checks + unmapped element report (pure Python)
+    ├── rule_engine.py       <- P8 host-free RCC classification/audit rules (pure Python)
+    ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
     ├── agent_export_job.py  <- fixed-path headless export job contract (pure Python)
     └── Resources/
         ├── Brand.Colors.Light.xaml
@@ -296,7 +299,7 @@ every phase:
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
 | P7 Site items | settings + element sheets |
-| P8 Rule Engine | `rule_engine.py` |
+| P8 Rule Engine | `lib/rule_engine.py` (**exists since v1.24.0**: host-free classification rules; the Revit-bound classifier stays in `script.py`) |
 | P9 Validation Engine | `lib/validation_engine.py` (**exists since v1.21.0** as the P10 foundation) |
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
@@ -305,3 +308,4 @@ every phase:
 | P14 Revision | `lib/export_engine.py` |
 | P15 Model change detection | separate diagnostic module |
 | P16 Dashboard | new feature/UI module |
+| QA fixtures (not a roadmap phase) | `lib/authoring_spec.py` (pure declarations + expected quantities, **exists since v1.24.0**) with the Revit-bound builder in `scripts/revit_authoring.py`, run through `pyrevit run` |

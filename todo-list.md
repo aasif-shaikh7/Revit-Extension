@@ -48,9 +48,9 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
-| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `todo` |
+| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (first slice `v1.24.0`: `lib/rule_engine.py`) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
-| P10 | Unmapped Element Report | 4/4/2/4 | **first slice done** (`v1.21.0`); missing-material slice **done** (`v1.22.0`) |
+| P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | `todo` |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `todo` |
 | P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | `todo` |
@@ -68,35 +68,6 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 closed in `v1.21.0`). P4 and P5 native Rebar/BBS QA are
 complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material assignment is done
 after isolated Secondary rollback, assignment, export and save/reopen persistence QA (`v1.23.0`).
-
-### P10-03 - Unmapped Element Report follow-ups - `testing` (`v1.22.2`)
-
-**Built:** `resolve_concrete_grade` treats only the case-insensitive `GRADE OF CONCRETE` and `Grade`
-Text parameters as authoritative (owner correction, 2026-09-15). `Grade of Concrete` precedes
-`Grade`; each field falls through from instance to type when blank or invalid. Structural Material,
-Material and identity text are no longer grade sources.
-**Tested (harness):** syntax checks and all 189 checks pass, including field/scope precedence and
-rejection of material/name inference.
-**Tested (live):** an isolated Secondary Revit 2025 Classic export of the AMANI model validated
-93,623/93,623 cells across 12 sheets with zero mismatches. `M40` populated all five concrete
-categories and `BOQ by Grade`; 36 `(No Grade)` Structure Walls were confirmed by read-only
-instance/type inspection to have blank or absent authoritative grade data.
-An isolated UMA NIWAS Classic export also validated 13,895/13,895 cells across 12 sheets with zero
-mismatches. Its 12 `(No Grade)` findings (3 Beams and 9 Columns) were confirmed across every
-instance and all three unique types as genuine blank/absent authoritative grade data.
-After owner-confirmed M30/M40 values were written to those 12 instances through guarded Secondary
-API transactions, fresh reads verified every value and a new Classic export contained zero
-`(No Grade)` elements while validating 13,745/13,745 cells across 12 sheets with zero mismatches.
-The test document remains unsaved; Volume and Structural Material findings are separate model-data
-work.
-**Remaining:** routing findings on a model with `Other` Slab/Foundation routes are still
-unexercised live. The `v1.23.1` Kinder Garten scratch-copy export also produced zero `Other`
-routes (all foundations use the `Foundation Slab` family, so generic `slab` wording wins). A model
-whose Floor/Foundation identities contain neither a known code nor `slab`/`foundation` wording is
-still needed.
-**Resolved in `v1.23.2`:** the owner confirmed `F2A`-style and `WF<number>` codes are footings.
-They now route to Foundation / Footing; live Kinder Garten export moved exactly the four affected
-elements from Slab to Foundation with zero validation mismatches.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

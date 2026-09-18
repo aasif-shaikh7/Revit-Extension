@@ -276,6 +276,39 @@ fallback). Same engine reality as BOQ-9: the installed pyRevit (master `6.5.3`) 
 
 ---
 
+## P10-03 — `Other`-route unmapped reporting — **done** (`v1.24.0`)
+
+**Asked for:** close the last P10-03 gap — routing findings had never been exercised on a model
+whose Slab/Foundation identities carry neither a known code nor `slab`/`foundation` wording. No
+production model had ever produced one.
+
+**Built:** the fixture was authored rather than waited for. `lib/authoring_spec.py` declares the
+model and `scripts/revit_authoring.py` builds it in Revit, with `family_path` added so the fixture
+could pin `M_Cup Foundation` — `M_Footing-Rectangular` would have contributed a `footing` routing
+token through its family name alone.
+
+**How it is known to work — Tested (live), owner-confirmed:**
+- Agent run, headless job path: Classic validated `260/260` cells across 9 sheets and Site
+  `194/194` across 5, both with zero mismatches.
+- **Project owner ran the real dialog** (Nudge → Generate → RCC BOQ, `Mark` selected on Slab and
+  Foundation) and exported `20260918-AgentTest-OtherRoute-CONCRETE_FINISHING_BOQ.xlsx`.
+- The owner's dialog workbook and the agent's headless workbook have **identical sheet lists (9)
+  and byte-identical Unmapped Elements tables (8 rows)**.
+- Exactly two `Uncertain Slab/Foundation mapping` rows appear, with levels resolved:
+  `Slab / 423208 / Level 2 / Floor / Deck Panel PX1` and
+  `Foundation / 424050 / Level 1 / M_Cup Foundation / Pedestal PD1`.
+- Control element `423217` (`Typical Slab ST1`) is listed only under grade/material issues and
+  never under routing, so the routing rows are specific to the `Other` route rather than blanket
+  output.
+
+**What it cost / what was learned:** the dialog and the headless job path do **not** behave alike at
+the export guard. `script.py` blocks an export with zero selected parameters and no Rebar, but
+exempts the headless job (`and _headless_export_job is None`). An agent-run export therefore cannot
+by itself prove the dialog path — which is exactly why the owner's run was required, and why the
+guard difference is now recorded as a known limitation.
+
+---
+
 ## BOQ Parameter Manager — Level Sync-style header/footer composition (v1.4.3)
 
 **What.** The BOQ dialog's header and footer are restyled to match the Level Sync Studio dialog's

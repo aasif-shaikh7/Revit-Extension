@@ -51,6 +51,7 @@ ENGINE_MODULES = [
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "assembly_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "rule_engine.py"),
 ]
 
 # The exec'd write_basic_xlsx does a call-time
@@ -3184,6 +3185,208 @@ def main():
         "get_output" not in engine_guard_block
         and "not is_cp3123 and not is_ironpython" in engine_guard_block,
         "Known CP3123/IP27 engines do not force an output popup"
+    )
+
+    # ------------------------------------------------------------
+    # P8 rule engine split (lib/rule_engine.py)
+    #
+    # The routing regression above already runs these rules; these
+    # checks pin down *where* they come from, so a future edit cannot
+    # quietly move a rule back into script.py and lose its isolation.
+    # ------------------------------------------------------------
+    rule_engine_path = os.path.join(LIB_DIR, "rule_engine.py")
+    with io.open(rule_engine_path, "r", encoding="utf-8-sig") as handle:
+        rule_engine_source = handle.read()
+
+    check(
+        "import Autodesk" not in rule_engine_source
+        and "from Autodesk" not in rule_engine_source
+        and "from pyrevit" not in rule_engine_source
+        and "import pyrevit" not in rule_engine_source,
+        "P8 rule engine imports no Revit or pyRevit symbol"
+    )
+
+    moved_rules = (
+        "normalize_label",
+        "code_token_match",
+        "_contains_rcc_identity_signal",
+        "_element_source_category",
+        "_element_routing_key",
+        "_safe_element_id_text",
+        "validate_classification_audit",
+        "classification_audit_has_findings",
+    )
+    rule_sources = {}
+    for rule_name in moved_rules:
+        _block, rule_path = extract_from_sources(texts, rule_name)
+        rule_sources[rule_name] = os.path.basename(rule_path)
+    check(
+        set(rule_sources.values()) == {"rule_engine.py"},
+        "P8 classification rules resolve from lib/rule_engine.py"
+    )
+
+    for revit_bound in ("classify_rcc_element", "build_logical_rcc_collections"):
+        _block, bound_path = extract_from_sources(texts, revit_bound)
+        check(
+            os.path.basename(bound_path) == "script.py",
+            "P8 leaves the Revit-bound {} in script.py".format(revit_bound)
+        )
+
+    # ------------------------------------------------------------
+    # Authoring spec engine (lib/authoring_spec.py)
+    #
+    # Imported directly rather than name-extracted: it is a self
+    # contained pure module, so importing it keeps the engine's own
+    # internal calls intact and avoids shadowing names that the
+    # extracted BOQ engines already define in the shared namespace.
+    # ------------------------------------------------------------
+    import authoring_spec
+
+    authoring_source_path = os.path.join(LIB_DIR, "authoring_spec.py")
+    with io.open(authoring_source_path, "r", encoding="utf-8-sig") as handle:
+        authoring_source = handle.read()
+
+    check(
+        "import Autodesk" not in authoring_source
+        and "from Autodesk" not in authoring_source
+        and "from pyrevit" not in authoring_source
+        and "import pyrevit" not in authoring_source,
+        "Authoring spec engine imports no Revit or pyRevit symbol"
+    )
+
+    authored = authoring_spec.normalize_model_spec({
+        "template": "T.rte",
+        "output_path": "out.rvt",
+        "levels": [
+            {"name": "Level 2", "elevation_mm": 3000.0},
+            {"name": "Level 1", "elevation_mm": 0.0},
+        ],
+        "elements": [
+            {"kind": "column", "name": "C1", "top_level": "Level 2"},
+            {"kind": "beam", "name": "B1"},
+            {"kind": "slab", "name": "S1"},
+            {"kind": "foundation", "name": "F1"},
+        ],
+    })
+
+    check(
+        [level["name"] for level in authored["levels"]] == ["Level 1", "Level 2"],
+        "Authoring spec sorts declared levels by elevation"
+    )
+
+    check(
+        authored["elements"][0]["width_mm"] == 300.0
+        and authored["elements"][0]["depth_mm"] == 450.0
+        and authored["elements"][1]["length_mm"] == 4000.0
+        and authored["elements"][2]["thickness_mm"] == 150.0,
+        "Authoring spec fills per-kind dimension defaults"
+    )
+
+    # 300 x 450 mm over a 3000 mm storey is the column the live Revit
+    # session actually produced (0.4050 m3 read back from the model).
+    check(
+        abs(authoring_spec.expected_element_volume_m3(
+            authored, authored["elements"][0]) - 0.405) < 1e-9,
+        "Authoring spec column volume matches width x depth x storey height"
+    )
+
+    check(
+        abs(authoring_spec.expected_element_volume_m3(
+            authored, authored["elements"][2]) - 1.8) < 1e-9
+        and abs(authoring_spec.expected_element_volume_m3(
+            authored, authored["elements"][3]) - 1.0125) < 1e-9,
+        "Authoring spec footprint volumes cover slab and foundation"
+    )
+
+    check(
+        authoring_spec.validate_model_spec(authored) == [],
+        "Authoring spec accepts a fully declared model"
+    )
+
+    summary = authoring_spec.summarize_expected_quantities(authored)
+    check(
+        summary["total"]["count"] == 4
+        and abs(summary["total"]["volume_m3"]
+                - (0.405 + 0.4140 + 1.8 + 1.0125)) < 1e-9,
+        "Authoring spec summary totals every declared kind"
+    )
+
+    broken = authoring_spec.normalize_model_spec({
+        "levels": [{"name": "Level 1", "elevation_mm": 0.0}],
+        "elements": [
+            {"kind": "column", "name": "C1"},
+            {"kind": "column", "name": "C1", "top_level": "Roof"},
+            {"kind": "wall", "name": "W1"},
+            {"kind": "slab", "name": "S1", "thickness_mm": 0,
+             "base_level": "Basement"},
+        ],
+    })
+    broken_findings = authoring_spec.validate_model_spec(broken)
+    check(
+        any("needs a top_level" in f for f in broken_findings)
+        and any("Duplicate element name: C1" in f for f in broken_findings)
+        and any("top level 'Roof' not declared" in f for f in broken_findings)
+        and any("unknown kind 'wall'" in f for f in broken_findings)
+        and any("non-positive thickness_mm" in f for f in broken_findings)
+        and any("base level 'Basement' not declared" in f
+                for f in broken_findings),
+        "Authoring spec reports every unbuildable declaration by name"
+    )
+
+    check(
+        authoring_spec.expected_element_volume_m3(
+            broken, broken["elements"][0]) is None,
+        "Authoring spec returns no volume when a column has no top level"
+    )
+
+    check(
+        authoring_spec.compare_actual_to_expected(authored, [
+            {"name": "C1", "volume_m3": 0.405},
+            {"name": "B1", "volume_m3": 0.414},
+            {"name": "S1", "volume_m3": 1.8},
+            {"name": "F1", "volume_m3": 1.0125},
+        ]) == [],
+        "Authoring spec comparison passes when Revit built what was declared"
+    )
+
+    drifted = authoring_spec.compare_actual_to_expected(authored, [
+        {"name": "C1", "volume_m3": 0.500},
+        {"name": "B1", "volume_m3": 0.414},
+        {"name": "S1", "volume_m3": 1.8},
+        {"name": "X9", "volume_m3": 2.0},
+    ])
+    check(
+        any("C1: volume 0.5000 m3 differs from declared 0.4050 m3" in f
+            for f in drifted)
+        and any("F1: declared but not built" in f for f in drifted)
+        and any("X9: built but never declared" in f for f in drifted),
+        "Authoring spec comparison flags drift, missing and stray elements"
+    )
+
+    # family_path lets a spec pin the family file, because the family
+    # NAME is itself identity the BOQ classifier reads - the P10-03
+    # fixture needs a foundation whose family name carries no routing
+    # token (M_Footing-Rectangular would contribute "footing").
+    pinned = authoring_spec.normalize_model_spec({
+        "elements": [
+            {"kind": "foundation", "name": "Pedestal PD1",
+             "family_path": "C:/lib/M_Cup Foundation.rfa"},
+            {"kind": "slab", "name": "Deck Panel PX1"},
+        ],
+    })
+    check(
+        pinned["elements"][0]["family_path"] == "C:/lib/M_Cup Foundation.rfa"
+        and pinned["elements"][1]["family_path"] == ""
+        and authoring_spec.validate_model_spec(pinned) == [],
+        "Authoring spec carries an optional family_path and defaults it empty"
+    )
+
+    check(
+        abs(authoring_spec.mm_to_feet(304.8) - 1.0) < 1e-12
+        and abs(authoring_spec.feet_to_mm(1.0) - 304.8) < 1e-12
+        and abs(authoring_spec.cubic_feet_to_cubic_meters(1.0)
+                - 0.028316846592) < 1e-15,
+        "Authoring spec unit conversions round-trip against Revit internals"
     )
 
     print("")

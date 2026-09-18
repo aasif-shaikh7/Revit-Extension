@@ -22,6 +22,136 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.24.0] - 2026-09-18
+
+### Added (authoring API — declarative structural model building)
+- **`Nudge.extension/lib/authoring_spec.py`** — a new pure engine that declares a structural model
+  (levels, element kinds, dimensions, placement, identity text) and derives the quantities those
+  declarations imply. It imports no Revit or pyRevit symbol, so the harness exercises every rule
+  outside Revit. Public API: `normalize_model_spec`, `validate_model_spec`,
+  `expected_element_volume_m3`, `summarize_expected_quantities`, `compare_actual_to_expected`,
+  plus the `mm_to_feet` / `feet_to_mm` / `cubic_feet_to_cubic_meters` conversions.
+- **`scripts/revit_authoring.py`** — the Revit-bound builder that consumes a normalized spec and
+  creates real Column / Beam / Slab / Foundation elements. It holds only host calls, mirroring the
+  engine split the BOQ tool already uses. Driven through `pyrevit run`, configured by
+  `RCC_AUTHORING_SPEC` / `RCC_AUTHORING_RESULT` / `RCC_REPO_DIR`, and it never touches an existing
+  document: it always creates a new project from a template and saves to the declared path.
+- Each element's spec name becomes a duplicated **type name**, so authored models carry identity
+  text the BOQ classifier actually reads — the mechanism P10-03 needs to exercise an `Other` route.
+- The builder writes each dimension through a candidate parameter-name list and **reports the name
+  it actually used** (`width_mm->b`, `thickness_mm->Foundation Thickness`), so a family that exposes
+  none of them is a logged miss rather than a silently wrong size.
+
+### Added (P8 rule engine — first slice of the `script.py` split)
+- **`Nudge.extension/lib/rule_engine.py`** — the host-free RCC classification rules moved verbatim
+  out of `script.py`: `normalize_label`, `code_token_match`, `_contains_rcc_identity_signal`,
+  `_element_source_category`, `_element_routing_key`, `_safe_element_id_text`,
+  `validate_classification_audit` and `classification_audit_has_findings`. The module needs no
+  constants and imports no Revit or pyRevit symbol.
+- The move was scoped by computing each candidate's **transitive call closure**: only functions whose
+  whole closure is host-free were taken. The Revit-bound `classify_rcc_element`,
+  `build_logical_rcc_collections` and `get_element_identity_text` deliberately stay in `script.py`,
+  which drops from 5,931 to 5,822 lines and now imports the rules by their existing names, so the
+  classifier's behavior is unchanged.
+
+### Changed (declared-but-invalid dimensions)
+- `normalize_element_spec` now distinguishes an **absent** dimension (takes the kind default) from
+  one **declared with a non-positive value** (kept as `None` so validation reports it). The first
+  implementation silently substituted the default, which would have built an element the caller
+  never asked for.
+
+### Tests
+- `test_xlsx_writer.py` registers `rule_engine.py` as an engine module and adds 4 checks pinning the
+  P8 split: the rule engine imports no host symbol, all eight rules resolve from `rule_engine.py`,
+  and both Revit-bound classifier functions still resolve from `script.py`. The existing v1.8.10
+  routing regression (F2A / CF1A / WF1 cases included) now runs the rules from their new home.
+- `test_xlsx_writer.py` adds 12 checks covering level sorting, per-kind defaults, column/footprint
+  volumes, full-spec acceptance, summary totals, every unbuildable-declaration finding, the
+  no-top-level volume guard, clean and drifted actual-versus-declared comparison, unit round-trips,
+  and an architectural guard that the engine imports no Revit or pyRevit symbol. All checks pass.
+
+### Verified (live)
+- **Tested (live):** a `pyrevit run` session against Revit 2025 (`25.0.2.419`) built all four kinds
+  from one spec into a new document and saved it. Read-back volumes matched the declared spec
+  exactly with `build_findings: []` — Column `C1` 0.4050 m³, Beam `B1` 0.4140 m³, Slab `S1` 1.8000 m³,
+  Foundation `F1` 1.0125 m³, total 3.6315 m³. Families resolved were
+  `M_Concrete-Rectangular-Column`, `M_Concrete-Rectangular Beam`, `M_Footing-Rectangular` and a
+  duplicated floor type.
+- The owner's working Revit session was not touched: `pyrevit run` starts its own Revit process and
+  the builder only ever writes a newly created document.
+- **Tested (live, IronPython engine):** a second `pyrevit run` session compiled the refactored
+  `script.py` (5,822 lines) inside Revit, imported `rule_engine` and `authoring_spec` from the
+  extension lib, and re-ran the F2A / F2AB / WF1 / label-normalization rules from their new module.
+  `pyrevit run` uses the IPY2712 engine, so this proves the split imports and behaves under
+  IronPython; the production CP3123 path and the BOQ dialog itself still need the project owner.
+
+### Verified (live) — P10-03 `Other` route, previously unexercised
+- The authoring API built a fixture whose identities deliberately carry neither a known code nor
+  `slab`/`foundation` wording, including a foundation on the `M_Cup Foundation` family so the family
+  name itself contributes no routing token.
+- A `pyrevit run` session then extracted the **real 21-function classification closure** from
+  `script.py` and `lib/` (the same extraction `test_xlsx_writer.py` uses, so production source ran,
+  not a copy) and classified the real Revit elements:
+  - Floor `423208` `Floor / Deck Panel PX1` → **Slab / Other** ("Unknown identity retained under
+    source Floor as Other")
+  - Structural Foundation `424050` `M_Cup Foundation / Pedestal PD1` → **Foundation / Other**
+  - Control Floor `423217` `Typical Slab ST1` → **Slab / Slab**, confirming the fixture does not
+    simply fail everything
+- The audit balanced (`Floors=2; Structural Foundations=1; Slab=2; Foundation=1; Duplicates=0;
+  Unclassified=0; Other=2`), `collect_routing_findings` produced 2 findings, and
+  `build_unmapped_element_report` emitted 2 data rows, both
+  `Uncertain Slab/Foundation mapping`.
+- 8 of the 21 closure functions resolved from the new `lib/rule_engine.py`, so the P8 split was
+  exercised on real elements in the same run.
+
+### Verified (live) — full BOQ export on the `Other`-route fixture
+- The shipping `script.py` was run **headlessly through its own queued-job path** (the same
+  `agent_export_job` contract the Agent Bridge uses), against the authored fixture in a live
+  Revit 2025 session. No reimplementation: the production script took the headless branch and both
+  workbooks came out of the normal export pipeline with the owner's saved dialog settings.
+- **Classic:** 9 sheets, canonical validator `260/260` cells, `0` mismatches, SHA-256
+  `8363342f302b738e71e82ae494e7c9859cb8a587326a6d37e6386f1c0cc17dad`.
+- **Site:** 5 sheets, canonical validator `194/194` cells, `0` mismatches, SHA-256
+  `8ebd62e578df68f63e86e0bcb0b0931af7276911c7a1bad14bf257d9f33408c6`.
+- Both workbooks carry an `Unmapped Elements` sheet listing exactly two
+  `Uncertain Slab/Foundation mapping` rows, now with real levels resolved by the export:
+  - `Slab | 423208 | Level 2 | Unknown identity retained under source Floor as Other | Family/Type: Floor / Deck Panel PX1`
+  - `Foundation | 424050 | Level 1 | Unknown identity retained under source Foundation as Other | Family/Type: M_Cup Foundation / Pedestal PD1`
+- The control element `423217` (`Typical Slab ST1`) appears only under grade/material issues and
+  **not** under routing, confirming the routing rows are specific to the `Other` route.
+
+### Verified (live, project owner) — P10-03 closed
+- The project owner ran the **real BOQ dialog** on the fixture (Nudge → Generate → RCC BOQ, `Mark`
+  selected on the Slab and Foundation tabs) and exported
+  `20260918-AgentTest-OtherRoute-CONCRETE_FINISHING_BOQ.xlsx`.
+- That dialog workbook and the agent's headless Classic workbook have **identical sheet lists (9)**
+  and **byte-identical `Unmapped Elements` tables (8 rows)**, including both
+  `Uncertain Slab/Foundation mapping` rows with levels resolved.
+- Detail sheets carry the selected `Mark` column with the authored values (`PX1`, `ST1`, `PD1`) and
+  the read-back quantities (Slab `1.8` / `0.75` m³, Foundation `1.2658` m³).
+- P10-03 is therefore **done**: routing, missing-grade and missing-material reporting are all
+  confirmed on a real `Other`-route model through the shipping dialog.
+
+### Known limitations
+- The BOQ pushbutton was **not** opened in a live Revit session by an agent. The P8 move is
+  behavior-preserving by construction (verbatim functions, unchanged names, harness plus in-Revit
+  compile and rule checks), but a full Classic/Site export on a real project remains owner work.
+- The authoring builder has been exercised on the metric structural template only, and it writes
+  identity through duplicated type names plus Mark/Comments - not through shared parameters.
+- `expected_element_volume_m3` models a prism (footprint x thickness). On the `M_Cup Foundation`
+  fixture element it therefore reported a real difference - built 1.2658 m3 against a declared
+  1.0125 m3 - because that family is not a plain box. The comparator behaved correctly; the spec
+  simply cannot describe shaped families, and volume comparison should be read as meaningful only
+  for prismatic ones.
+- **The dialog and the headless job path differ at the export guard.** `script.py` refuses an export
+  with zero selected parameters and no Rebar in the model, but the condition ends with
+  `and _headless_export_job is None`, so a queued job is exempt. An agent-run headless export can
+  therefore succeed where the dialog would stop the user, and it cannot on its own prove the dialog
+  path. This surfaced during P10-03: the agent's export ran with no parameters selected, while the
+  owner's dialog run required one (`Mark`) before it would export.
+
+---
+
 ## [v1.23.2] - 2026-09-17
 
 ### Fixed (footing code routing)

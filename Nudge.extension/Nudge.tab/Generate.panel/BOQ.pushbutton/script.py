@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.23.2'
+__version__ = '1.24.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -56,7 +56,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.23.2'
+SCRIPT_VERSION = '1.24.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2580,42 +2580,20 @@ def get_parameters(elements, derived_names=None):
 # RCC ELEMENT CLASSIFICATION / FILTER ENGINE
 # ============================================================
 
-def normalize_label(value):
-    try:
-        text = str(value or '').lower()
-    except:
-        text = ''
-
-    # Keep codes such as S1 / GS / CF intact while normalizing
-    # spaces, underscores, hyphens, and punctuation.
-    try:
-        text = re.sub(r'[_\-]+', ' ', text)
-        text = re.sub(r'[^a-z0-9]+', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-    except:
-        pass
-
-    return text
-
-
-def _contains_rcc_identity_signal(value):
-    """True only for construction words or complete RCC identity codes."""
-    text = normalize_label(value)
-    if not text:
-        return False
-    if any(
-        phrase in text
-        for phrase in (
-            'pcc', 'footing', 'raft', 'grade slab', 'gradeslab',
-            'fold slab', 'foldslab', 'slab', 'chajja'
-        )
-    ):
-        return True
-    return (
-        code_token_match(text, ('f', 'cf', 'wf', 's'))
-        or code_token_match(text, ('gs',))
-    )
-
+# P8 rule engine: the host-free classification rules moved to
+# lib/rule_engine.py. The Revit-bound readers below still call them by
+# the same names, so this import keeps the classifier's behavior
+# identical while the rules become independently testable.
+from rule_engine import (
+    normalize_label,
+    code_token_match,
+    _contains_rcc_identity_signal,
+    _element_source_category,
+    _element_routing_key,
+    _safe_element_id_text,
+    validate_classification_audit,
+    classification_audit_has_findings,
+)
 
 def _built_in_parameter_text(element, enum_names):
     """Read the first available built-in parameter as display text."""
@@ -2786,29 +2764,6 @@ def get_element_identity_text(element, parameter_context=None):
     return normalize_label(' | '.join(parts))
 
 
-def code_token_match(text, prefixes):
-    """Match complete RCC codes without accepting unsafe bare prefixes."""
-    try:
-        normalized = normalize_label(text)
-        alternatives = []
-        for prefix in prefixes:
-            prefix_text = str(prefix or '').lower()
-            if prefix_text in ('f', 'cf', 'wf'):
-                # Owner-confirmed footing codes may carry one variant
-                # letter after the number (F2A, CF1A, WF1).
-                alternatives.append(re.escape(prefix_text) + r'[0-9]+[a-z]?')
-            elif prefix_text == 's':
-                alternatives.append(re.escape(prefix_text) + r'[0-9]+')
-            elif prefix_text:
-                alternatives.append(re.escape(prefix_text) + r'[0-9]*')
-        if not alternatives:
-            return False
-        pattern = r'(?<![a-z0-9])(?:' + '|'.join(alternatives) + r')(?![a-z0-9])'
-        return re.search(pattern, normalized) is not None
-    except:
-        return False
-
-
 def _read_identity_parameter(element, parameter_name):
     """Read an instance/type identity value for audit diagnostics."""
     try:
@@ -2820,16 +2775,6 @@ def _read_identity_parameter(element, parameter_name):
         return safe_parameter_value(parameter) if parameter is not None else ''
     except:
         return ''
-
-
-def _element_source_category(element, fallback=''):
-    try:
-        category = element.Category
-        if category is not None and category.Name:
-            return str(category.Name)
-    except:
-        pass
-    return str(fallback or 'Unknown')
 
 
 def _element_family_type_names(element):
@@ -2881,24 +2826,6 @@ def _element_family_type_names(element):
         )
 
     return family_name, type_name
-
-
-def _element_routing_key(element, fallback_index=None):
-    try:
-        return ('id', int(element.Id.IntegerValue))
-    except:
-        try:
-            return ('id', int(element.Id.Value))
-        except:
-            return (
-                'object',
-                id(element) if fallback_index is None else fallback_index
-            )
-
-
-def _safe_element_id_text(element):
-    key = _element_routing_key(element)
-    return str(key[1]) if key[0] == 'id' else 'N/A'
 
 
 def classify_rcc_element(element, source_category=''):
@@ -3045,42 +2972,6 @@ def build_logical_rcc_collections(floor_elements, foundation_elements):
         'results': results,
         'audit': audit,
     }
-
-
-def validate_classification_audit(audit):
-    """Return (valid, summary); export must not ignore a discrepancy."""
-    valid = bool(audit and audit.get('balanced'))
-    summary = (
-        'Floors={0}; Structural Foundations={1}; Slab={2}; '
-        'Foundation={3}; Duplicates={4}; Unclassified={5}; Other={6}'
-    ).format(
-        audit.get('total_floor_source', 0) if audit else 0,
-        audit.get('total_foundation_source', 0) if audit else 0,
-        audit.get('logical_slab', 0) if audit else 0,
-        audit.get('logical_foundation', 0) if audit else 0,
-        (
-            len(audit.get('source_duplicate_ids', []))
-            + len(audit.get('destination_duplicate_ids', []))
-        ) if audit else 0,
-        len(audit.get('unclassified', [])) if audit else 0,
-        len(audit.get('other', [])) if audit else 0,
-    )
-    return valid, summary
-
-
-def classification_audit_has_findings(audit):
-    """True only when the routing audit needs user/developer attention."""
-    valid, _summary = validate_classification_audit(audit)
-    if not valid:
-        return True
-    if not audit:
-        return True
-    return bool(
-        audit.get('source_duplicate_ids', [])
-        or audit.get('destination_duplicate_ids', [])
-        or audit.get('unclassified', [])
-        or audit.get('other', [])
-    )
 
 
 def classification_audit_detail_results(audit):
