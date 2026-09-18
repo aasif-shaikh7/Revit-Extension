@@ -106,7 +106,8 @@ Nudge.extension/
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
     ├── export_validation.py <- canonical XLSX cell validation + bounded report (pure Python)
     ├── validation_engine.py <- P9/P10 model-quality checks + unmapped element report (pure Python)
-    ├── rule_engine.py       <- P8 host-free RCC classification/audit rules (pure Python)
+    ├── rule_engine.py       <- P8 host-free RCC classification/audit + grade rules (pure Python)
+    ├── parameter_engine.py  <- P8 host-free parameter readers + ParameterItem (pure Python)
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
     ├── agent_export_job.py  <- fixed-path headless export job contract (pure Python)
     └── Resources/
@@ -299,7 +300,7 @@ every phase:
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
 | P7 Site items | settings + element sheets |
-| P8 Rule Engine | `lib/rule_engine.py` (**exists since v1.24.0**: host-free classification rules; the Revit-bound classifier stays in `script.py`) |
+| P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1**: host-free classification, grade and parameter-reader rules; Revit-bound readers stay in `script.py`) |
 | P9 Validation Engine | `lib/validation_engine.py` (**exists since v1.21.0** as the P10 foundation) |
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |

@@ -52,6 +52,10 @@ ENGINE_MODULES = [
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "rule_engine.py"),
+    # Appended last on purpose: export_engine.py carries its own
+    # behaviorally identical safe_text, and resolving that name from
+    # where it already resolved keeps this split behavior-neutral.
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "parameter_engine.py"),
 ]
 
 # The exec'd write_basic_xlsx does a call-time
@@ -3225,7 +3229,65 @@ def main():
         "P8 classification rules resolve from lib/rule_engine.py"
     )
 
+    parameter_engine_path = os.path.join(LIB_DIR, "parameter_engine.py")
+    with io.open(parameter_engine_path, "r", encoding="utf-8-sig") as handle:
+        parameter_engine_source = handle.read()
+
+    check(
+        "import Autodesk" not in parameter_engine_source
+        and "from Autodesk" not in parameter_engine_source
+        and "from pyrevit" not in parameter_engine_source
+        and "import pyrevit" not in parameter_engine_source,
+        "P8 parameter engine imports no Revit or pyRevit symbol"
+    )
+
+    moved_readers = (
+        "safe_storage_type",
+        "safe_is_shared",
+        "safe_is_read_only",
+        "safe_definition_info",
+        "find_parameter_on_element",
+        "find_parameter_in_context",
+        "count_parameter_metadata",
+        "get_parameters",
+    )
+    reader_sources = {}
+    for reader_name in moved_readers:
+        _block, reader_path = extract_from_sources(texts, reader_name)
+        reader_sources[reader_name] = os.path.basename(reader_path)
+    check(
+        set(reader_sources.values()) == {"parameter_engine.py"},
+        "P8 parameter readers resolve from lib/parameter_engine.py"
+    )
+
+    # safe_text is the one moved name that also exists in
+    # export_engine.py. What matters is that script.py no longer owns a
+    # copy - whichever engine module answers, it is not the pushbutton.
+    _safe_text_block, safe_text_path = extract_from_sources(texts, "safe_text")
+    check(
+        os.path.basename(safe_text_path) != "script.py",
+        "P8 leaves no safe_text definition in script.py"
+    )
+
+    _grade_block, grade_path = extract_from_sources(
+        texts, "normalize_concrete_grade")
+    check(
+        os.path.basename(grade_path) == "rule_engine.py",
+        "P8 concrete-grade normalization resolves from lib/rule_engine.py"
+    )
+
     for revit_bound in ("classify_rcc_element", "build_logical_rcc_collections"):
+        _block, bound_path = extract_from_sources(texts, revit_bound)
+        check(
+            os.path.basename(bound_path) == "script.py",
+            "P8 leaves the Revit-bound {} in script.py".format(revit_bound)
+        )
+
+    # safe_is_project_parameter reads doc.ParameterBindings, so it is
+    # host-bound despite naming no Revit type, and must not have moved.
+    for revit_bound in ("safe_parameter_value", "find_parameter_with_scope",
+                        "build_parameter_metadata", "resolve_concrete_grade",
+                        "safe_is_project_parameter"):
         _block, bound_path = extract_from_sources(texts, revit_bound)
         check(
             os.path.basename(bound_path) == "script.py",

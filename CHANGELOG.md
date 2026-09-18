@@ -22,6 +22,54 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.24.1] - 2026-09-18
+
+### Added (P8 rule/parameter split — second slice)
+- **`Nudge.extension/lib/parameter_engine.py`** — the host-free parameter readers moved out of
+  `script.py`: `safe_text`, `safe_storage_type`, `safe_is_shared`, `safe_is_read_only`,
+  `safe_definition_info`, `find_parameter_on_element`, `find_parameter_in_context`,
+  `count_parameter_metadata`, `get_parameters`, plus the small `ParameterItem` display shim
+  `get_parameters` returns.
+- **`lib/rule_engine.py`** also takes `normalize_concrete_grade` and its `CONCRETE_GRADE_VALUES`
+  vocabulary, which are host-free rules.
+- `script.py` drops from 5,821 to 5,580 lines and imports every moved name, so behavior is
+  unchanged.
+
+### Changed (how a move is scoped)
+- Scoping is now gated by an **AST free-name check**: a module may move only if every name it reads
+  resolves inside itself. The previous call-graph heuristic looked at function calls alone and
+  missed two real dependencies, both caught by running the export in Revit:
+  - `get_parameters` constructs `ParameterItem`, a **class**, which the heuristic never considered.
+  - `safe_is_project_parameter` reads **`doc.ParameterBindings`** — genuinely host-bound despite
+    naming no Revit type. It stays in `script.py`.
+- Block boundaries are now computed as "up to the next column-0 statement" instead of "up to the
+  next `def`". The older rule swallowed the module-level `from rule_engine import (...)` block that
+  sat between two functions. The `v1.24.0` commit was re-checked and was not affected.
+
+### Tests
+- `test_xlsx_writer.py` registers `parameter_engine.py` (appended last, so `safe_text` keeps
+  resolving from `export_engine.py` exactly as before) and extends the P8 guards to 13 checks,
+  including that `safe_is_project_parameter` did **not** move and that no `safe_text` definition is
+  left in `script.py`. All checks pass.
+
+### Verified (live) — behavior-neutral
+- **Tested (live):** the refactored `script.py` ran the headless Classic export on the P10-03
+  fixture in Revit 2025. Canonical validator `265/265` cells across 9 sheets, zero mismatches.
+- Compared cell-by-cell against the project owner's pre-refactor dialog workbook under the same
+  saved settings: **every sheet and every cell identical**, the sole difference being the `Generated`
+  timestamp on the Summary sheet.
+- The earlier `260`-cell baseline differs only because the owner's dialog run saved `Mark` for Slab
+  and Foundation (1 header + 2 rows, and 1 header + 1 row = the 5 extra cells).
+
+### Known limitations
+- `safe_text` now exists in `lib/parameter_engine.py` and `lib/export_engine.py` with identical
+  behavior, and in `lib/rest_api.py` with a different empty-string default. Consolidation was left
+  out so this slice does not touch the XLSX engine.
+- `get_sample_values` in `script.py` (80 lines) has **no caller anywhere in the repository**. It was
+  left in place rather than removed; deleting it is a project-owner decision.
+
+---
+
 ## [v1.24.0] - 2026-09-18
 
 ### Added (authoring API — declarative structural model building)

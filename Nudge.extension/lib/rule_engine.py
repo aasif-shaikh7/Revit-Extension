@@ -132,3 +132,35 @@ def classification_audit_has_findings(audit):
         or audit.get('unclassified', [])
         or audit.get('other', [])
     )
+
+
+CONCRETE_GRADE_VALUES = ("M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60", "M65", "M70", "M75", "M80")
+
+
+def normalize_concrete_grade(text):
+    """
+    P2: normalize a free-text fragment to a canonical concrete grade
+    token ("M25"). Accepts M25 / m-25 / M 25 spellings. Returns ""
+    when no recognizable grade token is present, so callers can fall
+    through to the next resolution source.
+    """
+    try:
+        candidate = str(text or "")
+    except:
+        return ""
+
+    match = re.search(
+        r"\bM\s*-?\s*(\d{2})\b",
+        candidate,
+        re.IGNORECASE
+    )
+
+    if not match:
+        return ""
+
+    normalized = "M" + match.group(1)
+
+    if normalized in CONCRETE_GRADE_VALUES:
+        return normalized
+
+    return ""

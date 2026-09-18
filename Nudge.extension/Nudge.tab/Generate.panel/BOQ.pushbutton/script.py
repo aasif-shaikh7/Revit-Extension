@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.24.0'
+__version__ = '1.24.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -39,13 +39,23 @@ from System.Windows.Forms import SaveFileDialog, DialogResult
 # PARAMETER ITEM
 # ============================================================
 
-class ParameterItem(object):
+# P8 parameter engine: the host-free readers moved to
+# lib/parameter_engine.py. Revit-bound readers below still call them by
+# the same names, so behavior is unchanged. safe_is_project_parameter
+# stays here because it reads doc.ParameterBindings.
+from parameter_engine import (
+    ParameterItem,
+    safe_text,
+    safe_storage_type,
+    safe_is_shared,
+    safe_is_read_only,
+    safe_definition_info,
+    find_parameter_on_element,
+    find_parameter_in_context,
+    count_parameter_metadata,
+    get_parameters,
+)
 
-    def __init__(self, name):
-        self.Name = name
-
-    def __str__(self):
-        return self.Name
 
 
 # ============================================================
@@ -56,7 +66,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.24.0'
+SCRIPT_VERSION = '1.24.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -283,15 +293,6 @@ parameter_metadata = {
 }
 
 
-def safe_text(value, fallback="Unknown"):
-    """Return a display-safe string without loading the XLSX engine."""
-    try:
-        if value is None:
-            return fallback
-        text = str(value)
-        return text if text else fallback
-    except:
-        return fallback
 
 def safe_element_id(parameter):
     """
@@ -312,34 +313,10 @@ def safe_element_id(parameter):
         return "N/A"
 
 
-def safe_storage_type(parameter):
-    """
-    Return the Revit StorageType name safely.
-    """
-    try:
-        storage_type = parameter.StorageType
-
-        if storage_type is None:
-            return "Unknown"
-
-        return safe_text(storage_type, "Unknown")
-
-    except:
-        return "Unknown"
 
 
-def safe_is_shared(parameter):
-    try:
-        return bool(parameter.IsShared)
-    except:
-        return False
 
 
-def safe_is_read_only(parameter):
-    try:
-        return bool(parameter.IsReadOnly)
-    except:
-        return False
 
 
 def safe_is_built_in(parameter):
@@ -423,119 +400,8 @@ def safe_is_project_parameter(parameter_definition):
         return False
 
 
-def safe_definition_info(definition):
-    """
-    Capture Definition-level information available in Revit 2025.
-    Missing/unsupported values are returned as Unknown or N/A.
-    """
-    info = {
-        "Definition Type": "Unknown",
-        "Definition Name": "Unknown",
-        "Data Type": "Unknown",
-        "Data Type TypeId": "N/A",
-        "Group Type": "Unknown",
-        "Group TypeId": "N/A"
-    }
-
-    if definition is None:
-        return info
-
-    try:
-        info["Definition Type"] = safe_text(
-            definition.GetType().__name__,
-            "Unknown"
-        )
-    except:
-        pass
-
-    try:
-        info["Definition Name"] = safe_text(
-            definition.Name,
-            "Unknown"
-        )
-    except:
-        pass
-
-    try:
-        data_type = definition.GetDataType()
-
-        if data_type is not None:
-            info["Data Type"] = safe_text(
-                data_type,
-                "Unknown"
-            )
-
-            try:
-                info["Data Type TypeId"] = safe_text(
-                    data_type.TypeId,
-                    "N/A"
-                )
-            except:
-                pass
-
-    except:
-        pass
-
-    try:
-        group_type = definition.GetGroupTypeId()
-
-        if group_type is not None:
-            info["Group Type"] = safe_text(
-                group_type,
-                "Unknown"
-            )
-
-            try:
-                info["Group TypeId"] = safe_text(
-                    group_type.TypeId,
-                    "N/A"
-                )
-            except:
-                pass
-
-    except:
-        pass
-
-    return info
 
 
-def find_parameter_on_element(element, parameter_name, case_sensitive=True):
-    """
-    Find the first matching parameter on an element by Definition.Name.
-    Returns the Parameter object or None.
-    """
-    if element is None:
-        return None
-
-    try:
-        for parameter in element.Parameters:
-
-            try:
-                definition = parameter.Definition
-
-                if not definition:
-                    continue
-
-                name = definition.Name
-
-                if case_sensitive:
-                    is_match = name == parameter_name
-                else:
-                    try:
-                        is_match = name.lower() == parameter_name.lower()
-                    except:
-                        is_match = False
-
-                if is_match:
-                    return parameter
-
-            except:
-                continue
-
-    except:
-        return None
-
-    return None
 
 
 def find_parameter_with_scope(element, parameter_name):
@@ -672,27 +538,6 @@ def build_element_parameter_context(element, type_cache=None):
     return context
 
 
-def find_parameter_in_context(parameter_context, parameter_name):
-    """Return an indexed parameter with Instance-before-Type precedence."""
-    try:
-        key = str(parameter_name or "").lower()
-    except:
-        key = ""
-    if not key or not isinstance(parameter_context, dict):
-        return None, "Unknown"
-    try:
-        parameter = parameter_context.get("instance", {}).get(key)
-    except:
-        parameter = None
-    if parameter is not None:
-        return parameter, "Instance"
-    try:
-        parameter = parameter_context.get("type", {}).get(key)
-    except:
-        parameter = None
-    if parameter is not None:
-        return parameter, "Type"
-    return None, "Unknown"
 
 
 def build_parameter_metadata():
@@ -949,18 +794,6 @@ def build_parameter_metadata():
     return metadata_result
 
 
-def count_parameter_metadata(metadata):
-    total = 0
-
-    try:
-        for element_name in metadata.keys():
-            total += len(
-                metadata[element_name]
-            )
-    except:
-        pass
-
-    return total
 
 
 # ============================================================
@@ -1903,7 +1736,10 @@ def get_element_level(element, level_cache=None):
 
 # Recognized characteristic compressive-strength grades (IS 456 series).
 # Kept on one line so the regression harness can lift the constant.
-CONCRETE_GRADE_VALUES = ("M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60", "M65", "M70", "M75", "M80")
+# P8 rule engine: concrete-grade normalization and its vocabulary are
+# host-free rules.
+from rule_engine import CONCRETE_GRADE_VALUES, normalize_concrete_grade
+
 
 # Owner-confirmed authoritative concrete-grade fields. Matched by exact
 # name (case-insensitive); Grade of Concrete takes precedence over Grade.
@@ -1914,33 +1750,6 @@ CONCRETE_GRADE_PARAMETER_HINTS = (
 )
 
 
-def normalize_concrete_grade(text):
-    """
-    P2: normalize a free-text fragment to a canonical concrete grade
-    token ("M25"). Accepts M25 / m-25 / M 25 spellings. Returns ""
-    when no recognizable grade token is present, so callers can fall
-    through to the next resolution source.
-    """
-    try:
-        candidate = str(text or "")
-    except:
-        return ""
-
-    match = re.search(
-        r"\bM\s*-?\s*(\d{2})\b",
-        candidate,
-        re.IGNORECASE
-    )
-
-    if not match:
-        return ""
-
-    normalized = "M" + match.group(1)
-
-    if normalized in CONCRETE_GRADE_VALUES:
-        return normalized
-
-    return ""
 
 
 def concrete_grade_parameter_candidates(element, parameter_context=None):
@@ -2523,57 +2332,6 @@ def is_structural_wall(element):
 # GET ALL PARAMETERS
 # ============================================================
 
-def get_parameters(elements, derived_names=None):
-
-    parameter_names = set()
-
-    for element in elements:
-
-        try:
-
-            parameters = element.Parameters
-
-            for parameter in parameters:
-
-                try:
-
-                    definition = parameter.Definition
-
-                    if definition:
-
-                        name = definition.Name
-
-                        if name:
-
-                            parameter_names.add(
-                                name
-                            )
-
-                except:
-
-                    continue
-
-        except:
-
-            continue
-
-    for derived_name in (derived_names or ()):
-        if derived_name:
-            parameter_names.add(derived_name)
-
-    result = []
-
-    for name in parameter_names:
-
-        result.append(
-            ParameterItem(name)
-        )
-
-    result.sort(
-        key=lambda x: x.Name.lower()
-    )
-
-    return result
 
 
 # ============================================================
