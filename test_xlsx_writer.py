@@ -243,7 +243,8 @@ def main():
         "SITE_DETAIL_BAND_ROWS",
         "SITE_DETAIL_DATA_START_ROW",
         "SITE_DETAIL_COLUMN_WIDTHS",
-        "CONCRETE_GRADE_VALUES"
+        "CONCRETE_GRADE_VALUES",
+        "SITE_ITEMS_SHEET_NAME"
     ):
         constant_line, _ = extract_constant_from_sources(texts, constant_name)
         exec(constant_line, namespace)
@@ -3467,6 +3468,96 @@ def main():
             "by_document"].get("") is None,
         "P7 a blank document title is never used as a store key"
     )
+
+    # P7 export: the sheet in both formats, and the Costing roll-up.
+    p7_root = tempfile.mkdtemp(prefix="rcc-boq-p7-")
+    try:
+        p7_data = {
+            "Beam": [
+                {"Element ID": "1", "Level": "L1", "Grade": "M30",
+                 "Rate": 4500, "Qty: Volume (m3)": 2.0, "Qty: Count": 1},
+            ],
+        }
+        p7_items = site_items_engine.normalize_site_items([
+            {"code": "SI-01", "description": "Binding wire", "quantity": "25",
+             "unit": "kg", "rate": "85.5"},
+            {"code": "SI-02", "description": "Scaffolding hire", "quantity": "1",
+             "unit": "LS", "rate": None, "remarks": "awaiting quote"},
+        ])
+
+        p7_rows = namespace["write_basic_xlsx"](
+            os.path.join(p7_root, "classic.xlsx"),
+            p7_data,
+            {},
+            project_name="P7 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.25.2",
+            generated_stamp="2026-09-19 12:00",
+            site_items=p7_items
+        )
+        p7_order = p10_sheet_order(os.path.join(p7_root, "classic.xlsx"))
+        p7_cover = set(row[0] for row in p7_rows["Summary"] if row)
+
+        check(
+            "Site Items" in p7_order
+            and p7_order.index("Site Items") < p7_order.index("Costing")
+            and "Site Items" in p7_cover,
+            "P7 Classic lists Site Items on the cover and before Costing"
+        )
+
+        check(
+            p7_rows["Site Items"]
+            == site_items_engine.build_site_items_table(p7_items),
+            "P7 Classic Site Items sheet carries the engine's own table"
+        )
+
+        costing = p7_rows["Costing"]
+        site_rows = [row for row in costing if row[0] == "Site Item"]
+        total_row = [row for row in costing if row[0] == "TOTAL"][0]
+        check(
+            [row[1] for row in site_rows] == ["SI-01", "SI-02"]
+            and site_rows[0][4] == ("FORMULA", "C3*D3")
+            and site_rows[1][4] == "",
+            "P7 Costing prices site items by formula and blanks the unpriced one"
+        )
+
+        check(
+            total_row[4] == ("FORMULA", "SUM(E2:E{0})".format(len(costing) - 1)),
+            "P7 the Costing TOTAL spans the site item rows too"
+        )
+
+        clean_rows = namespace["write_basic_xlsx"](
+            os.path.join(p7_root, "clean.xlsx"),
+            p7_data,
+            {},
+            project_name="P7 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.25.2",
+            generated_stamp="2026-09-19 12:00"
+        )
+        check(
+            "Site Items" not in clean_rows
+            and not [row for row in clean_rows["Costing"]
+                     if row[0] == "Site Item"],
+            "P7 a project with no site items keeps its familiar workbook"
+        )
+
+        p7_site_rows = namespace["write_site_xlsx"](
+            os.path.join(p7_root, "site.xlsx"),
+            p7_data,
+            project_name="P7 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.25.2",
+            generated_stamp="2026-09-19 12:00",
+            site_items=p7_items
+        )
+        site_sheet = p7_site_rows.get("Site Items") or []
+        flat = [u"{0}".format(cell) for row in site_sheet for cell in row]
+        check(
+            site_sheet
+            and "SITE / NON-MODEL ITEMS" in flat
+            and "SI-01" in flat and "SI-02" in flat,
+            "P7 Site workbook carries the items inside the site title bands"
+        )
+    finally:
+        shutil.rmtree(p7_root, ignore_errors=True)
 
     # ------------------------------------------------------------
     # Authoring spec engine (lib/authoring_spec.py)

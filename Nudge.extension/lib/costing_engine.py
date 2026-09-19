@@ -8,7 +8,7 @@ phases (P11/P12) extend this module.
 """
 from export_engine import xlsx_column_name
 
-def build_costing_sheet(data_result):
+def build_costing_sheet(data_result, site_items=None):
     """
     Build a per-element Costing sheet.
 
@@ -16,6 +16,10 @@ def build_costing_sheet(data_result):
     quantity, its unit rate (sourced from a Cost / Rate / Price parameter
     already present in the element row) and a live amount equal to
     quantity x rate. A trailing TOTAL row sums the amount column.
+
+    P7 site items are appended as further lines before that TOTAL, so the
+    sheet's own SUM covers model-derived and typed work alike and there is
+    only ever one cost total to read.
 
     Returns a 2D row table ready for the XLSX writer. When no element
     carries both a quantity and a usable rate, only the header remains.
@@ -136,6 +140,43 @@ def build_costing_sheet(data_result):
                     element_id,
                     quantity_value,
                     rate_value,
+                    amount
+                ]
+            )
+
+    # P7: typed site items, priced the same way and summed by the same
+    # TOTAL. An unpriced line still appears, with a blank Amount, so the
+    # sheet never hides work that is merely awaiting a rate.
+    if site_items:
+
+        from site_items_engine import site_item_label
+
+        for item in site_items:
+
+            quantity_number = item.get("quantity")
+            rate_number = item.get("rate")
+
+            row_number = len(table) + 1
+
+            amount = ""
+
+            if quantity_number is not None and rate_number is not None:
+                amount = (
+                    "FORMULA",
+                    "{0}{1}*{2}{1}".format(
+                        xlsx_column_name(3),
+                        row_number,
+                        xlsx_column_name(4),
+                        row_number
+                    )
+                )
+
+            table.append(
+                [
+                    "Site Item",
+                    site_item_label(item),
+                    quantity_number if quantity_number is not None else "",
+                    rate_number if rate_number is not None else "",
                     amount
                 ]
             )

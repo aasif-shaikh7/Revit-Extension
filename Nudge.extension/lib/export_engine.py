@@ -1567,7 +1567,7 @@ def build_summary_cover_rows(
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
                      site_format=False, validation_report_path=None,
-                     unmapped_report=None):
+                     unmapped_report=None, site_items=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -1591,7 +1591,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             tool_version=tool_version,
             generated_stamp=generated_stamp,
             validation_report_path=validation_report_path,
-            unmapped_report=unmapped_report
+            unmapped_report=unmapped_report,
+            site_items=site_items
         )
 
     # Only categories that actually contain at least one element produce a
@@ -1928,8 +1929,22 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     # workbook writer and the costing engine.
     from costing_engine import build_costing_sheet
 
+    # P7: typed non-model items, listed before Costing because Costing
+    # rolls them up. Appended only when there is something to list, so a
+    # project without site items keeps its familiar workbook.
+    site_items_table = []
+    if site_items:
+        from site_items_engine import build_site_items_table
+        site_items_table = build_site_items_table(site_items)
+
+    if len(site_items_table) > 1:
+        sheet_names.append(SITE_ITEMS_SHEET_NAME)
+        sheet_rows[SITE_ITEMS_SHEET_NAME] = site_items_table
+        quantity_column_map[SITE_ITEMS_SHEET_NAME] = [3, 5, 6]
+
     costing_sheet = build_costing_sheet(
-        data_result
+        data_result,
+        site_items=site_items
     )
 
     if len(costing_sheet) > 1:
@@ -2601,12 +2616,15 @@ def build_site_tabular_sheet(project_name, title, plain_table,
 
 SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 
+# P7: non-model line items get their own sheet in both formats.
+SITE_ITEMS_SHEET_NAME = "Site Items"
+
 
 def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
                     include_formwork=True, selected_parameters=None,
                     assembly_profile=None, validation_report_path=None,
-                    unmapped_report=None):
+                    unmapped_report=None, site_items=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2714,6 +2732,23 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append("Structural Assembly")
         sheet_rows["Structural Assembly"] = assembly_table
         sheet_widths["Structural Assembly"] = assembly_widths
+
+    # P7: same typed line items as the classic workbook, wrapped in the
+    # site title bands and appended only when there are items.
+    if site_items:
+        from site_items_engine import build_site_items_table
+        site_items_plain = build_site_items_table(site_items)
+
+        if len(site_items_plain) > 1:
+            site_items_table, site_items_widths = build_site_tabular_sheet(
+                project_name,
+                "SITE / NON-MODEL ITEMS",
+                site_items_plain,
+                band_title="RCC - SITE ITEMS"
+            )
+            sheet_names.append(SITE_ITEMS_SHEET_NAME)
+            sheet_rows[SITE_ITEMS_SHEET_NAME] = site_items_table
+            sheet_widths[SITE_ITEMS_SHEET_NAME] = site_items_widths
 
     # P10: same unmapped element report as the classic workbook, wrapped in
     # the site title bands and appended only when findings exist.

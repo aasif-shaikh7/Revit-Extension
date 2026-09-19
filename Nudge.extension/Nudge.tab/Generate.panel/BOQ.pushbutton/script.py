@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.1'
+__version__ = '1.25.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.1'
+SCRIPT_VERSION = '1.25.2'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5217,6 +5217,21 @@ try:
                     )
                     unmapped_count = len(unmapped_report) - 1
 
+                    # P7: typed non-model items for THIS document. A
+                    # default list seeds a project the first time it is
+                    # opened; the project's own saved list wins after
+                    # that. Guarded so a settings problem can never
+                    # abort an export that is otherwise ready.
+                    site_items = []
+                    try:
+                        from site_items_engine import resolve_site_items
+                        site_items = resolve_site_items(
+                            load_app_settings().get("site_items"),
+                            safe_text(doc.Title, "")
+                        )["items"]
+                    except:
+                        site_items = []
+
                     workbook_started = time.time()
                     if use_site_format:
 
@@ -5236,7 +5251,8 @@ try:
                             selected_parameters=selected_parameters,
                             assembly_profile=assembly_profile,
                             validation_report_path=validation_report_path,
-                            unmapped_report=unmapped_report
+                            unmapped_report=unmapped_report,
+                            site_items=site_items
                         )
 
                     else:
@@ -5256,7 +5272,8 @@ try:
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
                             assembly_profile=assembly_profile,
                             validation_report_path=validation_report_path,
-                            unmapped_report=unmapped_report
+                            unmapped_report=unmapped_report,
+                            site_items=site_items
                         )
 
                     workbook_seconds = time.time() - workbook_started

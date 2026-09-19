@@ -22,6 +22,47 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.2] - 2026-09-19
+
+### Added (P7 site items — workbook sheet and Costing roll-up)
+- Both workbook formats gain a **`Site Items`** sheet: Item Code, Description, Quantity, Unit, Rate,
+  Amount, Remarks and a TOTAL. Classic places it immediately before `Costing` and lists it on the
+  Summary cover; the Site format wraps it in the usual title bands
+  (`RCC - SITE ITEMS` / `SITE / NON-MODEL ITEMS`).
+- `build_costing_sheet(data_result, site_items=None)` appends the typed items as further lines
+  **before** the existing TOTAL, so the sheet's own `SUM` covers model-derived and typed work alike
+  and there is only ever one cost total to read. An unpriced line still appears, with a blank
+  Amount, so the sheet never hides work that is merely awaiting a rate.
+- `site_item_label` is now public: the Costing sheet needs exactly the same answer as a validation
+  finding for what names a line, and a second copy of that rule would be free to drift.
+- `script.py` resolves this document's items from the store before export and passes them to both
+  writers. The lookup is guarded, so a settings problem can never abort an export that is otherwise
+  ready.
+- **`BOQ Summary` is untouched**, as decided: it totals concrete volume in m³, and adding a currency
+  figure to that total would be arithmetically wrong.
+
+### Tests
+- `test_xlsx_writer.py` P7 coverage goes from 18 to 24 checks, adding the Classic sheet placement and
+  cover listing, the sheet's contents, the Costing formulas and TOTAL span, the Site-format banded
+  sheet, and that a project with no site items keeps its familiar workbook unchanged.
+
+### Verified (live)
+- **Tested (live):** headless exports of the P10-03 fixture in Revit 2025 with three seeded items,
+  one deliberately without a rate.
+- **Classic:** 10 sheets (was 9), canonical validator `305/305` cells, zero mismatches. Sheet order
+  puts `Site Items` between `BOQ by Grade` and `Costing`.
+- **Site:** 6 sheets, `228/228` cells, zero mismatches, items inside the site title bands.
+- The live Costing sheet carries `E5=C5*D5`, `E7=C7*D7` and `E8=SUM(E2:E7)` — the TOTAL spans the
+  three model elements and all three site items, while the unpriced `SI-02` row has no formula and
+  is not counted as zero.
+- The `Site Items` TOTAL read `22137.5` (`25 x 85.5` plus `1 x 20000`), with `SI-02` blank.
+
+### Still to come in P7
+- The dialog tab for typing and editing the items. Until it exists, the list can only be set in
+  `.rcc_boq_settings.json` under `site_items`, so P7 stays `building`.
+
+---
+
 ## [v1.25.1] - 2026-09-19
 
 ### Added (P7 site items — storage shape)

@@ -112,8 +112,13 @@ def site_item_amount(item):
     return round(quantity * rate, AMOUNT_DECIMALS)
 
 
-def _label(item):
-    """Name one row in a finding: its code, else its description, else row."""
+def site_item_label(item):
+    """Name one line: its code, else its description, else its row number.
+
+    Public because the Costing sheet needs exactly the same answer; a
+    second copy of this rule would be free to drift from this one.
+    """
+    item = item if isinstance(item, dict) else {}
     return (item.get("code")
             or item.get("description")
             or "Row {0}".format(item.get("row")))
@@ -135,7 +140,7 @@ def validate_site_items(items):
             findings.append("Duplicate item code: {0}".format(code))
 
     for item in items:
-        label = _label(item)
+        label = site_item_label(item)
 
         if not item.get("description"):
             findings.append("{0}: missing description".format(label))

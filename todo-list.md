@@ -47,7 +47,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P4 | Rebar Quantity Engine | 5/5/3/3 | **done** (`v1.19.0` QA) |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
-| P7 | Site / Manual Structural Items | 4/4/2/4 | `building` (`v1.25.0` engine, `v1.25.1` store; sheet + Costing next, dialog last) |
+| P7 | Site / Manual Structural Items | 4/4/2/4 | `building` (`v1.25.0` engine, `v1.25.1` store, `v1.25.2` sheet + Costing live-verified; dialog tab last) |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`; `script.py` 5,931 -> 5,580) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
@@ -88,8 +88,14 @@ blank rather than pricing work at zero.
    touched. It totals concrete volume in m³, so adding a currency figure to that total would be
    arithmetically wrong.
 
-**Next:** the workbook sheet plus Costing lines (engine-side, harness-provable), then the dialog tab
-(owner-confirmable only).
+**Landed in `v1.25.2`:** both workbook formats carry a `Site Items` sheet, and the typed items feed
+the existing `Costing` TOTAL so there is one cost figure covering model-derived and typed work.
+Live-verified on the P10-03 fixture: Classic `305/305` cells across 10 sheets and Site `228/228`
+across 6, both zero mismatches, with `E8=SUM(E2:E7)` spanning the site item rows.
+
+**Next:** the dialog tab for typing and editing the items. Until it exists the list can only be set
+in `.rcc_boq_settings.json` under `site_items`, so P7 stays `building` — and the tab itself will be
+owner-confirmable only.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 
