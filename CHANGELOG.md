@@ -22,6 +22,38 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.0] - 2026-09-19
+
+### Added (P7 site / non-model items — engine slice)
+- **`Nudge.extension/lib/site_items_engine.py`** — the rules for PRD Phase 7 line items that are not
+  modelled (consumables, temporary works, site items), carried as Item Code, Description, Quantity,
+  Unit, Rate and Remarks. Pure Python; imports no Revit or pyRevit symbol.
+- Public API: `normalize_site_item(s)`, `validate_site_items`, `site_item_amount`,
+  `priceable_site_items`, `summarize_site_items`, `build_site_items_table`, and the
+  `SITE_ITEM_HEADERS` layout contract.
+- **It never invents a number.** A quantity or rate that is absent, non-numeric, zero or negative
+  normalizes to `None`, leaves `Amount` blank and raises a finding naming the field — the same
+  discipline `lib/assembly_engine.py` applies to a missing factor. A silently assumed `0` would
+  price real work at nothing. Booleans are refused as numbers too.
+- `summarize_site_items` reports `priced_count` and `unpriced_count` alongside `amount_total`, so a
+  caller can never read the total as covering every line, and the `TOTAL` row sums only the lines
+  that could be priced.
+- Findings name a line by its Item Code, then its Description, then its row number, so an
+  unidentified row is still reportable.
+
+### Tests
+- `test_xlsx_writer.py` adds 11 checks: the host-free guard, number normalization, refusal of zero /
+  negative / boolean / non-numeric input, amount arithmetic, summary split, per-field validation
+  messages, the row-number fallback, the clean-item case, blank cells with a priced-only total, and
+  the header-only empty table. All checks pass.
+
+### Not yet done (deliberately)
+- Settings persistence, the dialog tab and the workbook sheet are **not** part of this slice. Two
+  product decisions gate them: whether site items are stored per project or per document, and
+  whether their total feeds `BOQ Summary` and `Costing` or stays a standalone sheet.
+
+---
+
 ## [v1.24.1] - 2026-09-18
 
 ### Added (P8 rule/parameter split — second slice)

@@ -47,7 +47,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P4 | Rebar Quantity Engine | 5/5/3/3 | **done** (`v1.19.0` QA) |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
-| P7 | Site / Manual Structural Items | 4/4/2/4 | `todo` |
+| P7 | Site / Manual Structural Items | 4/4/2/4 | `building` (`v1.25.0` `lib/site_items_engine.py`; settings/dialog/export pending two owner decisions) |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`; `script.py` 5,931 -> 5,580) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
@@ -64,10 +64,26 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** P7 Site / Manual Structural Items (suggested next; the P10 first slice
-closed in `v1.21.0`). P4 and P5 native Rebar/BBS QA are
-complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material assignment is done
-after isolated Secondary rollback, assignment, export and save/reopen persistence QA (`v1.23.0`).
+**Current product focus:** P7 Site / Manual Structural Items. Its engine landed in `v1.25.0`
+(`lib/site_items_engine.py`, 11 harness checks); settings persistence, the dialog tab and the
+workbook sheet are held pending two owner decisions — see P7 below. P10 closed in `v1.24.0`,
+owner-confirmed through the dialog. P8 is mid-split (`v1.24.0`/`v1.24.1`). P4 and P5 native
+Rebar/BBS QA are complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material
+assignment is done after isolated Secondary rollback, assignment, export and save/reopen
+persistence QA (`v1.23.0`).
+
+### P7 — Site / Non-Model Structural Items — `building` (`v1.25.0`)
+
+**Built:** `lib/site_items_engine.py` holds the Phase 7 rules — normalize what was typed, report
+every unusable field by name, price only complete lines, and build the export table. Absent,
+non-numeric, zero, negative and boolean quantities/rates all normalize to `None` and leave `Amount`
+blank rather than pricing work at zero.
+**Tested (harness):** 11 checks, all passing.
+**Blocked on two owner decisions:**
+1. **Storage scope** — are site items saved per project (global `.rcc_boq_settings.json`, reused
+   across models) or per document?
+2. **Totals** — does the site-items total feed `BOQ Summary` and `Costing`, or stay a standalone
+   sheet so model-derived and typed quantities never mix in one figure?
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

@@ -108,6 +108,7 @@ Nudge.extension/
     ├── validation_engine.py <- P9/P10 model-quality checks + unmapped element report (pure Python)
     ├── rule_engine.py       <- P8 host-free RCC classification/audit + grade rules (pure Python)
     ├── parameter_engine.py  <- P8 host-free parameter readers + ParameterItem (pure Python)
+    ├── site_items_engine.py <- P7 non-model line items: rules, pricing, table (pure Python)
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
     ├── agent_export_job.py  <- fixed-path headless export job contract (pure Python)
     └── Resources/
@@ -299,7 +300,7 @@ every phase:
 | P4 Rebar Engine | `lib/rebar_engine.py` (**exists since v1.10.0**; Revit reads stay in `script.py`) |
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
-| P7 Site items | settings + element sheets |
+| P7 Site items | `lib/site_items_engine.py` (**exists since v1.25.0**: rules, pricing and table; settings/dialog/export still to come) |
 | P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1**: host-free classification, grade and parameter-reader rules; Revit-bound readers stay in `script.py`) |
 | P9 Validation Engine | `lib/validation_engine.py` (**exists since v1.21.0** as the P10 foundation) |
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |

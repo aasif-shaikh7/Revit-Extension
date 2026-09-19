@@ -3295,6 +3295,112 @@ def main():
         )
 
     # ------------------------------------------------------------
+    # P7 site items engine (lib/site_items_engine.py)
+    #
+    # Imported directly, like the authoring engine: it is a self
+    # contained pure module, so importing keeps its internal calls
+    # intact and shadows nothing in the shared extraction namespace.
+    # ------------------------------------------------------------
+    import site_items_engine
+
+    site_items_path = os.path.join(LIB_DIR, "site_items_engine.py")
+    with io.open(site_items_path, "r", encoding="utf-8-sig") as handle:
+        site_items_source = handle.read()
+
+    check(
+        "import Autodesk" not in site_items_source
+        and "from Autodesk" not in site_items_source
+        and "from pyrevit" not in site_items_source
+        and "import pyrevit" not in site_items_source,
+        "P7 site items engine imports no Revit or pyRevit symbol"
+    )
+
+    typed = site_items_engine.normalize_site_items([
+        {"code": "SI-01", "description": "Binding wire", "quantity": "25",
+         "unit": "kg", "rate": "85.5"},
+        {"code": "SI-02", "description": "Scaffolding hire", "quantity": 1,
+         "unit": "LS", "rate": None, "remarks": "awaiting quote"},
+    ])
+
+    check(
+        typed[0]["quantity"] == 25.0 and typed[0]["rate"] == 85.5
+        and typed[1]["rate"] is None,
+        "P7 normalizes typed numbers and keeps an absent rate as None"
+    )
+
+    # A zero or negative rate must not survive as a number: pricing real
+    # work at nothing is the failure mode this guards against.
+    refused = site_items_engine.normalize_site_items([
+        {"code": "Z", "description": "d", "quantity": "0", "unit": "u", "rate": "-5"},
+        {"code": "T", "description": "d", "quantity": True, "unit": "u", "rate": "abc"},
+    ])
+    check(
+        all(item["quantity"] is None and item["rate"] is None for item in refused),
+        "P7 refuses zero, negative, boolean and non-numeric quantity or rate"
+    )
+
+    check(
+        site_items_engine.site_item_amount(typed[0]) == 2137.5
+        and site_items_engine.site_item_amount(typed[1]) is None,
+        "P7 amount is quantity x rate, and blank when either is unusable"
+    )
+
+    summary = site_items_engine.summarize_site_items(typed)
+    check(
+        summary == {"count": 2, "priced_count": 1, "unpriced_count": 1,
+                    "amount_total": 2137.5},
+        "P7 summary totals only priced lines and counts the rest separately"
+    )
+
+    incomplete = site_items_engine.normalize_site_items([
+        {"code": "SI-01", "description": "Binding wire", "quantity": "25",
+         "unit": "kg", "rate": "85.5"},
+        {"code": "SI-01", "description": "", "quantity": "-4", "unit": "",
+         "rate": "0"},
+        {"description": "", "quantity": "", "unit": "", "rate": ""},
+    ])
+    findings = site_items_engine.validate_site_items(incomplete)
+    check(
+        any("Duplicate item code: SI-01" in f for f in findings)
+        and any("SI-01: missing description" in f for f in findings)
+        and any("SI-01: quantity is missing" in f for f in findings)
+        and any("SI-01: missing unit" in f for f in findings)
+        and any("SI-01: rate is missing" in f for f in findings),
+        "P7 validation names every unusable field on a line"
+    )
+
+    check(
+        any(f.startswith("Row 3:") for f in findings),
+        "P7 validation falls back to the row number when a line has no code"
+    )
+
+    check(
+        site_items_engine.validate_site_items(
+            site_items_engine.normalize_site_items([typed[0]])) == [],
+        "P7 validation accepts a complete line item"
+    )
+
+    table = site_items_engine.build_site_items_table(typed)
+    check(
+        list(table[0]) == list(site_items_engine.SITE_ITEM_HEADERS)
+        and table[1][5] == 2137.5
+        and table[2][4] == "" and table[2][5] == ""
+        and table[-1][0] == "TOTAL" and table[-1][5] == 2137.5,
+        "P7 table blanks unpriced cells and totals only what could be priced"
+    )
+
+    check(
+        site_items_engine.build_site_items_table([]) == [
+            list(site_items_engine.SITE_ITEM_HEADERS)],
+        "P7 an empty item list yields a header-only table with no TOTAL row"
+    )
+
+    check(
+        len(site_items_engine.priceable_site_items(typed)) == 1,
+        "P7 priceable_site_items returns only fully priced lines"
+    )
+
+    # ------------------------------------------------------------
     # Authoring spec engine (lib/authoring_spec.py)
     #
     # Imported directly rather than name-extracted: it is a self
