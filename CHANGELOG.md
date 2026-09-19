@@ -22,6 +22,36 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.6] - 2026-09-19
+
+### Fixed (two faults found by rendering the tab and looking at it)
+- **The source label went stale.** It was written once while the dialog was being built and never
+  updated, so it kept saying *"No site items saved for this project yet."* while four lines sat in
+  the list below it. It now follows the list: `site_items_source` records where the list came from,
+  `site_items_dirty` records whether it has been edited, and `site_items_refresh` rewrites the label
+  on every change. An edited list reads *"Edited - saved to this project when you export or close."*
+  and saving the document's list clears the flag.
+- **Description and Remarks were as narrow as Unit.** The field block is left-aligned, so its star
+  column collapsed to its content width instead of taking the remainder. The free-text column is now
+  an explicit 620 px, beside 220 px for identity and 150 px for short values.
+
+### Added (an agent can see the dialog now)
+- The dialog is rendered to PNG by WPF itself — `RenderTargetBitmap` over the real window after
+  `Show()` — rather than captured from the screen, so the image is exactly what WPF paints. Both
+  themes are rendered by flipping the theme selector between shots.
+- `ui.xaml` gains `x:Name="MainTabs"` on the TabControl so a specific tab can be selected for
+  rendering. No behaviour change.
+
+### Verified (live)
+- Rendered at 1500x950 with four realistic lines (one awaiting a rate, one with a long description)
+  and a fifth part-typed, in Light and Dark. Both read correctly: the list shows
+  `SI-01 | Binding wire for reinforcement | 250.0 kg x 85.5 = 21375.00`, the unpriced line shows
+  `1.0 LS x - = -`, and the summary reads `4 item(s) | 3 priced, total 52375.00 | 1 awaiting a
+  quantity or rate...`. Dark theme text and borders are consistent with the rest of the dialog.
+- The tab was driven end to end again after the refactor: **all twelve checks still pass**.
+
+---
+
 ## [v1.25.5] - 2026-09-19
 
 ### Fixed (Site Items tab layout, from the owner's screenshot)

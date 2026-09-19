@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.5'
+__version__ = '1.25.6'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.5'
+SCRIPT_VERSION = '1.25.6'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -287,6 +287,12 @@ site_items_state = []
 # store an empty list for this document, which resolve_site_items would
 # read as "this project has its own list" and never seed the default again.
 site_items_ready = [False]
+
+# Where the list on screen came from, and whether it has been edited
+# since. The label under the heading reports both, so it can never keep
+# saying "nothing saved yet" while lines are sitting in the list.
+site_items_source = [""]
+site_items_dirty = [False]
 
 assembly_profile = {
     "id": "global-custom",
@@ -4105,8 +4111,28 @@ try:
                 "-" if amount is None else "{0:.2f}".format(amount)
             )
 
+        def site_items_source_text():
+            """Say where the list came from and whether it is saved."""
+            if site_items_dirty[0]:
+                return ("Edited - saved to this project when you export or "
+                        "close.")
+            if site_items_source[0] == "document":
+                return "Showing this project's own saved list."
+            if site_items_source[0] == "default":
+                return ("Started from the default list. It becomes this "
+                        "project's own list when you export or close.")
+            return "No site items saved for this project yet."
+
         def site_items_refresh(select_index=-1):
-            """Redraw the list and the summary line."""
+            """Redraw the list, the source label and the summary line."""
+            try:
+                source_box = window.FindName("SiteItemSource")
+
+                if source_box is not None:
+                    source_box.Text = site_items_source_text()
+            except:
+                pass
+
             try:
                 list_box = window.FindName("SiteItemList")
 
@@ -4219,6 +4245,7 @@ try:
                 return
 
             site_items_state.append(item)
+            site_items_dirty[0] = True
             site_items_refresh(len(site_items_state) - 1)
             site_items_clear_fields()
             set_status("Site items | Added", "success")
@@ -4232,6 +4259,7 @@ try:
                 return
 
             site_items_state[index] = site_items_read_fields()
+            site_items_dirty[0] = True
             site_items_refresh(index)
             set_status("Site items | Updated", "success")
 
@@ -4244,6 +4272,7 @@ try:
                 return
 
             del site_items_state[index]
+            site_items_dirty[0] = True
             site_items_refresh()
             site_items_clear_fields()
             set_status("Site items | Removed", "success")
@@ -4288,22 +4317,8 @@ try:
                 del site_items_state[:]
                 site_items_state.extend(resolved.get("items", []))
 
-                source_box = window.FindName("SiteItemSource")
-
-                if source_box is not None:
-                    if resolved.get("source") == "document":
-                        source_box.Text = (
-                            "Showing this project's own saved list."
-                        )
-                    elif resolved.get("source") == "default":
-                        source_box.Text = (
-                            "Started from the default list. It becomes this "
-                            "project's own list when you export or close."
-                        )
-                    else:
-                        source_box.Text = (
-                            "No site items saved for this project yet."
-                        )
+                site_items_source[0] = resolved.get("source", "")
+                site_items_dirty[0] = False
 
                 site_items_ready[0] = True
                 site_items_refresh()
@@ -4474,6 +4489,8 @@ try:
             # changed explicitly through Save as default.
             try:
                 if site_items_ready[0]:
+                    site_items_source[0] = "document"
+                    site_items_dirty[0] = False
                     settings["site_items"] = save_site_items(
                         settings.get("site_items"),
                         safe_text(doc.Title, ""),

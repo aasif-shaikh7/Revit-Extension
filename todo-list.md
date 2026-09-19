@@ -112,7 +112,13 @@ absurdly on a wide monitor because one three-column grid served fields with oppo
 Columns are now paired by need, capped at 1100 px, the list sits in an **Items in this project**
 group box, and the intro wraps at 900 px. The tab was driven again after the change with all twelve
 checks passing.
-**Still open — owner run:** a second look at the adjusted layout, and Dark/Light theme readability.
+**Rendered and reviewed by the agent (`v1.25.6`):** the dialog is now rendered to PNG by WPF itself
+(`RenderTargetBitmap` over the real shown window), so the layout can be inspected without a human.
+Two faults were found that way and fixed — a source label that kept saying "nothing saved yet" while
+four lines were listed, and free-text fields collapsing to the width of `Unit`. Light and Dark both
+render correctly.
+**Still open — owner run:** a confirming look on the owner's own screen and monitor size. The
+behaviour, the layout and both themes are already verified.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

@@ -62,6 +62,7 @@
         <!-- ================================================= -->
 
         <TabControl
+            x:Name="MainTabs"
             Grid.Row="1"
             Background="{DynamicResource SurfaceBrush}"
             BorderThickness="0">
@@ -853,10 +854,13 @@
                          identity, then unit/rate, then the long free text. -->
                     <Grid Grid.Row="1" Margin="0,0,0,10" MaxWidth="1100" HorizontalAlignment="Left">
 
+                        <!-- Explicit widths: the block is left-aligned, so a
+                             star column would collapse to its content and the
+                             free-text fields would end up as narrow as Unit. -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="220"/>
                             <ColumnDefinition Width="150"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="620"/>
                         </Grid.ColumnDefinitions>
 
                         <Grid.RowDefinitions>
