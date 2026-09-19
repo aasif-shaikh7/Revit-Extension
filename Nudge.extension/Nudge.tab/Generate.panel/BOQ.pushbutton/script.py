@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.2'
+__version__ = '1.25.3'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.2'
+SCRIPT_VERSION = '1.25.3'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -266,6 +266,20 @@ from settings_engine import (
     save_app_settings,
 )
 from assembly_engine import normalize_assembly_profile
+
+# P7 site items: the dialog tab edits this list, the export reads it.
+from site_items_engine import (
+    normalize_site_item,
+    site_item_amount,
+    summarize_site_items,
+    validate_site_items,
+    resolve_site_items,
+    save_site_items,
+    set_default_site_items,
+)
+
+# The live list for the active document, rebuilt when the dialog opens.
+site_items_state = []
 
 assembly_profile = {
     "id": "global-custom",
@@ -4062,6 +4076,253 @@ try:
         # CAPTURE & SAVE SETTINGS
         # ====================================================
 
+        # ------------------------------------------------------------
+        # P7 - Site / Non-Model Items tab
+        #
+        # The list lives in site_items_state. Every handler rewrites it
+        # and then redraws, so what is on screen is always exactly what
+        # gets exported and saved.
+        # ------------------------------------------------------------
+
+        def site_items_display_text(item):
+            """One readable line for the list box."""
+            amount = site_item_amount(item)
+            quantity = item.get("quantity")
+            rate = item.get("rate")
+            return u"{0}  |  {1}  |  {2} {3} x {4} = {5}".format(
+                item.get("code") or "(no code)",
+                item.get("description") or "(no description)",
+                "-" if quantity is None else quantity,
+                item.get("unit") or "-",
+                "-" if rate is None else rate,
+                "-" if amount is None else "{0:.2f}".format(amount)
+            )
+
+        def site_items_refresh(select_index=-1):
+            """Redraw the list and the summary line."""
+            try:
+                list_box = window.FindName("SiteItemList")
+
+                if list_box is not None:
+                    list_box.Items.Clear()
+                    for item in site_items_state:
+                        list_box.Items.Add(
+                            ParameterItem(site_items_display_text(item))
+                        )
+                    if 0 <= select_index < len(site_items_state):
+                        list_box.SelectedIndex = select_index
+
+                summary_box = window.FindName("SiteItemSummary")
+
+                if summary_box is not None:
+                    if not site_items_state:
+                        summary_box.Text = (
+                            "No site items. Add one above, or leave this tab "
+                            "empty - the workbook simply omits the sheet."
+                        )
+                    else:
+                        totals = summarize_site_items(site_items_state)
+                        findings = validate_site_items(site_items_state)
+                        text = "{0} item(s) | {1} priced, total {2:.2f}".format(
+                            totals["count"],
+                            totals["priced_count"],
+                            totals["amount_total"]
+                        )
+                        if totals["unpriced_count"]:
+                            text += (
+                                " | {0} awaiting a quantity or rate, exported "
+                                "with a blank Amount".format(
+                                    totals["unpriced_count"]
+                                )
+                            )
+                        if findings:
+                            text += " || " + " / ".join(findings[:3])
+                            if len(findings) > 3:
+                                text += " / +{0} more".format(len(findings) - 3)
+                        summary_box.Text = text
+            except:
+                pass
+
+        def site_items_fill_fields(item):
+            """Load one item back into the six text boxes."""
+            try:
+                for field_name, value in (
+                    ("SiteItemCode", item.get("code", "")),
+                    ("SiteItemDescription", item.get("description", "")),
+                    ("SiteItemUnit", item.get("unit", "")),
+                    ("SiteItemQuantity", item.get("quantity")),
+                    ("SiteItemRate", item.get("rate")),
+                    ("SiteItemRemarks", item.get("remarks", "")),
+                ):
+                    field = window.FindName(field_name)
+                    if field is not None:
+                        field.Text = (
+                            "" if value is None else u"{0}".format(value)
+                        )
+            except:
+                pass
+
+        def site_items_read_fields():
+            """Return one normalized item built from the text boxes."""
+            values = {}
+            for key, field_name in (
+                ("code", "SiteItemCode"),
+                ("description", "SiteItemDescription"),
+                ("unit", "SiteItemUnit"),
+                ("quantity", "SiteItemQuantity"),
+                ("rate", "SiteItemRate"),
+                ("remarks", "SiteItemRemarks"),
+            ):
+                try:
+                    field = window.FindName(field_name)
+                    values[key] = field.Text if field is not None else ""
+                except:
+                    values[key] = ""
+            return normalize_site_item(values, len(site_items_state))
+
+        def site_items_clear_fields():
+            """Empty the entry boxes and drop the list selection."""
+            site_items_fill_fields({})
+            try:
+                list_box = window.FindName("SiteItemList")
+                if list_box is not None:
+                    list_box.SelectedIndex = -1
+            except:
+                pass
+
+        def site_items_selected_index():
+            """Return the selected row index, or -1."""
+            try:
+                list_box = window.FindName("SiteItemList")
+                if list_box is None:
+                    return -1
+                return list_box.SelectedIndex
+            except:
+                return -1
+
+        def site_items_add(sender=None, args=None):
+            """Append what is typed as a new line."""
+            item = site_items_read_fields()
+
+            if not item.get("code") and not item.get("description"):
+                set_status(
+                    "Site items | Enter at least an item code or a description",
+                    "warning"
+                )
+                return
+
+            site_items_state.append(item)
+            site_items_refresh(len(site_items_state) - 1)
+            site_items_clear_fields()
+            set_status("Site items | Added", "success")
+
+        def site_items_update(sender=None, args=None):
+            """Replace the selected line with what is typed."""
+            index = site_items_selected_index()
+
+            if not (0 <= index < len(site_items_state)):
+                set_status("Site items | Select a line to update", "warning")
+                return
+
+            site_items_state[index] = site_items_read_fields()
+            site_items_refresh(index)
+            set_status("Site items | Updated", "success")
+
+        def site_items_remove(sender=None, args=None):
+            """Delete the selected line."""
+            index = site_items_selected_index()
+
+            if not (0 <= index < len(site_items_state)):
+                set_status("Site items | Select a line to remove", "warning")
+                return
+
+            del site_items_state[index]
+            site_items_refresh()
+            site_items_clear_fields()
+            set_status("Site items | Removed", "success")
+
+        def site_items_clear(sender=None, args=None):
+            """Clear the entry boxes without touching the list."""
+            site_items_clear_fields()
+            set_status("Site items | Fields cleared", "info")
+
+        def site_items_selection_changed(sender, args):
+            """Load the clicked line into the entry boxes for editing."""
+            index = site_items_selected_index()
+            if 0 <= index < len(site_items_state):
+                site_items_fill_fields(site_items_state[index])
+
+        def site_items_save_default(sender=None, args=None):
+            """Make this list the starting point for NEW projects only."""
+            try:
+                settings = load_app_settings()
+                if not isinstance(settings, dict):
+                    settings = {}
+                settings["site_items"] = set_default_site_items(
+                    settings.get("site_items"),
+                    site_items_state
+                )
+                save_app_settings(settings)
+                set_status(
+                    "Site items | Saved as the default for new projects; "
+                    "projects with their own list are unchanged",
+                    "success"
+                )
+            except:
+                set_status("Site items | Could not save the default", "warning")
+
+        def site_items_load_for_document():
+            """Fill the tab from the store for the active document."""
+            try:
+                resolved = resolve_site_items(
+                    load_app_settings().get("site_items"),
+                    safe_text(doc.Title, "")
+                )
+                del site_items_state[:]
+                site_items_state.extend(resolved.get("items", []))
+
+                source_box = window.FindName("SiteItemSource")
+
+                if source_box is not None:
+                    if resolved.get("source") == "document":
+                        source_box.Text = (
+                            "Showing this project's own saved list."
+                        )
+                    elif resolved.get("source") == "default":
+                        source_box.Text = (
+                            "Started from the default list. It becomes this "
+                            "project's own list when you export or close."
+                        )
+                    else:
+                        source_box.Text = (
+                            "No site items saved for this project yet."
+                        )
+
+                site_items_refresh()
+            except:
+                pass
+
+        def site_items_wire_controls():
+            """Attach the tab's handlers once the window exists."""
+            try:
+                for control_name, handler in (
+                    ("SiteItemAdd", site_items_add),
+                    ("SiteItemUpdate", site_items_update),
+                    ("SiteItemRemove", site_items_remove),
+                    ("SiteItemClear", site_items_clear),
+                    ("SiteItemSaveDefault", site_items_save_default),
+                ):
+                    control = window.FindName(control_name)
+                    if control is not None:
+                        control.Click += handler
+
+                list_box = window.FindName("SiteItemList")
+
+                if list_box is not None:
+                    list_box.SelectionChanged += site_items_selection_changed
+            except:
+                pass
+
         def capture_and_save_settings():
             """
             Persist the current selections, subtype filters and the
@@ -4199,6 +4460,18 @@ try:
             except:
                 pass
             settings["assembly_profile"] = dict(assembly_profile)
+
+            # P7: this document's own site items. The default list is
+            # untouched here - it only ever seeds a new project, and is
+            # changed explicitly through Save as default.
+            try:
+                settings["site_items"] = save_site_items(
+                    settings.get("site_items"),
+                    safe_text(doc.Title, ""),
+                    site_items_state
+                )
+            except:
+                pass
 
             save_app_settings(settings)
 
@@ -5567,6 +5840,14 @@ try:
                 except:
                     pass
         else:
+            # P7: attach the Site Items handlers and load this document's
+            # list before the dialog becomes visible.
+            try:
+                site_items_wire_controls()
+                site_items_load_for_document()
+            except:
+                pass
+
             window.ShowDialog()
 
 

@@ -22,6 +22,43 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.3] - 2026-09-19
+
+### Added (P7 site items — dialog tab)
+- `ui.xaml` gains a **Site Items** tab: six entry boxes (Item Code, Description, Unit, Quantity,
+  Rate, Remarks), a list of the current lines, and Add / Update selected / Remove selected /
+  Clear fields / Save as default buttons, plus a live summary line.
+- Selecting a line loads it back into the entry boxes, so a typed item can be corrected rather than
+  deleted and retyped.
+- The summary line reports counts, the priced total and how many lines are still awaiting a quantity
+  or rate, and shows the first few validation findings inline.
+- A source label says which of three states the tab is showing: this project's own saved list, the
+  default list seeding it for the first time, or nothing saved yet.
+- **Save as default** writes the current list as the template for NEW projects only. Projects that
+  already have their own list are never touched, matching the `v1.25.1` store rule.
+- The document's list is persisted with every other setting when the dialog saves, so exporting or
+  closing turns a seeded default into that project's own list.
+- Only controls already proven in this dialog were used — TextBox, Button, ListBox with
+  `DisplayMemberPath="Name"` and the existing Brand styles — because an agent cannot exercise the
+  dialog itself.
+
+### Verified (live, as far as an agent can)
+- **Tested (live):** in a Revit 2025 session the real `ui.xaml` was loaded through
+  `System.Windows.Markup.XamlReader`, which is WPF's own parser rather than an XML check. The window
+  built, all **15** Site Items controls were findable, the five buttons resolved as `Button` and the
+  list as `ListBox`, and a `Click` handler attached successfully — the exact call `script.py` makes.
+- `script.py` compiles in that session and every one of the seven names it imports from
+  `site_items_engine` at module level exists.
+- A headless Classic export still passed `265/265` cells across 9 sheets with zero mismatches, and
+  with no site items saved the workbook correctly omits the sheet.
+
+### Not verified
+- **The dialog itself was not opened by an agent.** Button behaviour, editing, the summary text and
+  saving from the dialog need the project owner, exactly as with P10-03. P7 therefore stays
+  `building` until that run.
+
+---
+
 ## [v1.25.2] - 2026-09-19
 
 ### Added (P7 site items — workbook sheet and Costing roll-up)

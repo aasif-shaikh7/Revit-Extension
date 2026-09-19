@@ -831,6 +831,89 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Site Items">
+                <Grid Margin="18">
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Site / Non-Model Items" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="SiteItemIntro" TextWrapping="Wrap" Style="{DynamicResource BrandBodyText}"
+                                   Text="Work that is not modelled - consumables, temporary works, site items. These export to their own Site Items sheet and are added to the Costing total. A line without a positive Quantity and Rate still appears, but its Amount stays blank rather than counting as zero."/>
+                        <TextBlock x:Name="SiteItemSource" Margin="0,6,0,0" Style="{DynamicResource BrandLabelText}" Text=""/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Item Code" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Description" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Unit" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="SiteItemCode" Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemDescription" Grid.Row="1" Grid.Column="1" Margin="0,0,8,8" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemUnit" Grid.Row="1" Grid.Column="2" Margin="0,0,0,8" Style="{DynamicResource BrandTextBox}" ToolTip="For example kg, LS, nos, m2."/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Quantity" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Rate" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Remarks" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="SiteItemQuantity" Grid.Row="3" Grid.Column="0" Margin="0,0,8,0" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemRate" Grid.Row="3" Grid.Column="1" Margin="0,0,8,0" Style="{DynamicResource BrandTextBox}" ToolTip="Leave blank while a rate is still awaited. The line exports with a blank Amount."/>
+                        <TextBox x:Name="SiteItemRemarks" Grid.Row="3" Grid.Column="2" Margin="0,0,0,0" Style="{DynamicResource BrandTextBox}"/>
+
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ListBox
+                            x:Name="SiteItemList"
+                            Grid.Column="0"
+                            Margin="0,0,8,0"
+                            DisplayMemberPath="Name"
+                            Background="{DynamicResource SurfaceBrush}"
+                            Foreground="{DynamicResource TextPrimaryBrush}"
+                            BorderBrush="{DynamicResource BorderBrush2}"/>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="150">
+                            <Button x:Name="SiteItemAdd" Content="Add item" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemUpdate" Content="Update selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemRemove" Content="Remove selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemClear" Content="Clear fields" Height="34" Margin="0,0,0,14" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemSaveDefault" Content="Save as default" Height="34" Margin="0,0,0,0" Style="{DynamicResource BrandSecondaryButton}"
+                                    ToolTip="Use this list to start any NEW project. Projects that already have their own list are never changed."/>
+                        </StackPanel>
+
+                    </Grid>
+
+                    <TextBlock x:Name="SiteItemSummary" Grid.Row="3" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandBodyText}" Text="No site items."/>
+
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
 
