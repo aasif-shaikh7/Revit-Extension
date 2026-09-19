@@ -22,6 +22,41 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.4] - 2026-09-19
+
+### Fixed (a headless export could wipe a project's site items)
+- Settings are saved after **every** list mutation, including the parameter restore that runs while
+  the dialog is still being built, and a headless export never runs the dialog branch at all. Either
+  path could therefore call `capture_and_save_settings` while `site_items_state` was still empty and
+  store `[]` as that document's own list — which `resolve_site_items` then reads as "this project has
+  its own list", so the default would never seed it again and a saved list would be silently lost.
+- `site_items_ready` gates the write: the document's site items are persisted only once
+  `site_items_load_for_document()` has actually loaded them.
+- **Reproduced and fixed under test:** a project list of `KEEP-01` survived a headless Classic
+  export (`286/286` cells, 10 sheets) and the workbook carried the item. Before the guard, the same
+  path left `by_document` holding an empty list.
+
+### Verified (live) — the dialog tab was driven, not just loaded
+- The shipping `script.py` was run in Revit 2025 with **one substitution**: the blocking
+  `window.ShowDialog()` became a driver hook. The window, the wired handlers and the engine were all
+  the real ones, so this exercises the tab as a person clicking would, short of the pixels.
+- All twelve driven checks passed: Add creates a priced line (`SI-01 | Binding wire | 25.0 kg x 85.5
+  = 2137.50`) and clears the boxes; a line with no rate is still added and shown unpriced
+  (`1.0 LS x - = -`); the summary separates `1 priced, total 2137.50` from `1 awaiting a quantity or
+  rate` and shows the finding inline; selecting a row loads it back (`code=SI-01 qty=25.0`); Update
+  reprices it to `3420.00`; Remove deletes only the selected line; a line with neither code nor
+  description is refused; and Save as default stores `['SI-01']` as the template while leaving
+  `by_document` empty.
+- Settings snapshots taken around every click confirm Add / Update / Remove touch nothing on disk —
+  only Save as default writes, and it never creates a per-document entry.
+
+### Note on the earlier report
+- The `v1.25.3` entry said the dialog itself could not be exercised by an agent. That was wrong: it
+  can, by substituting the one blocking call. What still genuinely needs the project owner is how
+  the tab **looks** — layout, spacing, theme and readable text at real dialog width.
+
+---
+
 ## [v1.25.3] - 2026-09-19
 
 ### Added (P7 site items — dialog tab)

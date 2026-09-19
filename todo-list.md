@@ -99,9 +99,16 @@ project's own, a seeded default, or empty.
 **Verified as far as an agent can:** Revit 2025 loaded the real `ui.xaml` through WPF's own
 `XamlReader`, found all 15 controls with the right types, and attached a `Click` handler; `script.py`
 compiles and all seven imported engine names exist; a headless export still passes `265/265` cells.
-**Still open — owner run:** the dialog itself has not been opened by an agent. Button behaviour,
-editing a line, the summary text and saving from the dialog need the project owner. P7 stays
-`building` until then.
+**Driven live in `v1.25.4`:** the shipping `script.py` ran in Revit 2025 with only
+`window.ShowDialog()` replaced by a driver hook, so the real window, handlers and engine were
+exercised. All twelve checks passed — Add, the unpriced line, the summary split, select-to-edit,
+Update, Remove, the refusal of an empty line, and Save as default writing the template without
+creating a per-document entry.
+**Fixed in `v1.25.4`:** a headless export (or the startup parameter restore) could persist an empty
+list as the document's own, losing a saved list and disabling seeding. `site_items_ready` now gates
+that write; a `KEEP-01` list survived a headless export under test.
+**Still open — owner run:** only how the tab *looks* is unverified — layout, spacing, theme and
+readable text at real dialog width. P7 stays `building` until the owner confirms that.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.3'
+__version__ = '1.25.4'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.3'
+SCRIPT_VERSION = '1.25.4'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -280,6 +280,13 @@ from site_items_engine import (
 
 # The live list for the active document, rebuilt when the dialog opens.
 site_items_state = []
+
+# False until site_items_load_for_document() has run. Settings are saved
+# after every list mutation, including the parameter restore that happens
+# while the dialog is still being built - and a save that fired then would
+# store an empty list for this document, which resolve_site_items would
+# read as "this project has its own list" and never seed the default again.
+site_items_ready = [False]
 
 assembly_profile = {
     "id": "global-custom",
@@ -4298,6 +4305,7 @@ try:
                             "No site items saved for this project yet."
                         )
 
+                site_items_ready[0] = True
                 site_items_refresh()
             except:
                 pass
@@ -4465,11 +4473,12 @@ try:
             # untouched here - it only ever seeds a new project, and is
             # changed explicitly through Save as default.
             try:
-                settings["site_items"] = save_site_items(
-                    settings.get("site_items"),
-                    safe_text(doc.Title, ""),
-                    site_items_state
-                )
+                if site_items_ready[0]:
+                    settings["site_items"] = save_site_items(
+                        settings.get("site_items"),
+                        safe_text(doc.Title, ""),
+                        site_items_state
+                    )
             except:
                 pass
 
