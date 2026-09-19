@@ -36,6 +36,15 @@ TOTAL_LABEL = "TOTAL"
 AMOUNT_DECIMALS = 2
 
 
+DEFAULT_KEY = "default"
+
+DOCUMENTS_KEY = "by_document"
+
+SOURCE_DOCUMENT = "document"
+SOURCE_DEFAULT = "default"
+SOURCE_EMPTY = "empty"
+
+
 def _text(value, fallback=""):
     """Return a stripped text value, else the fallback."""
     if value is None:
@@ -198,3 +207,110 @@ def build_site_items_table(items, include_total=True):
         table.append([TOTAL_LABEL, "", "", "", "", summary["amount_total"], ""])
 
     return table
+
+
+# ------------------------------------------------------------
+# Store: a reusable default list plus a per-document list
+#
+# Owner decision (2026-09-19): a default list seeds a project the first
+# time it is opened, and the project's own list is editable from there.
+#
+# The default therefore only ever SEEDS. Editing it later never reaches
+# a document that already has its own list - otherwise changing the
+# default would silently alter the BOQ of a project that was already
+# priced and issued. Re-seeding is an explicit act:
+# forget_document_site_items.
+# ------------------------------------------------------------
+
+
+def _document_key(document_title):
+    """Return the store key for a document title, or '' when unusable."""
+    return _text(document_title)
+
+
+def normalize_site_items_store(raw):
+    """Normalize the whole stored shape, tolerating anything on disk.
+
+    A settings file written by an older build, hand-edited, or truncated
+    must degrade to an empty store rather than raise while the dialog is
+    opening.
+    """
+    raw = raw if isinstance(raw, dict) else {}
+
+    documents = {}
+    raw_documents = raw.get(DOCUMENTS_KEY)
+    if isinstance(raw_documents, dict):
+        for title, items in raw_documents.items():
+            key = _document_key(title)
+            if key:
+                documents[key] = normalize_site_items(items)
+
+    return {
+        DEFAULT_KEY: normalize_site_items(raw.get(DEFAULT_KEY)),
+        DOCUMENTS_KEY: documents,
+    }
+
+
+def resolve_site_items(store, document_title):
+    """Return the items to show for one document, and where they came from.
+
+    source is 'document' when the project has its own saved list,
+    'default' when the default list is seeding it for the first time,
+    and 'empty' when there is nothing to show. The caller needs the
+    distinction: a seeded list is a starting point the user has not
+    accepted yet.
+    """
+    store = normalize_site_items_store(store)
+    key = _document_key(document_title)
+
+    if key and key in store[DOCUMENTS_KEY]:
+        return {"items": store[DOCUMENTS_KEY][key], "source": SOURCE_DOCUMENT}
+
+    seeded = store[DEFAULT_KEY]
+    if seeded:
+        return {"items": [dict(item) for item in seeded], "source": SOURCE_DEFAULT}
+
+    return {"items": [], "source": SOURCE_EMPTY}
+
+
+def save_site_items(store, document_title, items):
+    """Return a new store with this document's own list replaced.
+
+    The default list is untouched: saving a project never edits the
+    template other projects will be seeded from.
+    """
+    store = normalize_site_items_store(store)
+    key = _document_key(document_title)
+    if not key:
+        return store
+
+    documents = dict(store[DOCUMENTS_KEY])
+    documents[key] = normalize_site_items(items)
+    return {DEFAULT_KEY: store[DEFAULT_KEY], DOCUMENTS_KEY: documents}
+
+
+def set_default_site_items(store, items):
+    """Return a new store with a different default list.
+
+    Documents that already carry their own list keep it. The new default
+    applies only to documents opened for the first time from now on.
+    """
+    store = normalize_site_items_store(store)
+    return {
+        DEFAULT_KEY: normalize_site_items(items),
+        DOCUMENTS_KEY: dict(store[DOCUMENTS_KEY]),
+    }
+
+
+def forget_document_site_items(store, document_title):
+    """Return a new store with this document's list removed.
+
+    The next resolve for that document seeds from the default again.
+    This is the only way a changed default reaches an existing project,
+    and it is deliberately explicit.
+    """
+    store = normalize_site_items_store(store)
+    key = _document_key(document_title)
+    documents = dict(store[DOCUMENTS_KEY])
+    documents.pop(key, None)
+    return {DEFAULT_KEY: store[DEFAULT_KEY], DOCUMENTS_KEY: documents}

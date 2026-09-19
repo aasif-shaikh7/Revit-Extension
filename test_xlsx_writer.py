@@ -3400,6 +3400,74 @@ def main():
         "P7 priceable_site_items returns only fully priced lines"
     )
 
+    # Store: a default list seeds a project the first time it is opened,
+    # and the project's own list is editable from there (owner decision,
+    # 2026-09-19).
+    store = site_items_engine.normalize_site_items_store({
+        "default": [{"code": "D-01", "description": "Scaffolding",
+                     "quantity": "1", "unit": "LS", "rate": "50000"}],
+    })
+
+    seeded = site_items_engine.resolve_site_items(store, "AMANI")
+    check(
+        seeded["source"] == "default"
+        and [item["code"] for item in seeded["items"]] == ["D-01"],
+        "P7 a document with no list of its own is seeded from the default"
+    )
+
+    store = site_items_engine.save_site_items(store, "AMANI", [
+        {"code": "A-01", "description": "Site office", "quantity": "1",
+         "unit": "LS", "rate": "20000"},
+    ])
+    owned = site_items_engine.resolve_site_items(store, "AMANI")
+    check(
+        owned["source"] == "document"
+        and [item["code"] for item in owned["items"]] == ["A-01"],
+        "P7 once saved, a document uses its own list instead of the default"
+    )
+
+    # The decision that matters: changing the default must never reach a
+    # project that was already priced from its own list.
+    store = site_items_engine.set_default_site_items(store, [
+        {"code": "D-99", "description": "New template line", "quantity": "2",
+         "unit": "nos", "rate": "100"},
+    ])
+    after = site_items_engine.resolve_site_items(store, "AMANI")
+    fresh = site_items_engine.resolve_site_items(store, "UMA-NIWAS")
+    check(
+        [item["code"] for item in after["items"]] == ["A-01"]
+        and after["source"] == "document"
+        and [item["code"] for item in fresh["items"]] == ["D-99"]
+        and fresh["source"] == "default",
+        "P7 a changed default seeds only new documents and never edits a saved one"
+    )
+
+    reset = site_items_engine.forget_document_site_items(store, "AMANI")
+    check(
+        site_items_engine.resolve_site_items(reset, "AMANI")["source"] == "default",
+        "P7 forgetting a document's list re-seeds it from the default"
+    )
+
+    check(
+        site_items_engine.resolve_site_items(
+            site_items_engine.normalize_site_items_store({}), "ANY") ==
+        {"items": [], "source": "empty"},
+        "P7 an empty store resolves to no items rather than raising"
+    )
+
+    check(
+        site_items_engine.normalize_site_items_store(
+            {"default": "junk", "by_document": ["not", "a", "dict"]}) ==
+        {"default": [], "by_document": {}},
+        "P7 a corrupt or hand-edited store degrades to empty instead of raising"
+    )
+
+    check(
+        site_items_engine.save_site_items(store, "", typed)[
+            "by_document"].get("") is None,
+        "P7 a blank document title is never used as a store key"
+    )
+
     # ------------------------------------------------------------
     # Authoring spec engine (lib/authoring_spec.py)
     #

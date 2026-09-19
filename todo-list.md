@@ -47,7 +47,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P4 | Rebar Quantity Engine | 5/5/3/3 | **done** (`v1.19.0` QA) |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
-| P7 | Site / Manual Structural Items | 4/4/2/4 | `building` (`v1.25.0` `lib/site_items_engine.py`; settings/dialog/export pending two owner decisions) |
+| P7 | Site / Manual Structural Items | 4/4/2/4 | `building` (`v1.25.0` engine, `v1.25.1` store; sheet + Costing next, dialog last) |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`; `script.py` 5,931 -> 5,580) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
@@ -79,11 +79,17 @@ every unusable field by name, price only complete lines, and build the export ta
 non-numeric, zero, negative and boolean quantities/rates all normalize to `None` and leave `Amount`
 blank rather than pricing work at zero.
 **Tested (harness):** 11 checks, all passing.
-**Blocked on two owner decisions:**
-1. **Storage scope** — are site items saved per project (global `.rcc_boq_settings.json`, reused
-   across models) or per document?
-2. **Totals** — does the site-items total feed `BOQ Summary` and `Costing`, or stay a standalone
-   sheet so model-derived and typed quantities never mix in one figure?
+**Owner decisions taken (2026-09-19):**
+1. **Storage** — a reusable **default list seeds a project the first time it is opened**, then the
+   project edits its own list. The default only ever seeds: changing it never rewrites a project
+   that already has its own list, because that would silently alter an already-priced BOQ.
+   Landed in `v1.25.1`.
+2. **Totals** — site items get their **own sheet and their own Costing lines**; `BOQ Summary` is not
+   touched. It totals concrete volume in m³, so adding a currency figure to that total would be
+   arithmetically wrong.
+
+**Next:** the workbook sheet plus Costing lines (engine-side, harness-provable), then the dialog tab
+(owner-confirmable only).
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

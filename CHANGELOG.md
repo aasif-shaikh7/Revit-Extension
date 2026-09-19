@@ -22,6 +22,38 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.1] - 2026-09-19
+
+### Added (P7 site items — storage shape)
+- **Owner decision (2026-09-19):** site items use a reusable **default list that seeds a project the
+  first time it is opened**, after which the project edits its own list.
+- `lib/site_items_engine.py` gains the store layer: `normalize_site_items_store`,
+  `resolve_site_items`, `save_site_items`, `set_default_site_items` and
+  `forget_document_site_items`. Still pure Python.
+- `resolve_site_items` returns the items **and their source** — `document` (the project's own saved
+  list), `default` (seeded, not yet accepted) or `empty` — so the dialog can tell the user which of
+  the three they are looking at.
+
+### Design decision — the default only ever seeds
+- Editing the default list **never** reaches a document that already has its own list. Otherwise
+  changing the template would silently alter the BOQ of a project that was already priced and
+  issued. Re-seeding an existing project is an explicit act: `forget_document_site_items`.
+- Saving a project's list never edits the default, so one project cannot rewrite the template other
+  projects will be seeded from.
+- A blank document title is never used as a store key, and a corrupt or hand-edited store degrades
+  to empty rather than raising while the dialog is opening.
+
+### Tests
+- `test_xlsx_writer.py` P7 coverage goes from 11 to 18 checks, including that a changed default
+  seeds a new document while leaving a saved one untouched, that forgetting a document re-seeds it,
+  and that junk in the settings file normalizes to an empty store.
+
+### Still to come in P7
+- The workbook sheet and its Costing lines, then the dialog tab. `BOQ Summary` will not be touched:
+  it totals concrete volume in m³, and adding a currency figure to that total would be wrong.
+
+---
+
 ## [v1.25.0] - 2026-09-19
 
 ### Added (P7 site / non-model items — engine slice)
