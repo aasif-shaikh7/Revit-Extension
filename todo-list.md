@@ -107,8 +107,12 @@ creating a per-document entry.
 **Fixed in `v1.25.4`:** a headless export (or the startup parameter restore) could persist an empty
 list as the document's own, losing a saved list and disabling seeding. `site_items_ready` now gates
 that write; a `KEEP-01` list survived a headless export under test.
-**Still open — owner run:** only how the tab *looks* is unverified — layout, spacing, theme and
-readable text at real dialog width. P7 stays `building` until the owner confirms that.
+**Layout reviewed by the owner (`v1.25.5`):** a screenshot showed the entry boxes stretching
+absurdly on a wide monitor because one three-column grid served fields with opposite width needs.
+Columns are now paired by need, capped at 1100 px, the list sits in an **Items in this project**
+group box, and the intro wraps at 900 px. The tab was driven again after the change with all twelve
+checks passing.
+**Still open — owner run:** a second look at the adjusted layout, and Dark/Light theme readability.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

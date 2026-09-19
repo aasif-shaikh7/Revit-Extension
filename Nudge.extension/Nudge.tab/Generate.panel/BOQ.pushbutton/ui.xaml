@@ -843,16 +843,19 @@
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,12">
                         <TextBlock Text="Site / Non-Model Items" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                        <TextBlock x:Name="SiteItemIntro" TextWrapping="Wrap" Style="{DynamicResource BrandBodyText}"
+                        <TextBlock x:Name="SiteItemIntro" TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
+                                   Style="{DynamicResource BrandBodyText}"
                                    Text="Work that is not modelled - consumables, temporary works, site items. These export to their own Site Items sheet and are added to the Costing total. A line without a positive Quantity and Rate still appears, but its Amount stays blank rather than counting as zero."/>
                         <TextBlock x:Name="SiteItemSource" Margin="0,6,0,0" Style="{DynamicResource BrandLabelText}" Text=""/>
                     </StackPanel>
 
-                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                    <!-- Columns are paired by how much room each field needs:
+                         identity, then unit/rate, then the long free text. -->
+                    <Grid Grid.Row="1" Margin="0,0,0,10" MaxWidth="1100" HorizontalAlignment="Left">
 
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="150"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
@@ -863,20 +866,20 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Item Code" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Description" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Unit" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Item Code" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Unit" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Description" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
 
-                        <TextBox x:Name="SiteItemCode" Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" Style="{DynamicResource BrandTextBox}"/>
-                        <TextBox x:Name="SiteItemDescription" Grid.Row="1" Grid.Column="1" Margin="0,0,8,8" Style="{DynamicResource BrandTextBox}"/>
-                        <TextBox x:Name="SiteItemUnit" Grid.Row="1" Grid.Column="2" Margin="0,0,0,8" Style="{DynamicResource BrandTextBox}" ToolTip="For example kg, LS, nos, m2."/>
+                        <TextBox x:Name="SiteItemCode" Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemUnit" Grid.Row="1" Grid.Column="1" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="For example kg, LS, nos, m2."/>
+                        <TextBox x:Name="SiteItemDescription" Grid.Row="1" Grid.Column="2" Margin="0,0,0,10" Style="{DynamicResource BrandTextBox}"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Quantity" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Rate" Style="{DynamicResource BrandLabelText}" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Quantity" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Rate" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
                         <TextBlock Grid.Row="2" Grid.Column="2" Text="Remarks" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
 
-                        <TextBox x:Name="SiteItemQuantity" Grid.Row="3" Grid.Column="0" Margin="0,0,8,0" Style="{DynamicResource BrandTextBox}"/>
-                        <TextBox x:Name="SiteItemRate" Grid.Row="3" Grid.Column="1" Margin="0,0,8,0" Style="{DynamicResource BrandTextBox}" ToolTip="Leave blank while a rate is still awaited. The line exports with a blank Amount."/>
+                        <TextBox x:Name="SiteItemQuantity" Grid.Row="3" Grid.Column="0" Margin="0,0,10,0" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemRate" Grid.Row="3" Grid.Column="1" Margin="0,0,10,0" Style="{DynamicResource BrandTextBox}" ToolTip="Leave blank while a rate is still awaited. The line exports with a blank Amount."/>
                         <TextBox x:Name="SiteItemRemarks" Grid.Row="3" Grid.Column="2" Margin="0,0,0,0" Style="{DynamicResource BrandTextBox}"/>
 
                     </Grid>
@@ -888,14 +891,15 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <ListBox
-                            x:Name="SiteItemList"
-                            Grid.Column="0"
-                            Margin="0,0,8,0"
-                            DisplayMemberPath="Name"
-                            Background="{DynamicResource SurfaceBrush}"
-                            Foreground="{DynamicResource TextPrimaryBrush}"
-                            BorderBrush="{DynamicResource BorderBrush2}"/>
+                        <GroupBox Grid.Column="0" Header="Items in this project" Margin="0,0,8,0">
+                            <ListBox
+                                x:Name="SiteItemList"
+                                Margin="5"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+                        </GroupBox>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="150">
                             <Button x:Name="SiteItemAdd" Content="Add item" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>

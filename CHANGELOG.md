@@ -22,6 +22,30 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.5] - 2026-09-19
+
+### Fixed (Site Items tab layout, from the owner's screenshot)
+- The six entry boxes shared one three-column grid, so each column had to serve two fields with
+  opposite needs: `Description` (wants width) sat above `Rate` (wants none), and `Unit` above
+  `Remarks`. On a wide monitor `Unit` was given roughly 460 px to hold values like `kg`.
+- The columns are now paired by how much room a field actually needs —
+  identity (`Item Code` / `Quantity`, 220 px), short values (`Unit` / `Rate`, 150 px) and free text
+  (`Description` / `Remarks`, the remainder) — and the block is capped at 1100 px and left-aligned so
+  it stops stretching on a wide screen.
+- The bare item list is now inside a `GroupBox` headed **Items in this project**, matching the
+  Available / Selected group boxes on the category tabs, so the empty box reads as a list rather than
+  a void.
+- The intro paragraph is capped at 900 px so it wraps into readable lines instead of one very long
+  one.
+
+### Verified (live)
+- `ui.xaml` still loads through WPF's own `XamlReader` in Revit 2025 with all **15** controls
+  findable and correctly typed — `SiteItemList` resolves even though it now sits inside a `GroupBox`.
+- The tab was driven again end to end after the change: **all twelve checks passed**, unchanged from
+  `v1.25.4`.
+
+---
+
 ## [v1.25.4] - 2026-09-19
 
 ### Fixed (a headless export could wipe a project's site items)
