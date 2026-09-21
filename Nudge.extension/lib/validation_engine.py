@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 """P9/P10 validation engine - pure model-quality checks; no Revit symbols.
 
-P10 (Unmapped Element Report) lands here first as the foundation of the
-planned P9 validation engine (PROJECT_STRUCTURE.md section 9). It inspects
-only the element rows the exporter already built plus plain routing-audit
+P10 (Unmapped Element Report) landed here first as the foundation of the
+P9 validation engine (PROJECT_STRUCTURE.md section 9). It inspects only the
+element rows the exporter already built plus plain routing-audit
 dictionaries, so it adds no Revit reads and runs under CP3123 and IP27.
+
+P9 adds the part PRD section 12 asks for on top of those findings: a
+severity for each issue and a compact summary - counts plus a few short
+lines - rather than a wall of raw rows. The same findings therefore serve
+two audiences: the workbook sheet lists every one of them for fixing the
+model, while the summary is what a person can read before deciding whether
+to export at all.
 """
 
 UNMAPPED_SHEET_NAME = "Unmapped Elements"
@@ -20,6 +27,28 @@ ISSUE_MISSING_VOLUME = "Missing or zero volume"
 ISSUE_MISSING_MATERIAL = "Missing structural material"
 ISSUE_UNCERTAIN_ROUTING = "Uncertain Slab/Foundation mapping"
 ISSUE_DUPLICATE_ROUTING = "Duplicate routing source"
+
+SEVERITY_ERROR = "Error"
+SEVERITY_WARNING = "Warning"
+
+# What separates the two: an error means a number in the BOQ is wrong or
+# missing, a warning means the numbers are right but something the BOQ
+# groups or attributes them by is not. A missing volume contributes no
+# concrete at all, and a duplicated routing source can be counted twice -
+# both change a total. A missing grade, a missing material or an uncertain
+# Slab/Foundation route still carry their full quantity; what suffers is
+# which heading it lands under.
+ISSUE_SEVERITY = {
+    ISSUE_MISSING_VOLUME: SEVERITY_ERROR,
+    ISSUE_DUPLICATE_ROUTING: SEVERITY_ERROR,
+    ISSUE_MISSING_GRADE: SEVERITY_WARNING,
+    ISSUE_MISSING_MATERIAL: SEVERITY_WARNING,
+    ISSUE_UNCERTAIN_ROUTING: SEVERITY_WARNING,
+}
+
+# An issue this engine does not know is reported, not silently dropped.
+# Treating it as an error would overstate it; hiding it would lose it.
+UNKNOWN_ISSUE_SEVERITY = SEVERITY_WARNING
 
 MISSING_GRADE_DETAIL = (
     "Neither GRADE OF CONCRETE nor Grade contains a recognized "
@@ -186,3 +215,132 @@ def build_unmapped_element_report(data_result, routing_findings=None,
         table.append([category, element_id, level, issue, detail])
 
     return table
+
+
+def issue_severity(issue):
+    """Return the severity for one issue label."""
+    return ISSUE_SEVERITY.get(_text(issue), UNKNOWN_ISSUE_SEVERITY)
+
+
+def summarize_validation_findings(report_table):
+    """Count the report's findings by issue, worst first.
+
+    Takes the table build_unmapped_element_report() returns - headers plus
+    one row per finding - so the summary and the workbook sheet can never
+    disagree about what was found. A header-only table summarizes to zero
+    of everything.
+
+    Returns a list of dicts: issue, severity, count, and categories, a
+    count per element category so a line can say where the trouble is
+    without listing every Element ID.
+    """
+    rows = list(report_table or [])[1:]
+    order = []
+    grouped = {}
+
+    for row in rows:
+        try:
+            category = _text(row[0])
+            issue = _text(row[3])
+        except (IndexError, TypeError):
+            continue
+        if not issue:
+            continue
+        if issue not in grouped:
+            grouped[issue] = {
+                "issue": issue,
+                "severity": issue_severity(issue),
+                "count": 0,
+                "categories": {},
+            }
+            order.append(issue)
+        entry = grouped[issue]
+        entry["count"] += 1
+        if category:
+            entry["categories"][category] = (
+                entry["categories"].get(category, 0) + 1)
+
+    summary = [grouped[issue] for issue in order]
+    # Errors first, then the biggest counts; the issue label breaks ties so
+    # the same findings always summarize in the same order.
+    summary.sort(key=lambda entry: (
+        0 if entry["severity"] == SEVERITY_ERROR else 1,
+        -entry["count"],
+        entry["issue"],
+    ))
+    return summary
+
+
+def count_validation_findings(report_table):
+    """Return (errors, warnings, total) for one report table."""
+    errors = 0
+    warnings = 0
+    for entry in summarize_validation_findings(report_table):
+        if entry["severity"] == SEVERITY_ERROR:
+            errors += entry["count"]
+        else:
+            warnings += entry["count"]
+    return errors, warnings, errors + warnings
+
+
+def build_validation_report_lines(report_table, max_lines=8):
+    """Build the compact pre-export report PRD section 12 asks for.
+
+    One line per issue, worst first, each naming the categories it came
+    from. PRD section 12 is explicit that this stays compact - the full
+    list belongs in the workbook sheet, not in a dialog - so the lines are
+    capped and the remainder is counted rather than printed.
+    """
+    try:
+        limit = max(1, int(max_lines))
+    except (TypeError, ValueError):
+        limit = 8
+
+    entries = summarize_validation_findings(report_table)
+    lines = []
+
+    for entry in entries[:limit]:
+        categories = entry["categories"]
+        if categories:
+            named = sorted(
+                categories.items(), key=lambda item: (-item[1], item[0]))
+            where = " ({0})".format(
+                ", ".join("{0} {1}".format(name, count)
+                          for name, count in named))
+        else:
+            where = ""
+        lines.append("{0}: {1} x {2}{3}".format(
+            entry["severity"], entry["count"], entry["issue"], where))
+
+    if len(entries) > limit:
+        lines.append("...and {0} more issue type(s)".format(
+            len(entries) - limit))
+
+    return lines
+
+
+def build_validation_report(report_table, max_lines=8):
+    """Return the whole compact report as one dict.
+
+    `ok` is about errors only. A warning is worth reading before export but
+    is not a reason to stop: the quantities it describes are still right.
+    """
+    errors, warnings, total = count_validation_findings(report_table)
+    lines = build_validation_report_lines(report_table, max_lines=max_lines)
+
+    if total:
+        headline = "{0} error(s), {1} warning(s) in {2} finding(s)".format(
+            errors, warnings, total)
+    else:
+        headline = "No validation findings"
+
+    return {
+        "ok": errors == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "total": total,
+        "headline": headline,
+        "lines": lines,
+        "text": "\n".join([headline] + lines) if lines else headline,
+        "issues": summarize_validation_findings(report_table),
+    }

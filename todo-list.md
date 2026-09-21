@@ -49,7 +49,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | **done** (`v1.25.6`) — engine, store, sheet + Costing and dialog tab; owner-confirmed 2026-09-21 |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` 5,931 -> 5,688) |
-| P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
+| P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `v1.21.0`, severity + compact report `v1.25.8`) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | `todo` |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `todo` |
@@ -64,7 +64,11 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** **P8**, the `script.py` split, before P11 starts on top of it
+**Current product focus:** **P9**, the validation report (`v1.25.8` added severity and the
+compact summary; see P9 below for what is left). PRD section 12 gates **P11 Structural Rate
+Analysis** on quantities being stable, which is what P9 is for, so P11 waits. **P8**, the
+`script.py` split, is paid down to the point where more splitting would be splitting for its own
+sake
 (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` the routing core;
 5,931 -> 5,688 lines). **P9** sits on its `v1.21.0` foundation and **P11 Structural Rate Analysis**
 is the next unstarted phase. P7 closed
@@ -73,6 +77,31 @@ see `done-list.md`. P10 closed in `v1.24.0`, owner-confirmed through the dialog.
 Rebar/BBS QA are complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material
 assignment is done after isolated Secondary rollback, assignment, export and save/reopen
 persistence QA (`v1.23.0`).
+
+### P9 — Validation Engine — `building` (`v1.25.8`)
+
+**Built:** severity and the compact report in `lib/validation_engine.py` - errors/warnings counts
+and one short line per issue, built from the same table the `Unmapped Elements` sheet is written
+from. The export's completion message carries it in place of the old bare finding count.
+**Error vs warning:** an error means a BOQ number is wrong or missing (missing/zero volume,
+duplicate routing source); a warning means the quantities are right but their grouping is not
+(missing grade, missing material, uncertain routing).
+**Tested (harness):** 11 checks inside the 261-check suite.
+
+**Measured, not built - duplicate marks.** PRD section 12 lists it, but a read-only pass over the
+owner's `R25-UMA NIWAS BUILDING-ST-31-08-2026` found **1,076 structural elements with not one `Mark`
+filled in**. The check would report nothing on this project. This model identifies elements through
+family/type text and `ID_UNMT` / `ITEM DES.` / `CODE_UNIMONT`. If duplicate identity matters here,
+the field to check is one the project actually fills - an owner decision, not a guess.
+
+**Open - needs an owner decision:** should errors **block** the export, or only warn? Today the
+report informs and the export proceeds, which is a strict improvement on the old bare count and
+changes nobody's flow. Blocking is a different product, so it is not being assumed.
+
+**Also open:** PRD section 12 lists missing rebar and missing parameters, neither of which the
+engine checks yet.
+
+**Not verified:** the dialog was not run; an agent cannot open it (see P8 below).
 
 ### P8 — Structural Rule Engine / `script.py` split — `building` (`v1.25.7`)
 

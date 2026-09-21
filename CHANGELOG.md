@@ -22,6 +22,50 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.8] - 2026-09-21
+
+### Added (P9 compact validation report)
+- `lib/validation_engine.py` gains the part PRD section 12 actually asks for on top of the P10
+  findings: a **severity** per issue and a **compact summary** - counts plus a few short lines -
+  instead of a wall of rows. `summarize_validation_findings`, `count_validation_findings`,
+  `build_validation_report_lines` and `build_validation_report` are all pure and dependency-free.
+- **What separates an error from a warning**, because the split is the whole value of the feature:
+  an **error** means a number in the BOQ is wrong or missing - `Missing or zero volume` (the element
+  contributes no concrete at all) and `Duplicate routing source` (it can be counted twice). A
+  **warning** means the quantities are right but what the BOQ groups them by is not -
+  `Missing concrete grade`, `Missing structural material`, `Uncertain Slab/Foundation mapping`. So
+  `ok` is about errors only; a warning is worth reading before export, not a reason to stop.
+- An issue the engine has never heard of is reported as a warning rather than dropped or
+  overstated.
+- The export's completion message now carries that summary in place of the bare
+  `Unmapped elements: N finding(s)` line. The report is built from the **same table** the
+  `Unmapped Elements` sheet is written from, so the count a person reads can never disagree with the
+  rows they find afterwards. The build is guarded: a summary is a convenience and must never be the
+  reason an otherwise ready export fails.
+
+### Measured, then deliberately not built (duplicate marks)
+PRD section 12 also lists *duplicate marks* among the P9 checks. Whether that is a useful check
+depends entirely on how a real model uses `Mark`, so it was measured before anything was written:
+a read-only `pyrevit run` pass over a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026` found
+**1,076 structural elements and not one `Mark` filled in** - 545 Beams, 194 Columns, 12 Structure
+Walls, 325 Foundations, every one blank. A duplicate-mark check would have reported nothing on this
+project while adding a check to maintain. This model identifies elements through family/type text
+and `ID_UNMT` / `ITEM DES.` / `CODE_UNIMONT`, which is exactly what the classifier already reads.
+**Not built, and the reason is the measurement, not an opinion.** If duplicate identity ever matters
+here, the field to check is the one the project actually fills.
+
+### Verified (harness only)
+- `python test_xlsx_writer.py`: **261 checks pass**, up from 250. The 11 new ones summarize the very
+  `p10_report` fixture the sheet tests use, and cover the grouping order, the error/warning split,
+  the per-category breakdown, the headline wording, warnings-only staying `ok`, a clean export, an
+  unknown issue, the line cap, the no-Revit-symbol guard, and the export handler using the report.
+
+### Not verified
+- The export dialog was not run. The wiring is a message change at a point the harness pins by
+  source, but a person has not seen the new completion text in Revit.
+
+---
+
 ## [v1.25.7] - 2026-09-21
 
 ### Changed (P8 split: the routing rules leave the pushbutton)

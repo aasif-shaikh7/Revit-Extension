@@ -2917,6 +2917,102 @@ def main():
         "P10 clean export yields a header-only report"
     )
 
+    # ------------------------------------------------------------
+    # P9 compact validation report (v1.25.8)
+    #
+    # Deliberately summarizes `p10_report` - the same table the workbook
+    # sheet is built from - so the count a person reads before export can
+    # never disagree with the rows they find afterwards.
+    # ------------------------------------------------------------
+    p9_summary = validation_engine.summarize_validation_findings(p10_report)
+    check(
+        [(entry["issue"], entry["count"], entry["severity"])
+         for entry in p9_summary] == [
+            (validation_engine.ISSUE_MISSING_VOLUME, 3, "Error"),
+            (validation_engine.ISSUE_DUPLICATE_ROUTING, 1, "Error"),
+            (validation_engine.ISSUE_MISSING_GRADE, 2, "Warning"),
+            (validation_engine.ISSUE_UNCERTAIN_ROUTING, 1, "Warning"),
+        ],
+        "P9 summary groups findings by issue, errors first then by count"
+    )
+    check(
+        validation_engine.count_validation_findings(p10_report) == (4, 3, 7)
+        and sum(entry["count"] for entry in p9_summary) == len(p10_report) - 1,
+        "P9 counts every report row exactly once as an error or a warning"
+    )
+    check(
+        p9_summary[0]["categories"] == {"Column": 3}
+        and p9_summary[2]["categories"] == {"Beam": 1, "Column": 1},
+        "P9 summary says which categories an issue came from"
+    )
+
+    p9_report = validation_engine.build_validation_report(p10_report)
+    check(
+        p9_report["ok"] is False
+        and p9_report["headline"] == "4 error(s), 3 warning(s) in 7 finding(s)"
+        and p9_report["lines"][0]
+        == "Error: 3 x Missing or zero volume (Column 3)"
+        and p9_report["text"].startswith(p9_report["headline"]),
+        "P9 report headline and first line read as a person would say them"
+    )
+    check(
+        len(p9_report["lines"]) == 4
+        and all("x " in line for line in p9_report["lines"]),
+        "P9 report prints one short line per issue, not one per finding"
+    )
+
+    # A warning is worth reading but is not a reason to stop: the
+    # quantities it describes are still right.
+    warnings_only = [list(validation_engine.UNMAPPED_HEADERS)] + [
+        ["Beam", "1", "L1", validation_engine.ISSUE_MISSING_GRADE, "d"],
+        ["Slab", "2", "L1", validation_engine.ISSUE_MISSING_MATERIAL, "d"],
+    ]
+    warning_report = validation_engine.build_validation_report(warnings_only)
+    check(
+        warning_report["ok"] is True
+        and warning_report["errors"] == 0
+        and warning_report["warnings"] == 2,
+        "P9 warnings alone leave the export ok; only errors clear that flag"
+    )
+
+    clean_report = validation_engine.build_validation_report(
+        [list(validation_engine.UNMAPPED_HEADERS)])
+    check(
+        clean_report["ok"] is True
+        and clean_report["total"] == 0
+        and clean_report["lines"] == []
+        and clean_report["text"] == "No validation findings",
+        "P9 a clean export says so in one line and lists nothing"
+    )
+
+    # An issue this engine has never heard of must still be reported.
+    unknown_table = [list(validation_engine.UNMAPPED_HEADERS)] + [
+        ["Beam", "9", "L1", "Some future issue", "d"]]
+    unknown_report = validation_engine.build_validation_report(unknown_table)
+    check(
+        unknown_report["total"] == 1
+        and unknown_report["warnings"] == 1
+        and "Some future issue" in unknown_report["text"],
+        "P9 an unrecognized issue is reported as a warning, never dropped"
+    )
+
+    check(
+        validation_engine.build_validation_report(
+            p10_report, max_lines=2)["lines"][-1] == "...and 2 more issue type(s)",
+        "P9 the compact report caps its lines and counts the remainder"
+    )
+
+    p9_source = io.open(
+        os.path.join(LIB_DIR, "validation_engine.py"),
+        "r", encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in p9_source
+        and "from Autodesk" not in p9_source
+        and "from pyrevit" not in p9_source
+        and "import pyrevit" not in p9_source,
+        "P9 validation engine imports no Revit or pyRevit symbol"
+    )
+
     # v1.22.0 P10-02: missing structural material.
     material_report = validation_engine.build_unmapped_element_report(
         {
@@ -3188,6 +3284,14 @@ def main():
         and "classification_audit_detail_results(" in export_handler_source
         and "UNMAPPED_SHEET_NAME" in export_handler_source,
         "P10 export handler builds one report and passes it to both workbook writers"
+    )
+
+    check(
+        "build_validation_report(unmapped_report)" in export_handler_source
+        and 'p9_report["headline"]' in export_handler_source
+        and 'p9_report["lines"]' in export_handler_source
+        and "Unmapped elements: {} finding(s)" not in export_handler_source,
+        "P9 export handler summarizes the same report table it writes to the sheet"
     )
 
     engine_guard_block, _ = extract_from_sources(

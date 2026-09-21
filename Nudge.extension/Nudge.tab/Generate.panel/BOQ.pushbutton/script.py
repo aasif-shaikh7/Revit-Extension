@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.7'
+__version__ = '1.25.8'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.7'
+SCRIPT_VERSION = '1.25.8'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5301,6 +5301,22 @@ try:
                     )
                     unmapped_count = len(unmapped_report) - 1
 
+                    # P9: severity and a compact summary of exactly those
+                    # rows. Guarded - a summary is a convenience and must
+                    # never be the reason an otherwise ready export fails.
+                    try:
+                        from validation_engine import build_validation_report
+                        p9_report = build_validation_report(unmapped_report)
+                    except Exception:
+                        p9_report = {
+                            "headline": "{} finding(s)".format(unmapped_count),
+                            "lines": [],
+                            "errors": 0,
+                            "warnings": 0,
+                            "total": unmapped_count,
+                            "ok": True,
+                        }
+
                     # P7: typed non-model items for THIS document. A
                     # default list seeds a project the first time it is
                     # opened; the project's own saved list wins after
@@ -5497,10 +5513,20 @@ try:
                             )
 
                     if unmapped_count > 0:
+                        # P9: the same findings the sheet lists, now
+                        # summarized by issue and severity. A bare count
+                        # said how many rows to expect but nothing about
+                        # what they are, or which of them change a total.
                         completion_message += (
-                            "\n\nUnmapped elements: {} finding(s) - "
-                            "see the '{}' sheet and use Manage > Select "
-                            "by ID to fix them in the model.".format(
+                            "\n\nValidation: {}\n{}".format(
+                                p9_report["headline"],
+                                "\n".join(p9_report["lines"])
+                            )
+                        )
+                        completion_message += (
+                            "\n\nAll {} finding(s) are listed on the "
+                            "'{}' sheet; use Manage > Select by ID to "
+                            "fix them in the model.".format(
                                 unmapped_count,
                                 UNMAPPED_SHEET_NAME
                             )
