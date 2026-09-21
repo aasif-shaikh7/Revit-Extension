@@ -1597,6 +1597,54 @@ def identity_sort_key(value):
     return (0, tuple(parts))
 
 
+LEVEL_COLUMNS = ("Level",)
+
+
+def _first_filled_column(rows, columns):
+    """The first of these columns any row actually carries a value in."""
+    for column in columns:
+        for row in rows:
+            try:
+                if str(row.get(column, "") or "").strip():
+                    return column
+            except AttributeError:
+                return None
+    return None
+
+
+def sort_rows_for_boq(rows, level_columns=LEVEL_COLUMNS,
+                      identity_columns=IDENTITY_COLUMNS):
+    """Order rows by level, then by identity code inside each level.
+
+    Level names in this project carry their own sequence number
+    ("01 FOUNDATION LEVEL", "03 PLINTH LEVEL"), which is why the same
+    natural key works for both: it reads those numbers as numbers, so
+    "12 TERRACE" comes before "13 OHW/LMR" rather than after it.
+
+    Whichever column is missing simply drops out of the key, so a project
+    with no level, or no identity, is still ordered by the other one.
+    """
+    items = list(rows or [])
+    if not items:
+        return items
+
+    level_column = _first_filled_column(items, level_columns)
+    identity_column = _first_filled_column(items, identity_columns)
+
+    if level_column is None and identity_column is None:
+        return items
+
+    def key(row):
+        parts = []
+        if level_column is not None:
+            parts.append(identity_sort_key(row.get(level_column, "")))
+        if identity_column is not None:
+            parts.append(identity_sort_key(row.get(identity_column, "")))
+        return tuple(parts)
+
+    return sorted(items, key=key)
+
+
 def sort_rows_by_identity(rows, columns=IDENTITY_COLUMNS):
     """Return the rows ordered by the first identity column they carry.
 

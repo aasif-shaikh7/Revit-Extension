@@ -2127,16 +2127,17 @@ def build_element_data(include_grade=True, material_sink=None):
 
             total_rows += 1
 
-    # Order every sheet by its identity code - B1, B2, B2A, B10 - rather
-    # than by the order Revit happened to hand the elements over. Done
-    # here, once, so the element sheets, the Costing rows and the
-    # unmapped report all read in the same order. Guarded: an ordering
-    # problem must never cost somebody their export.
+    # Order every sheet the way a BOQ is read: level by level, and
+    # within a level by identity code - B1, B2, B2A, B10 - rather than by
+    # the order Revit happened to hand the elements over. Done here,
+    # once, so the element sheets, the Costing rows and the unmapped
+    # report all read in the same order. Guarded: an ordering problem
+    # must never cost somebody their export.
     try:
-        from export_engine import sort_rows_by_identity
+        from export_engine import sort_rows_for_boq
 
         for category_name in list(data_result.keys()):
-            data_result[category_name] = sort_rows_by_identity(
+            data_result[category_name] = sort_rows_for_boq(
                 data_result[category_name]
             )
     except:

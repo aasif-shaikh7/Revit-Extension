@@ -3345,9 +3345,45 @@ def main():
         "Identity order survives an empty category"
     )
 
+    # Level first, identity inside the level - how a BOQ is read.
+    level_rows = [
+        {"Level": "04 1ST LEVEL", "ID_UNMT": "B10"},
+        {"Level": "03 PLINTH LEVEL", "ID_UNMT": "B2"},
+        {"Level": "04 1ST LEVEL", "ID_UNMT": "B2"},
+        {"Level": "13 OHW/LMR LEVEL", "ID_UNMT": "B1"},
+        {"Level": "12 TERRACE LEVEL", "ID_UNMT": "B1"},
+        {"Level": "03 PLINTH LEVEL", "ID_UNMT": "B1"},
+    ]
+    check(
+        [(row["Level"], row["ID_UNMT"])
+         for row in ordering_engine.sort_rows_for_boq(level_rows)] == [
+            ("03 PLINTH LEVEL", "B1"),
+            ("03 PLINTH LEVEL", "B2"),
+            ("04 1ST LEVEL", "B2"),
+            ("04 1ST LEVEL", "B10"),
+            ("12 TERRACE LEVEL", "B1"),
+            ("13 OHW/LMR LEVEL", "B1"),
+        ],
+        "BOQ order is level first, then identity inside the level"
+    )
+    check(
+        [row["Level"] for row in ordering_engine.sort_rows_for_boq(
+            [{"Level": "13 OHW/LMR LEVEL"}, {"Level": "12 TERRACE LEVEL"},
+             {"Level": "03 PLINTH LEVEL"}])]
+        == ["03 PLINTH LEVEL", "12 TERRACE LEVEL", "13 OHW/LMR LEVEL"],
+        "BOQ order reads the level number, so 12 TERRACE precedes 13 OHW/LMR"
+    )
+    check(
+        [row["ID_UNMT"] for row in ordering_engine.sort_rows_for_boq(
+            [{"ID_UNMT": "B10"}, {"ID_UNMT": "B2"}])] == ["B2", "B10"]
+        and ordering_engine.sort_rows_for_boq([{"X": 2}, {"X": 1}])
+        == [{"X": 2}, {"X": 1}],
+        "BOQ order uses whichever of level and identity the project fills"
+    )
+
     ordering_block, _ = extract_from_sources(texts, "build_element_data")
     check(
-        "sort_rows_by_identity(" in ordering_block,
+        "sort_rows_for_boq(" in ordering_block,
         "build_element_data orders every category before returning it"
     )
 

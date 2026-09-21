@@ -24,7 +24,7 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ## [v1.25.9] - 2026-09-21
 
-### Added (BOQ sheets read in identity order)
+### Added (BOQ sheets read level by level, then by identity)
 - Element rows came out in whatever order Revit handed the elements over - `B10, B16, B2, B1, ...`
   on the owner's model. Every category sheet is now ordered by its identity code instead.
 - **Plain text sorting would have been wrong**, which is the whole point of the change: it reads
@@ -35,6 +35,11 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   it, otherwise `Mark`. A project that fills neither keeps the order the model gave rather than
   being shuffled by a field nobody maintains. Rows with no identity sort last, not first, and the
   sort is stable so elements sharing a code keep their model order.
+- **Level comes first.** `sort_rows_for_boq` orders by the level, then by the identity code inside
+  it, which is how a BOQ is read. The level names in this project carry their own sequence number
+  (`01 FOUNDATION LEVEL`, `03 PLINTH LEVEL`), so the same numeric key serves both and
+  `12 TERRACE` precedes `13 OHW/LMR` instead of following it. Whichever of the two columns a
+  project does not fill simply drops out of the key.
 - The ordering is applied once, at the end of `build_element_data`, so the element sheets, the
   Costing rows and the unmapped report all read in the same order. The call is guarded: an ordering
   problem must never cost somebody their export.
