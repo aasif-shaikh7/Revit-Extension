@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.26.0'
+__version__ = '1.26.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.26.0'
+SCRIPT_VERSION = '1.26.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -4259,12 +4259,39 @@ try:
                 except:
                     pass
 
+            # A category the current document has no parameters for could
+            # not restore or show anything, so an empty selection there
+            # means "this model does not have these fields", not "the user
+            # cleared them". Overwriting the saved list in that case wipes
+            # a BOQ setup simply because somebody exported a different
+            # project - which is exactly what happened on an architectural
+            # model with no structural elements. Where the category does
+            # have parameters, an empty list is a real choice and is saved.
+            previous_selected = {}
+            try:
+                raw_previous = settings.get("selected")
+                if isinstance(raw_previous, dict):
+                    previous_selected = raw_previous
+            except:
+                previous_selected = {}
+
             settings["selected"] = {}
 
             for element_name in selected_parameters.keys():
-                settings["selected"][element_name] = list(
-                    selected_parameters.get(element_name, [])
-                )
+                current = list(selected_parameters.get(element_name, []))
+
+                if not current:
+                    try:
+                        discovered = category_parameters.get(element_name, [])
+                    except:
+                        discovered = []
+                    if not discovered:
+                        kept = previous_selected.get(element_name)
+                        if isinstance(kept, list) and kept:
+                            settings["selected"][element_name] = list(kept)
+                            continue
+
+                settings["selected"][element_name] = current
 
             settings["filters"] = dict(
                 active_filters

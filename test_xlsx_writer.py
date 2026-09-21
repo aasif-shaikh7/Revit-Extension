@@ -3595,6 +3595,25 @@ def main():
         "P11 engine imports no Revit symbol and states its basis"
     )
 
+    # ------------------------------------------------------------
+    # Saved selections survive a document that has none of them (v1.26.1)
+    #
+    # Found live: an export run on an architectural model with no
+    # structural elements discovered no parameters, restored none, and
+    # then saved that emptiness over a working BOQ setup.
+    # ------------------------------------------------------------
+    capture_block = nested_handler_source("capture_and_save_settings")
+    check(
+        "previous_selected" in capture_block
+        and "category_parameters.get(element_name" in capture_block,
+        "Saving selections consults what this document actually discovered"
+    )
+    check(
+        capture_block.count("settings[\"selected\"][element_name] = current") == 1
+        and "if not discovered:" in capture_block,
+        "An empty category with no discovered parameters keeps its saved list"
+    )
+
     engine_guard_block, _ = extract_from_sources(
         texts, "_warn_if_not_cp3123"
     )

@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.1] - 2026-09-21
+
+### Fixed (an export on another project erased the saved parameter selections)
+- **Found live, not by reading code.** An export was run while Revit had switched to the owner's
+  architectural model, which has no structural elements. The dialog discovered no parameters,
+  restored none, and `capture_and_save_settings` then wrote that emptiness over a working BOQ
+  setup - all five categories cleared. The next export on the right model came out with no
+  parameter columns at all.
+- A category the current document has no parameters for could not restore or show anything, so an
+  empty selection there means *this model does not have these fields*, not *the user cleared them*.
+  Saving now keeps the previous list in that case. Where the category **does** have parameters, an
+  empty list is a real choice and is still saved - clearing a selection deliberately still works.
+
+### Verified
+- `python test_xlsx_writer.py`: **292 checks pass**, up from 290.
+- **Reproduced and confirmed live:** with the selections restored, a headless export on the correct
+  model left all five categories intact (8/7/4/6/6), where the same sequence had previously cleared
+  them.
+
+### Verified (live) - the v1.25.10 level fix
+- The export that confirmed the above also confirmed the level change on the real model:
+  **194 of 194 columns and 12 of 12 structural walls** now report a `Level` matching the project's
+  own `LEVEL_V`, where none did before. A plinth-to-first-floor column reads `03 PLINTH LEVEL`
+  instead of `01 FOUNDATION LEVEL`.
+
+---
+
 ## [v1.26.0] - 2026-09-21
 
 ### Added (P11 rate analysis - first slice, engine only)
