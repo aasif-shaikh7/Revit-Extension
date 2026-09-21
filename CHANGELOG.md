@@ -22,6 +22,37 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.0] - 2026-09-21
+
+### Added (P11 rate analysis - first slice, engine only)
+- `lib/costing_engine.py` gains the rate build-up PRD section 12 asks for. Where
+  `build_costing_sheet` takes a rate as given, `compute_analysed_rate` says where a rate comes
+  from: **material, wastage, labour, machinery, overheads**.
+- **The basis is stated once, in the module, rather than assumed in three places:** wastage applies
+  to the material only - labour and machinery are not wasted - and overheads apply to everything
+  under them. `RATE_BASIS` carries that sentence so a reader never has to infer it from the
+  arithmetic.
+- **An incomplete build-up is never priced.** The P6 rule applied to money: if any of the five is
+  absent, blank, negative, boolean or non-numeric, the rate stays blank and the status names the
+  missing figures - `Input required: machinery, overheads_pct`. A build-up that quietly treats a
+  missing labour figure as zero prices work nobody costed. Zero itself is honoured, because zero is
+  a decision.
+- `build_rate_analysis_sheet` keeps the incomplete item in the table with the figures it does have,
+  rather than dropping it: a silently absent item is the one nobody chases.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **290 checks pass**, up from 282. The arithmetic is checked by
+  hand - 5200 + 3% = 5356, + 1400 + 350 = 7106, + 12% = **7958.72** - rather than against the
+  engine's own output, and the incomplete case is checked as hard as the complete one: each of the
+  five components removed in turn, and each of -1 / blank / non-numeric / None / True refused.
+
+### Not yet
+- Nothing supplies the build-ups yet: no settings, no dialog, and no sheet in the workbook. P12
+  (rate database) is where the figures come from. This slice is the arithmetic and its refusals,
+  nothing more.
+
+---
+
 ## [v1.25.11] - 2026-09-21
 
 ### Added (P9 finishes the checks PRD section 12 asks for)

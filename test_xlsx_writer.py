@@ -3496,6 +3496,105 @@ def main():
         "build_element_data orders every category before returning it"
     )
 
+    # ------------------------------------------------------------
+    # P11 rate analysis (v1.26.0)
+    #
+    # The arithmetic is checked by hand below rather than against the
+    # engine's own output, and the incomplete case is checked as hard as
+    # the complete one: a build-up missing a figure must stay blank, not
+    # price the work at zero.
+    # ------------------------------------------------------------
+    import costing_engine as rate_engine
+
+    full_buildup = {
+        "item_code": "RCC-M30", "description": "M30 concrete in beams",
+        "unit": "m3", "material": 5200, "wastage_pct": 3,
+        "labour": 1400, "machinery": 350, "overheads_pct": 12,
+    }
+    analysed, missing = rate_engine.compute_analysed_rate(
+        rate_engine.normalize_rate_analysis(full_buildup))
+    # 5200 + 3% of 5200 = 5356; + 1400 + 350 = 7106; + 12% = 7958.72
+    check(
+        analysed == 7958.72 and missing == [],
+        "P11 wastage applies to material and overheads to the subtotal"
+    )
+
+    zero_pct = dict(full_buildup, wastage_pct=0, overheads_pct=0)
+    check(
+        rate_engine.compute_analysed_rate(
+            rate_engine.normalize_rate_analysis(zero_pct))[0] == 6950.0,
+        "P11 zero percentages are honoured, not treated as missing"
+    )
+
+    for absent in ("material", "labour", "machinery", "wastage_pct",
+                   "overheads_pct"):
+        partial = dict(full_buildup)
+        del partial[absent]
+        rate, gaps = rate_engine.compute_analysed_rate(
+            rate_engine.normalize_rate_analysis(partial))
+        if rate is not None or gaps != [absent]:
+            check(False, "P11 a build-up missing {0} must not be priced".format(
+                absent))
+            break
+    else:
+        check(
+            True,
+            "P11 a build-up missing any one of the five is left unpriced"
+        )
+
+    for bad in (-1, "", "abc", None, True):
+        rate, gaps = rate_engine.compute_analysed_rate(
+            rate_engine.normalize_rate_analysis(
+                dict(full_buildup, labour=bad)))
+        if rate is not None or gaps != ["labour"]:
+            check(False,
+                  "P11 an unusable labour figure ({0!r}) must not be "
+                  "priced".format(bad))
+            break
+    else:
+        check(
+            True,
+            "P11 negative, blank, non-numeric and boolean figures are refused"
+        )
+
+    rate_table = rate_engine.build_rate_analysis_sheet([
+        full_buildup,
+        {"item_code": "SHUT-BM", "description": "Beam shuttering",
+         "unit": "m2", "material": 180, "wastage_pct": 5, "labour": 120},
+    ])
+    check(
+        rate_table[0] == list(rate_engine.RATE_ANALYSIS_HEADERS)
+        and rate_table[1][-1] == rate_engine.STATUS_PRICED
+        and rate_table[1][-2] == 7958.72,
+        "P11 sheet prices a complete item and names its rate"
+    )
+    check(
+        rate_table[2][-2] == ""
+        and rate_table[2][-1].startswith(rate_engine.STATUS_INPUT_REQUIRED)
+        and "machinery" in rate_table[2][-1]
+        and rate_table[2][3] == 180.0,
+        "P11 sheet keeps an incomplete item, blank rate, and says what is "
+        "missing"
+    )
+    check(
+        rate_engine.build_rate_analysis_sheet([])
+        == [list(rate_engine.RATE_ANALYSIS_HEADERS)]
+        and rate_engine.build_rate_analysis_sheet(None)
+        == [list(rate_engine.RATE_ANALYSIS_HEADERS)],
+        "P11 no rate analysis yields a header-only sheet"
+    )
+
+    rate_source = io.open(
+        os.path.join(LIB_DIR, "costing_engine.py"),
+        "r", encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in rate_source
+        and "from pyrevit" not in rate_source
+        and "wastage" in rate_engine.RATE_BASIS.lower()
+        and "overheads" in rate_engine.RATE_BASIS.lower(),
+        "P11 engine imports no Revit symbol and states its basis"
+    )
+
     engine_guard_block, _ = extract_from_sources(
         texts, "_warn_if_not_cp3123"
     )
