@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.10'
+__version__ = '1.25.11'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.10'
+SCRIPT_VERSION = '1.25.11'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5389,12 +5389,20 @@ try:
                     from validation_engine import (
                         UNMAPPED_SHEET_NAME,
                         build_unmapped_element_report,
-                        collect_routing_findings
+                        collect_routing_findings,
+                        collect_missing_parameter_findings,
+                        collect_missing_rebar_findings
                     )
 
                     routing_audit = classification_audit or {}
-                    unmapped_report = build_unmapped_element_report(
-                        element_data,
+
+                    # P9: the two remaining checks PRD section 12 asks
+                    # for. Both read only the rows already built, so they
+                    # add no Revit work, and both refuse to report what
+                    # this project simply does not use - a parameter its
+                    # own category leaves blank everywhere, or rebar in a
+                    # model that models none.
+                    extra_findings = list(
                         collect_routing_findings(
                             classification_audit_detail_results(
                                 routing_audit
@@ -5405,7 +5413,21 @@ try:
                             + list(routing_audit.get(
                                 "destination_duplicate_ids", []
                             ))
-                        ),
+                        )
+                    )
+                    try:
+                        extra_findings.extend(
+                            collect_missing_parameter_findings(element_data)
+                        )
+                        extra_findings.extend(
+                            collect_missing_rebar_findings(element_data)
+                        )
+                    except:
+                        pass
+
+                    unmapped_report = build_unmapped_element_report(
+                        element_data,
+                        extra_findings,
                         element_materials
                     )
                     unmapped_count = len(unmapped_report) - 1

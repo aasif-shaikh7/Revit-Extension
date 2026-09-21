@@ -2924,6 +2924,80 @@ def main():
     # sheet is built from - so the count a person reads before export can
     # never disagree with the rows they find afterwards.
     # ------------------------------------------------------------
+    # ------------------------------------------------------------
+    # P9 missing parameters and missing rebar (v1.25.11)
+    #
+    # Both refuse to report what a project does not use: a parameter its
+    # own category leaves blank everywhere, or rebar in a model that
+    # models none. Without that, each would bury the real findings.
+    # ------------------------------------------------------------
+    p9_param_data = {
+        "Beam": [
+            {"Element ID": "1", "ID_UNMT": "B1", "NEVER_USED": ""},
+            {"Element ID": "2", "ID_UNMT": "B2", "NEVER_USED": ""},
+            {"Element ID": "3", "ID_UNMT": "", "NEVER_USED": ""},
+            {"Element ID": "4", "ID_UNMT": "B4", "NEVER_USED": ""},
+        ]
+    }
+    p9_param_findings = validation_engine.collect_missing_parameter_findings(
+        p9_param_data)
+    check(
+        [(row["element_id"], row["issue"]) for row in p9_param_findings]
+        == [("3", validation_engine.ISSUE_MISSING_PARAMETER)]
+        and "3 of 4" in p9_param_findings[0]["detail"],
+        "P9 reports a blank parameter its own category otherwise fills"
+    )
+    check(
+        all("NEVER_USED" not in row["detail"] for row in p9_param_findings),
+        "P9 ignores a parameter this project fills nowhere, instead of "
+        "flagging every element"
+    )
+    check(
+        validation_engine.collect_missing_parameter_findings(
+            {"Beam": [{"Element ID": "1", "ID_UNMT": "B1"},
+                      {"Element ID": "2", "ID_UNMT": "B2"}]}) == [],
+        "P9 reports nothing when every element carries the parameter"
+    )
+    check(
+        validation_engine.collect_missing_parameter_findings(
+            {"Beam": [{"Element ID": "1", "Qty: Volume (m3)": "",
+                       "Level": "", "Grade": ""},
+                      {"Element ID": "2", "Qty: Volume (m3)": 1.0,
+                       "Level": "L1", "Grade": "M30"}]}) == [],
+        "P9 never reports the export's own columns as missing parameters"
+    )
+
+    # Rebar: silent on a model that models none, specific once it does.
+    p9_rebar_data = {
+        "Beam": [{"Element ID": "1"}, {"Element ID": "2"},
+                 {"Element ID": "3"}]
+    }
+    check(
+        validation_engine.collect_missing_rebar_findings(p9_rebar_data) == [],
+        "P9 stays silent about rebar in a model that models none"
+    )
+    p9_rebar_data["Rebar"] = [{"Rebar: Host Element ID": "1"},
+                              {"Rebar: Host Element ID": "1"}]
+    check(
+        [row["element_id"] for row in
+         validation_engine.collect_missing_rebar_findings(p9_rebar_data)]
+        == ["2", "3"],
+        "P9 names the concrete elements no rebar is hosted by"
+    )
+    check(
+        validation_engine.issue_severity(
+            validation_engine.ISSUE_MISSING_PARAMETER) == "Warning"
+        and validation_engine.issue_severity(
+            validation_engine.ISSUE_MISSING_REBAR) == "Warning",
+        "P9 treats both new checks as warnings, not errors"
+    )
+
+    check(
+        "collect_missing_parameter_findings(" in export_handler_source
+        and "collect_missing_rebar_findings(" in export_handler_source,
+        "P9 export handler feeds both new checks into the one report"
+    )
+
     p9_summary = validation_engine.summarize_validation_findings(p10_report)
     check(
         [(entry["issue"], entry["count"], entry["severity"])

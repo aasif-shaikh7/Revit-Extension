@@ -27,6 +27,18 @@ ISSUE_MISSING_VOLUME = "Missing or zero volume"
 ISSUE_MISSING_MATERIAL = "Missing structural material"
 ISSUE_UNCERTAIN_ROUTING = "Uncertain Slab/Foundation mapping"
 ISSUE_DUPLICATE_ROUTING = "Duplicate routing source"
+ISSUE_MISSING_PARAMETER = "Missing selected parameter"
+ISSUE_MISSING_REBAR = "No rebar hosted"
+
+# A parameter blank on one element in five hundred is a gap worth showing.
+# A parameter blank on nearly all of them is a field this project does not
+# use, and reporting it would bury the real findings. Anything filled on
+# less than this share of a category is treated as unused.
+MIN_PARAMETER_FILL = 0.5
+
+# Columns that are not selected parameters and must never be reported as
+# one: the export adds them itself.
+_NON_PARAMETER_COLUMNS = ("Element ID", "Level", "Grade")
 
 SEVERITY_ERROR = "Error"
 SEVERITY_WARNING = "Warning"
@@ -44,6 +56,8 @@ ISSUE_SEVERITY = {
     ISSUE_MISSING_GRADE: SEVERITY_WARNING,
     ISSUE_MISSING_MATERIAL: SEVERITY_WARNING,
     ISSUE_UNCERTAIN_ROUTING: SEVERITY_WARNING,
+    ISSUE_MISSING_PARAMETER: SEVERITY_WARNING,
+    ISSUE_MISSING_REBAR: SEVERITY_WARNING,
 }
 
 # An issue this engine does not know is reported, not silently dropped.
@@ -140,6 +154,127 @@ def collect_routing_findings(detail_results, duplicate_ids=None):
             "Collected more than once during Slab/Foundation routing; "
             "exported once"
         )
+
+    return findings
+
+
+def collect_missing_parameter_findings(data_result, min_fill=MIN_PARAMETER_FILL):
+    """Report elements missing a parameter their own category does fill.
+
+    PRD section 12 asks P9 to flag missing parameters, but flagging every
+    blank cell would bury the findings that matter - most models carry
+    dozens of parameters nobody maintains. So a parameter counts only when
+    its own category fills it on at least `min_fill` of its elements: a
+    field blank on one element in five hundred is a gap, the same field
+    blank on nearly all of them is simply not in use here.
+
+    Reads only the rows the export already built, so it adds no Revit
+    work and cannot disagree with the workbook.
+    """
+    data = data_result if isinstance(data_result, dict) else {}
+    findings = []
+
+    try:
+        threshold = float(min_fill)
+    except (TypeError, ValueError):
+        threshold = MIN_PARAMETER_FILL
+
+    for category in CONCRETE_CATEGORIES:
+        rows = data.get(category) or []
+        total = len(rows)
+        if not total:
+            continue
+
+        columns = []
+        for row in rows:
+            try:
+                keys = row.keys()
+            except AttributeError:
+                continue
+            for name in keys:
+                if name in _NON_PARAMETER_COLUMNS:
+                    continue
+                if str(name).startswith("Qty: "):
+                    continue
+                if name not in columns:
+                    columns.append(name)
+
+        for column in columns:
+            filled = 0
+            for row in rows:
+                try:
+                    if _text(row.get(column)):
+                        filled += 1
+                except AttributeError:
+                    continue
+            if not filled or filled == total:
+                continue
+            if float(filled) / total < threshold:
+                continue
+
+            for row in rows:
+                try:
+                    if _text(row.get(column)):
+                        continue
+                    element_id = _text(row.get("Element ID"))
+                except AttributeError:
+                    continue
+                if not element_id:
+                    continue
+                findings.append({
+                    "element_id": element_id,
+                    "issue": ISSUE_MISSING_PARAMETER,
+                    "detail": (
+                        "{0} is blank; this category fills it on "
+                        "{1} of {2} elements".format(column, filled, total)
+                    ),
+                })
+
+    return findings
+
+
+def collect_missing_rebar_findings(data_result):
+    """Report concrete elements carrying no rebar - but only if any does.
+
+    A model with no reinforcement modelled at all is not a model with
+    thousands of faults; it is a model where rebar lives elsewhere, as it
+    does in this project's separate BBS files. So when no Rebar row names
+    a host, this reports nothing rather than flagging every element.
+
+    Hosts are read from the Rebar rows the export already built
+    ("Rebar: Host Element ID"), so this adds no Revit work.
+    """
+    data = data_result if isinstance(data_result, dict) else {}
+
+    hosts = set()
+    for row in data.get("Rebar") or []:
+        try:
+            host_id = _text(row.get("Rebar: Host Element ID"))
+        except AttributeError:
+            continue
+        if host_id:
+            hosts.add(host_id)
+
+    if not hosts:
+        return []
+
+    findings = []
+    for category in CONCRETE_CATEGORIES:
+        for row in data.get(category) or []:
+            try:
+                element_id = _text(row.get("Element ID"))
+            except AttributeError:
+                continue
+            if not element_id or element_id in hosts:
+                continue
+            findings.append({
+                "element_id": element_id,
+                "issue": ISSUE_MISSING_REBAR,
+                "detail": (
+                    "No Rebar in this export is hosted by this element; "
+                    "its reinforcement is not counted"
+                ),
+            })
 
     return findings
 

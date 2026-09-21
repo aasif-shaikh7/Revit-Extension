@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.11] - 2026-09-21
+
+### Added (P9 finishes the checks PRD section 12 asks for)
+- **Missing parameters.** `collect_missing_parameter_findings` reports an element whose selected
+  parameter is blank - but only when that parameter's own category fills it on at least half its
+  elements. Flagging every blank cell would bury the findings that matter, because most models
+  carry parameters nobody maintains: a field blank on one element in five hundred is a gap, the
+  same field blank on nearly all of them is simply not in use. The detail line says which, and how
+  many of the category do carry it.
+- **Missing rebar.** `collect_missing_rebar_findings` names concrete elements no Rebar row is
+  hosted by - and reports **nothing at all** when no Rebar row names a host. A model with no
+  reinforcement modelled is not a model with thousands of faults; in this project rebar lives in
+  separate BBS files. Hosts come from `Rebar: Host Element ID` on rows the export already built.
+- Both are warnings, not errors: the quantities they describe are still right. Both read only the
+  built rows, so they add no Revit work and cannot disagree with the workbook, and both feed the
+  same report the `Unmapped Elements` sheet and the compact summary are built from.
+- With these two, every P9 check PRD section 12 lists is either implemented or, for duplicate
+  marks, measured and deliberately declined (see `v1.25.8`).
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **282 checks pass**, up from 274. The eight new ones cover the
+  fill-rate rule in both directions, the export's own columns never being reported, silence on a
+  model with no rebar, naming the right elements once rebar exists, both severities, and the export
+  handler feeding both into the one report.
+
+---
+
 ## [v1.25.10] - 2026-09-21
 
 ### Fixed (columns and walls were billed a storey low)
