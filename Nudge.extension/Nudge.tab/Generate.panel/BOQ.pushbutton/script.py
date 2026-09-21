@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.9'
+__version__ = '1.25.10'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.9'
+SCRIPT_VERSION = '1.25.10'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -1757,6 +1757,91 @@ def get_element_level(element, level_cache=None):
     return remember("")
 
 
+# Categories billed to the level they support rather than the level they
+# start from. A column runs from one floor to the next, and Revit's own
+# Level for it is the base - so a plinth-to-first-floor column reports
+# "plinth". An RCC BOQ bills that column with the floor it carries, which
+# is its top level, and this project's own LEVEL_V field says the same:
+# on the owner's model all 194 columns have LEVEL_V equal to Top Level and
+# none equal to Base Level. Beams and slabs already sit on one level, so
+# they are not listed here.
+TOP_LEVEL_CATEGORIES = ("Column", "Structure Wall")
+
+# Tried in order. Built-ins first, then the visible parameter names, so a
+# family that names its constraint differently still resolves.
+TOP_LEVEL_BUILT_IN_NAMES = (
+    "SCHEDULE_TOP_LEVEL_PARAM",
+    "FAMILY_TOP_LEVEL_PARAM",
+    "WALL_HEIGHT_TYPE",
+)
+TOP_LEVEL_PARAMETER_NAMES = ("Top Level", "Top Constraint")
+
+
+def get_element_top_level(element, level_cache=None):
+    """Return the level an element reaches, or "" when it has none.
+
+    Returns "" rather than guessing: the caller falls back to the ordinary
+    level, so an element with no top constraint keeps the behaviour it
+    always had instead of losing its level entirely.
+    """
+    cache = level_cache if isinstance(level_cache, dict) else {}
+
+    def level_name_from_id(level_id):
+        try:
+            if level_id is None or level_id.IntegerValue == -1:
+                return ""
+            cache_key = ("level", int(level_id.IntegerValue))
+        except:
+            return ""
+        if cache_key in cache:
+            return cache[cache_key]
+        try:
+            level_element = doc.GetElement(level_id)
+            value = (
+                str(level_element.Name)
+                if level_element is not None and level_element.Name
+                else ""
+            )
+        except:
+            value = ""
+        cache[cache_key] = value
+        return value
+
+    candidates = []
+
+    for built_in_name in TOP_LEVEL_BUILT_IN_NAMES:
+        try:
+            built_in = getattr(DB.BuiltInParameter, built_in_name)
+        except:
+            continue
+        try:
+            candidates.append(element.get_Parameter(built_in))
+        except:
+            continue
+
+    for parameter_name in TOP_LEVEL_PARAMETER_NAMES:
+        try:
+            candidates.append(element.LookupParameter(parameter_name))
+        except:
+            continue
+
+    for parameter in candidates:
+        if parameter is None:
+            continue
+        try:
+            if not parameter.HasValue:
+                continue
+            if parameter.StorageType != DB.StorageType.ElementId:
+                continue
+            level_name = level_name_from_id(parameter.AsElementId())
+        except:
+            continue
+        if level_name:
+            return level_name
+
+    return ""
+
+
 # ============================================================
 # P2: CONCRETE GRADE RESOLUTION
 # ============================================================
@@ -2025,7 +2110,15 @@ def build_element_data(include_grade=True, material_sink=None):
 
             # P2: level grouping column, written directly after Element ID so
             # it sits in a deterministic column (B) on every element sheet.
-            row["Level"] = get_element_level(element, level_cache)
+            # A column or structural wall is billed with the floor it
+            # carries, not the floor it starts from; anything else lands
+            # a storey low in the level-wise BOQ.
+            row_level = ""
+            if element_name in TOP_LEVEL_CATEGORIES:
+                row_level = get_element_top_level(element, level_cache)
+            if not row_level:
+                row_level = get_element_level(element, level_cache)
+            row["Level"] = row_level
 
             # Concrete grade does not apply to reinforcement. Rebar keeps
             # Element ID + Level followed by its selected/P4 quantity fields.

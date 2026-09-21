@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.10] - 2026-09-21
+
+### Fixed (columns and walls were billed a storey low)
+- A column runs from one floor to the next, and Revit's own Level for it is the **base**, so a
+  plinth-to-first-floor column reported "plinth". An RCC BOQ bills that column with the floor it
+  carries. Every level-wise figure for Columns and Structure Walls was therefore one storey low.
+- **The model itself said so.** On `R25-UMA NIWAS BUILDING-ST-31-08-2026`, all **194 of 194**
+  columns have the project's own `LEVEL_V` equal to Top Level and **none** equal to Base Level; the
+  12 structural walls show the same one-level shift. Beams and slabs sit on a single level and
+  matched already, which is why nothing looked wrong there.
+- `get_element_top_level` reads the top constraint - built-ins first, then the visible `Top Level` /
+  `Top Constraint` names so a family that labels it differently still resolves - and
+  `TOP_LEVEL_CATEGORIES` limits this to Column and Structure Wall. It returns "" rather than
+  guessing, and the caller falls back to the ordinary level, so an element with no top constraint
+  keeps exactly the behaviour it had.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **274 checks pass**, up from 271. The three new ones pin which
+  categories are billed to their top level, that Beam/Slab/Foundation are not, that the reader
+  returns empty rather than guessing, and that the caller falls back.
+
+### Not verified
+- The live export of this change has not run yet: the owner's Revit had switched to another
+  document. The level-wise figures it produces still need one export on the UMA NIWAS model.
+
+---
+
 ## [v1.25.9] - 2026-09-21
 
 ### Added (BOQ sheets read level by level, then by identity)

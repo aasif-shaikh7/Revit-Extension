@@ -3381,6 +3381,41 @@ def main():
         "BOQ order uses whichever of level and identity the project fills"
     )
 
+    # ------------------------------------------------------------
+    # Top-level billing (v1.25.10)
+    #
+    # A column runs between two floors and Revit's Level for it is the
+    # base, so the level-wise BOQ was putting every column a storey low.
+    # These checks pin which categories are billed to their top level and
+    # that the fallback still protects an element that has no top.
+    # ------------------------------------------------------------
+    top_level_constant, _ = extract_constant_from_sources(
+        texts, "TOP_LEVEL_CATEGORIES")
+    check(
+        '"Column"' in top_level_constant
+        and '"Structure Wall"' in top_level_constant
+        and '"Beam"' not in top_level_constant
+        and '"Slab"' not in top_level_constant
+        and '"Foundation"' not in top_level_constant,
+        "Only Column and Structure Wall are billed to the level they support"
+    )
+
+    top_level_block, _ = extract_from_sources(texts, "get_element_top_level")
+    check(
+        'return ""' in top_level_block
+        and "SCHEDULE_TOP_LEVEL_PARAM" in top_level_constant + top_level_block
+        or "TOP_LEVEL_BUILT_IN_NAMES" in top_level_block,
+        "The top-level reader returns empty rather than guessing a level"
+    )
+
+    level_choice_block, _ = extract_from_sources(texts, "build_element_data")
+    check(
+        "TOP_LEVEL_CATEGORIES" in level_choice_block
+        and "get_element_top_level(" in level_choice_block
+        and "get_element_level(" in level_choice_block,
+        "build_element_data takes the top level first and falls back to the base"
+    )
+
     ordering_block, _ = extract_from_sources(texts, "build_element_data")
     check(
         "sort_rows_for_boq(" in ordering_block,
