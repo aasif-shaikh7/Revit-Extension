@@ -391,3 +391,31 @@ def save_rate_analysis(settings, analyses):
 
     document["rate_analysis"] = stored
     return document
+
+
+def find_rate_code_conflict(analyses, item_code, ignore_index=-1):
+    """Index of another build-up already using this code, or -1.
+
+    A rate schedule is looked up by item code, so two lines with the same
+    code - possibly at different rates - leave nobody sure which one the
+    BOQ means. Codes compare case-insensitively and ignore surrounding
+    spaces, because "RCC-M30" and "rcc-m30 " are the same item to a reader.
+    `ignore_index` is the line being updated, which may keep its own code.
+    """
+    try:
+        wanted = str(item_code or "").strip().upper()
+    except Exception:
+        return -1
+    if not wanted:
+        return -1
+
+    for index, analysis in enumerate(list(analyses or [])):
+        if index == ignore_index:
+            continue
+        try:
+            code = str((analysis or {}).get("item_code", "") or "")
+        except AttributeError:
+            continue
+        if code.strip().upper() == wanted:
+            return index
+    return -1

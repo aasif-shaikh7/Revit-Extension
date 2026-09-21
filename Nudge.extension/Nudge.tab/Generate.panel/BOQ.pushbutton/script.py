@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.26.3'
+__version__ = '1.26.4'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.26.3'
+SCRIPT_VERSION = '1.26.4'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -4385,6 +4385,20 @@ try:
                 )
                 return
 
+            # Selecting a line fills the boxes, so pressing Add instead of
+            # Update made a silent second copy. One code, one rate.
+            from costing_engine import find_rate_code_conflict
+
+            if find_rate_code_conflict(
+                    rate_analysis_state, analysis["item_code"]) >= 0:
+                set_status(
+                    "Rate analysis | {0} is already in the list - select it "
+                    "and use Update selected to change it".format(
+                        analysis["item_code"]),
+                    "warning"
+                )
+                return
+
             rate_analysis_state.append(analysis)
             rate_refresh(len(rate_analysis_state) - 1)
             set_status(
@@ -4403,6 +4417,18 @@ try:
             if not analysis.get("item_code"):
                 set_status(
                     "Rate analysis | Give the item a code before updating it",
+                    "warning"
+                )
+                return
+
+            # The line may keep its own code; it may not take another's.
+            from costing_engine import find_rate_code_conflict
+
+            if find_rate_code_conflict(
+                    rate_analysis_state, analysis["item_code"], index) >= 0:
+                set_status(
+                    "Rate analysis | Another line already uses {0}".format(
+                        analysis["item_code"]),
                     "warning"
                 )
                 return

@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.4] - 2026-09-21
+
+### Fixed (the Rate Analysis tab accepted the same item code twice)
+- **Found in the owner's own screenshot** of the tab: `RCC-M30` appeared twice, same description,
+  same rate, and the saved settings held both. Selecting a line fills the entry boxes, so pressing
+  **Add item** instead of **Update selected** made a silent second copy. A rate schedule is looked
+  up by item code; two lines with one code - possibly at different rates - leave nobody sure which
+  one the BOQ means.
+- `find_rate_code_conflict` in `lib/costing_engine.py` finds another line using a code, comparing
+  case-insensitively and ignoring surrounding spaces, since `RCC-M30` and `rcc-m30 ` are one item to
+  a reader. **Add** now refuses a code already in the list and says to use Update selected;
+  **Update** lets a line keep its own code but refuses to give it another line's.
+- This stops new duplicates. It does not remove the one already saved; the owner removes that in
+  the tab.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **306 checks pass**, up from 303.
+
+### Verified (live, driven end to end)
+- The owner's mistake was reproduced in Revit 2025 against the real window and the shipping
+  handlers - select a line, press Add - and **refused**, with the list unchanged and the status
+  reading `RCC-M30 is already in the list - select it and use Update selected to change it`.
+  Updating another line to `rcc-m30` was refused too, and updating a line while keeping its own
+  code still worked. **15 of 15** drive checks pass, the original 12 included.
+
+---
+
 ## [v1.26.3] - 2026-09-21
 
 ### Added (P11 third slice: the Rate Analysis dialog tab)

@@ -3634,6 +3634,29 @@ def main():
         "P11 tab's build-ups are saved with the rest of the settings"
     )
 
+    # One code, one rate. Found from the owner's screenshot: RCC-M30 twice.
+    rate_list = [{"item_code": "RCC-M30"}, {"item_code": "RCC-M40"}]
+    check(
+        rate_engine.find_rate_code_conflict(rate_list, "RCC-M30") == 0
+        and rate_engine.find_rate_code_conflict(rate_list, " rcc-m30 ") == 0
+        and rate_engine.find_rate_code_conflict(rate_list, "PCC-M10") == -1
+        and rate_engine.find_rate_code_conflict(rate_list, "") == -1,
+        "P11 a repeated item code is caught, ignoring case and spaces"
+    )
+    check(
+        rate_engine.find_rate_code_conflict(rate_list, "RCC-M30", 0) == -1
+        and rate_engine.find_rate_code_conflict(rate_list, "RCC-M40", 0) == 1,
+        "P11 a line may keep its own code but not take another's"
+    )
+    rate_add_block = nested_handler_source("rate_add")
+    rate_update_block = nested_handler_source("rate_update")
+    check(
+        "find_rate_code_conflict(" in rate_add_block
+        and "find_rate_code_conflict(" in rate_update_block
+        and "index) >= 0" in rate_update_block,
+        "P11 tab refuses a duplicate code on both Add and Update"
+    )
+
     rate_stored = rate_engine.save_rate_analysis(
         {"theme": "Auto"},
         [full_buildup,
