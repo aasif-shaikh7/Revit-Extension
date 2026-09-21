@@ -56,9 +56,22 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   that every change since `v1.25.7` had reached only through the headless bridge - including the
   `v1.26.1` change to how selections are saved.
 
-### Not verified
-- The tab has not been driven end to end the way P7's was in `v1.25.4`: adding, editing and
-  removing a build-up through the running dialog still needs an owner run.
+### Verified (live, driven end to end)
+- The tab was then **driven** the way a person uses it, inside Revit 2025: WPF loaded the shipping
+  `ui.xaml`, the tab's constants and handlers were taken verbatim out of `script.py`, and every
+  step was checked against what the real WPF controls then held. **All 12 checks passed:**
+  - opening the tab loaded the two saved build-ups, one priced (`rate 7958.72 / m3`) and one
+    showing `rate pending - needs machinery, overheads_pct`, with the source label and a summary
+    that says the pending one exports blank rather than zero;
+  - a complete item typed in and added priced at `8911.84 / m3` and was selected;
+  - an incomplete item was kept but left unpriced;
+  - `abc` for material and `-5` for labour were refused - the line reads
+    `needs material, labour` rather than pricing either;
+  - an item with no code was refused and the person told why;
+  - selecting a line loaded it into the boxes; setting overheads to 0 and pressing Update re-priced
+    it to `7106.00`; Remove took exactly the selected line; Clear emptied every box;
+  - and what the tab would save exports the same rates it showed:
+    `[7106.0, "", 8911.84, ""]`.
 
 ---
 
