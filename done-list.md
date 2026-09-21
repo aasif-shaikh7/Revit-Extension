@@ -1238,6 +1238,59 @@ must save manually. Ambiguous or absent structural layers are rejected instead o
 
 ---
 
+## P7 — Site / Manual Structural Items — **done** (`v1.25.6`, owner-confirmed 2026-09-21)
+
+**Asked for:** Roadmap Phase 7 — a way to price site work that has no model element behind it
+(binding wire, curing, dewatering, lump-sum items) inside the same BOQ, without corrupting the
+model-derived figures.
+
+**Built, in six slices:**
+- `v1.25.0` — `lib/site_items_engine.py`, dependency-free: normalize what was typed, report every
+  unusable field by name, price only complete lines, build the export table. Absent, non-numeric,
+  zero, negative and boolean quantities/rates all normalize to `None` and leave `Amount` blank
+  rather than pricing work at zero.
+- `v1.25.1` — storage. A reusable default list **seeds** a project the first time it is opened;
+  after that the project edits its own list. Changing the default never rewrites a project that
+  already has one, because that would silently alter an already-priced BOQ.
+- `v1.25.2` — a `Site Items` sheet in both workbook formats, and the typed items feed the existing
+  `Costing` TOTAL so one cost figure covers model-derived and typed work. `BOQ Summary` is left
+  alone: it totals concrete volume in m³, so a currency figure in that total would be arithmetically
+  wrong.
+- `v1.25.3` — the dialog tab: six entry boxes, the line list, Add / Update / Remove / Clear / Save
+  as default, a live summary, and a label saying whether the list is this project's own, a seeded
+  default, or empty.
+- `v1.25.4` — a headless export (or the startup parameter restore) could persist an **empty** list
+  as the document's own, losing a saved list and disabling seeding. `site_items_ready` now gates
+  that write.
+- `v1.25.5` / `v1.25.6` — layout and label fixes; see below.
+
+**How it is known to work:**
+- **Tested (harness):** the engine's 11 checks plus the workbook checks (`Site Items` sheet, the
+  Costing formulas, the blanked unpriced line, the TOTAL spanning the site rows, and a project with
+  no site items keeping its familiar workbook) inside the full passing suite.
+- **Tested (live, driven):** the shipping `script.py` ran in Revit 2025 with only
+  `window.ShowDialog()` replaced by a driver hook, so the real window, handlers and engine were
+  exercised. **All twelve checks passed** — Add, the unpriced line, the summary split,
+  select-to-edit, Update, Remove, the refusal of an empty line, and Save as default writing the
+  template without creating a per-document entry. A `KEEP-01` list survived a headless export after
+  the `v1.25.4` fix.
+- **Tested (live, export):** the P10-03 fixture validated Classic `305/305` cells across 10 sheets
+  and Site `228/228` across 6, both zero mismatches, with `E8=SUM(E2:E7)` spanning the site rows.
+- **Seen (live, rendered):** the dialog is rendered to PNG by WPF itself (`RenderTargetBitmap` over
+  the real shown window), so an agent can inspect the layout. That found two faults, both fixed in
+  `v1.25.6`: a source label that kept saying *"nothing saved yet"* while four lines were listed, and
+  free-text fields collapsing to the width of `Unit`. Light and Dark both render correctly.
+- **Owner-confirmed (2026-09-21):** the layout reads correctly on the owner's own screen and monitor
+  size. This was the last item P7 was waiting on, after the owner's `v1.25.5` screenshot had shown
+  the entry boxes stretching on a wide monitor.
+
+**What it cost:** site items are typed, so nothing validates them against the model — a wrong
+quantity is priced exactly as typed. The engine's only defence is to refuse to price an incomplete
+line rather than price it at zero. The default list is a convenience seed, not a shared library:
+once a project has its own list, the default can no longer reach it.
+
+---
+
 ## Standing conventions
 
 - "Tested" always means **the harness** unless a live-Revit confirmation is explicitly noted.

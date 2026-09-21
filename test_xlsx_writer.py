@@ -2525,6 +2525,8 @@ def main():
         "_element_family_type_names",
         "_element_routing_key",
         "_safe_element_id_text",
+        "classify_identity_text",
+        "_route",
         "classify_rcc_element",
         "build_logical_rcc_collections",
         "validate_classification_audit",
@@ -2698,6 +2700,7 @@ def main():
             FakeElement(name, "Structural Foundations")
             for name in case_a_foundation_names + case_a_slab_names
         ],
+        routing_ns["classify_rcc_element"],
     )
     check(
         [e.Name for e in case_a["Foundation"]]
@@ -2716,6 +2719,7 @@ def main():
             for name in case_b_foundation_names + case_b_slab_names
         ],
         [],
+        routing_ns["classify_rcc_element"],
     )
     check(
         [e.Name for e in case_b["Foundation"]]
@@ -2732,6 +2736,7 @@ def main():
             FakeElement(name, "Structural Foundations")
             for name in mixed_foundation
         ],
+        routing_ns["classify_rcc_element"],
     )
     check(
         [e.Name for e in mixed["Slab"]] == [
@@ -2763,7 +2768,8 @@ def main():
 
     duplicate = FakeElement("F1", "Floors", element_id=9999)
     duplicate_route = routing_ns["build_logical_rcc_collections"](
-        [duplicate], [duplicate]
+        [duplicate], [duplicate],
+        routing_ns["classify_rcc_element"],
     )
     check(
         duplicate_route["audit"]["eligible_unique"] == 1
@@ -2793,6 +2799,7 @@ def main():
             FakeElement("S2", "Floors"),
         ],
         [],
+        routing_ns["classify_rcc_element"],
     )
     other_details = routing_ns[
         "classification_audit_detail_results"
@@ -3218,8 +3225,12 @@ def main():
         "_element_source_category",
         "_element_routing_key",
         "_safe_element_id_text",
+        "classify_identity_text",
+        "build_logical_rcc_collections",
         "validate_classification_audit",
         "classification_audit_has_findings",
+        "classification_audit_detail_results",
+        "build_compact_classification_findings",
     )
     rule_sources = {}
     for rule_name in moved_rules:
@@ -3277,12 +3288,92 @@ def main():
         "P8 concrete-grade normalization resolves from lib/rule_engine.py"
     )
 
-    for revit_bound in ("classify_rcc_element", "build_logical_rcc_collections"):
+    for revit_bound in ("classify_rcc_element",):
         _block, bound_path = extract_from_sources(texts, revit_bound)
         check(
             os.path.basename(bound_path) == "script.py",
             "P8 leaves the Revit-bound {} in script.py".format(revit_bound)
         )
+
+    # classify_rcc_element is now a reader, not a rule: the route must
+    # come from the engine, and the element-bound identity reads must
+    # stay behind in the pushbutton.
+    classifier_block, _ = extract_from_sources(texts, "classify_rcc_element")
+    check(
+        "classify_identity_text(" in classifier_block
+        and "code_token_match(" not in classifier_block
+        and "get_element_identity_text(" in classifier_block,
+        "P8 classify_rcc_element reads the element and defers the route"
+    )
+
+    # The point of the split: the route rules can now be imported and
+    # argued with directly, on plain text, with no element, no fake and
+    # no exec. If this import ever needs a Revit symbol, it fails here.
+    import rule_engine as rule_engine_module
+
+    route_cases = (
+        ("pcc footing", "Floors", "Foundation", "PCC"),
+        ("combined footing c1", "Floors", "Foundation", "Combined Footing"),
+        ("cf1a", "Floors", "Foundation", "Combined Footing"),
+        ("wf1", "Structural Foundations", "Foundation", "Footing"),
+        ("combined raft", "Floors", "Foundation", "Combined Raft"),
+        ("raft", "Floors", "Foundation", "Raft"),
+        ("grade slab", "Floors", "Slab", "Grade Slab"),
+        ("gs", "Floors", "Slab", "Grade Slab"),
+        ("fold slab", "Floors", "Slab", "Fold Slab"),
+        ("s1", "Floors", "Slab", "Slab"),
+        ("chajja2", "Floors", "Slab", "Slab"),
+        ("lobby", "Floors", "Slab", "Slab"),
+        ("ramp", "Floors", "Slab", "Slab"),
+    )
+    route_failures = []
+    for text, source_name, expected_group, expected_subtype in route_cases:
+        route = rule_engine_module.classify_identity_text(text, source_name)
+        if (
+            route["logical_group"] != expected_group
+            or route["subtype"] != expected_subtype
+            or not route["reason"]
+        ):
+            route_failures.append(
+                "{} -> {}/{}".format(
+                    text, route["logical_group"], route["subtype"]
+                )
+            )
+    check(
+        not route_failures,
+        "P8 route rules decide every known identity from text alone{}".format(
+            "" if not route_failures else " ({})".format(
+                "; ".join(route_failures))
+        )
+    )
+
+    # An unknown identity is never dropped and never guessed into a
+    # priced subtype: it stays under the sheet its own source category
+    # implies, marked Other so the audit reports it.
+    unknown_floor = rule_engine_module.classify_identity_text(
+        "unmapped thing", "Floors")
+    unknown_foundation = rule_engine_module.classify_identity_text(
+        "unmapped thing", "Structural Foundations")
+    check(
+        unknown_floor["logical_group"] == "Slab"
+        and unknown_floor["subtype"] == "Other"
+        and unknown_foundation["logical_group"] == "Foundation"
+        and unknown_foundation["subtype"] == "Other",
+        "P8 an unknown identity stays on its source sheet as Other"
+    )
+
+    # Foundation wording must keep winning over generic slab wording:
+    # a foundation slab named for its footing is a footing, not a slab.
+    precedence = rule_engine_module.classify_identity_text(
+        "foundation slab f2a", "Structural Foundations")
+    pcc_precedence = rule_engine_module.classify_identity_text(
+        "rcc slab pcc", "Floors")
+    check(
+        precedence["logical_group"] == "Foundation"
+        and precedence["subtype"] == "Footing"
+        and pcc_precedence["subtype"] == "PCC",
+        "P8 foundation identities still precede generic slab wording"
+    )
 
     # safe_is_project_parameter reads doc.ParameterBindings, so it is
     # host-bound despite naming no Revit type, and must not have moved.

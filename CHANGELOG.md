@@ -22,6 +22,121 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.7] - 2026-09-21
+
+### Changed (P8 split: the routing rules leave the pushbutton)
+- `classify_rcc_element` held two different jobs in one function: reading a Revit element, and
+  deciding which logical BOQ sheet its identity implies. The decision - the whole Slab/Foundation
+  rule chain, PCC before footing before raft before slab - is now
+  `classify_identity_text(text, source_name)` in `lib/rule_engine.py`, which reads no element and
+  returns `logical_group` / `subtype` / `reason`. What stays in `script.py` is only the Revit-bound
+  part: the identity text, the family/type names and the identity parameters that make an audit row
+  traceable.
+- `build_logical_rcc_collections` moves to `lib/rule_engine.py` with the classifier **injected**
+  (`build_logical_rcc_collections(floor_elements, foundation_elements, classify)`). The routing and
+  its audit were already pure; only the call to the Revit-bound reader was not, so passing it in
+  moved the last host dependency out.
+- `classification_audit_detail_results` and `build_compact_classification_findings` move verbatim to
+  `lib/rule_engine.py`; `rule_engine` now imports `safe_text` from `parameter_engine`, the same
+  function `script.py` was already handing them.
+- `emit_classification_audit` deliberately stays in `script.py` - it writes to the pyRevit output
+  window, so it is host-bound by definition.
+- `script.py` 5,903 -> 5,688 lines. The now-unused `code_token_match` import was dropped with it.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **250 checks pass**, up from 247. The existing 18 routing cases, the
+  audit reconciliation, the duplicate-source case and the compact-findings popup all still pass
+  through the moved code.
+- **Equivalence proved against HEAD, not assumed.** The pre-move decision chain was rebuilt from
+  git `HEAD`'s `script.py` and run beside the moved one over 52 identity strings x 6 source
+  categories: **identical `logical_group`, `subtype` and `reason` on all 312 combinations.**
+  `classification_audit_detail_results` and `build_compact_classification_findings` were confirmed
+  byte-for-byte verbatim, and `build_logical_rcc_collections` differs only by its new `classify`
+  parameter and the one line that calls it.
+- Three new checks exercise the rules the way the split makes possible: `classify_identity_text` is
+  **imported** and called on plain text - no element, no fake, no `exec` - across every known
+  identity, the unknown-identity fallback, and foundation-before-slab precedence.
+- The existing guard checks were tightened rather than relaxed: the moved names must now resolve
+  from `lib/rule_engine.py`, and `classify_rcc_element` must call `classify_identity_text` while no
+  longer calling `code_token_match` itself.
+
+### Verified (live, Revit 2025, `pyrevit run`, both engines)
+The owner's working Revit session was never touched: `pyrevit run` starts its own Revit process, and
+the sessions below only ever built a throwaway fixture or opened it read-only.
+
+- **A fixture was authored for this change.** `scripts/revit_authoring.py` built eight elements from
+  one spec into a new document - four Floors (`S1`, `GS1`, `Fold Slab FS1`, `Deck Panel PX1`) and
+  four Structural Foundations (`F1`, `CF1`, `PCC`, `Pedestal PD1`) - covering every branch of the
+  moved rule chain including both `Other` fallbacks. `Pedestal PD1` is pinned to the
+  `M_Cup Foundation` family so the family name itself contributes no routing token.
+- **The production closure ran on the real elements.** A second session pulled 24 functions out of
+  the shipping sources by the same top-level-`def` extraction `test_xlsx_writer.py` uses - engine
+  modules first, `script.py` as the fallback - so production source ran, not a copy. **13 resolved
+  from `lib/rule_engine.py`** (the rules, the routing, the audit and its reporting), 2 from
+  `parameter_engine.py`, 1 (`safe_text`) from `export_engine.py` as it already did, and **8 from
+  `script.py`** - every one of them a Revit-bound read. Nothing resolved from the wrong side.
+- **All eight routed as expected, through the injected classifier:** `S1` -> Slab/Slab,
+  `GS1` -> Slab/Grade Slab, `Fold Slab FS1` -> Slab/Fold Slab, `Deck Panel PX1` -> Slab/Other,
+  `F1` -> Foundation/Footing, `CF1` -> Foundation/Combined Footing, `PCC` -> Foundation/PCC,
+  `Pedestal PD1` -> Foundation/Other. `CF1` and `PCC` sit on the `M_Footing-Rectangular` family,
+  whose name carries "footing", so they also prove on real elements that the combined-footing and
+  PCC rules still fire before the plain footing rule.
+- **The audit balanced:** `Floors=4; Structural Foundations=4; Slab=4; Foundation=4; Duplicates=0;
+  Unclassified=0; Other=2`, `valid=True`, 2 detail rows, and the compact findings named exactly the
+  two `Other` elements and no healthy row.
+- The fixture reproduced one previously recorded finding, unrelated to routing: `M_Cup Foundation`
+  builds 1.2658 m³ against a declared 1.0125 m³, the same difference recorded for the P10-03
+  fixture.
+
+- **Re-run on the production CP3123 engine, with the same result.** `pyrevit run` defaults to
+  IPY2712, so the driver was given a `#! python3` shebang and the run repeated: the session reported
+  CPython **3.12.3**, and every number above came back identical - same eight routes, same
+  `Other=2` audit, same 13/8 split of where the functions resolved from. The split therefore behaves
+  the same under IronPython 2.7 and under the engine the tool actually ships on.
+- Reaching CP3123 needed two things that are worth recording for the next live check: `pyrevit.revit`
+  cannot be imported under a headless CPython run (its output-window stylesheet is stored in an
+  IronPython dict), and `__revit__` is not in the script globals there, so the driver uses
+  `Autodesk.Revit.DB` directly and finds the application object through builtins or `HOST_APP`.
+
+### Verified (live, real project model, HEAD against v1.25.7)
+The strongest check of a behaviour-neutral refactor is the old code and the new code answering the
+same real question side by side, so that is what was run.
+
+- **Model:** a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026`, the owner's own structural
+  project. The copy was opened read-only through `OpenDocumentFile` and closed without saving; the
+  original file was never opened, and the owner's working Revit session was never involved.
+- **Two complete closures, one session.** One was built from the working tree, the other from a git
+  snapshot of `HEAD` (the pre-refactor commit `9635c7e`), each by the same extraction. The origin
+  counts alone show the move: `HEAD` resolved **8** functions from `rule_engine.py` and **11** from
+  `script.py`; v1.25.7 resolves **13** and **8** - the three moved functions plus the two new pure
+  ones.
+- **325 real elements classified by both, row for row over the same element list: 0 mismatches.**
+  Not one differed in `logical_group`, `subtype` or `reason`. The audits were identical
+  (`Floors=0; Structural Foundations=325; Slab=303; Foundation=22; Duplicates=0; Unclassified=0;
+  Other=0`, valid on both), the compact findings string was identical, and both produced 0 detail
+  rows.
+- **The hard case was the bulk of it.** 303 of the 325 elements are collected as *Structural
+  Foundations* and route to the **Slab** sheet on their identity - exactly the cross-routing the
+  classifier exists for, and the same 294/22 split the `v1.22.0` missing-material survey recorded on
+  this model. Distribution: Slab/Slab 294, Foundation/PCC 12, Slab/Grade Slab 9, Foundation/Footing
+  8, Foundation/Combined Footing 2.
+- Run on the production **CP3123** engine (CPython 3.12.3).
+
+### Still not verified
+- The **BOQ dialog itself** was not opened. The routing that feeds the Slab and Foundation tabs is
+  verified on both engines, but the tabs, filters and the export button need the project owner.
+- This model carries **no Floor elements** (`Floors=0`), so the Floor-to-Foundation direction was
+  exercised only on the authored fixture. The Foundation-to-Slab direction was exercised 303 times.
+- **Why an agent cannot open the dialog.** A `pyrevit run` session has no `ActiveUIDocument` - the
+  driver above had to open the fixture with `OpenDocumentFile` - while `script.py` begins with
+  `doc = revit.doc`, and under a headless CPython run `from pyrevit import revit` fails outright.
+  So neither the dialog nor the headless queued-job export can be driven from `pyrevit run`; both
+  need a normally launched Revit UI session, which is the owner's click or the Agent Bridge's
+  Secondary Revit. The routing those tabs display is, however, now verified against HEAD on this
+  model's own elements.
+
+---
+
 ## [v1.25.6] - 2026-09-19
 
 ### Fixed (two faults found by rendering the tab and looking at it)
@@ -49,6 +164,12 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   `1.0 LS x - = -`, and the summary reads `4 item(s) | 3 priced, total 52375.00 | 1 awaiting a
   quantity or rate...`. Dark theme text and borders are consistent with the rest of the dialog.
 - The tab was driven end to end again after the refactor: **all twelve checks still pass**.
+
+### Confirmed (owner, 2026-09-21)
+- The project owner confirmed the Site Items tab layout reads correctly on their own screen and
+  monitor size — the last item P7 was waiting on. With the behaviour (twelve driven checks), the
+  workbook (`Site Items` sheet plus the Costing roll-up) and both themes already verified, **P7 is
+  closed as done** and moves to `done-list.md`. No code changed with this entry.
 
 ---
 

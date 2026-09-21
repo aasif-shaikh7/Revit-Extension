@@ -47,8 +47,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P4 | Rebar Quantity Engine | 5/5/3/3 | **done** (`v1.19.0` QA) |
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
-| P7 | Site / Manual Structural Items | 4/4/2/4 | `building` (`v1.25.0` engine, `v1.25.1` store, `v1.25.2` sheet + Costing, `v1.25.3` dialog tab; owner run pending) |
-| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`; `script.py` 5,931 -> 5,580) |
+| P7 | Site / Manual Structural Items | 4/4/2/4 | **done** (`v1.25.6`) — engine, store, sheet + Costing and dialog tab; owner-confirmed 2026-09-21 |
+| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` 5,931 -> 5,688) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `lib/validation_engine.py`, `v1.21.0`) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | `todo` |
@@ -64,61 +64,66 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** P7 Site / Manual Structural Items. Its engine landed in `v1.25.0`
-(`lib/site_items_engine.py`, 11 harness checks); settings persistence, the dialog tab and the
-workbook sheet are held pending two owner decisions — see P7 below. P10 closed in `v1.24.0`,
-owner-confirmed through the dialog. P8 is mid-split (`v1.24.0`/`v1.24.1`). P4 and P5 native
+**Current product focus:** **P8**, the `script.py` split, before P11 starts on top of it
+(`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` the routing core;
+5,931 -> 5,688 lines). **P9** sits on its `v1.21.0` foundation and **P11 Structural Rate Analysis**
+is the next unstarted phase. P7 closed
+on 2026-09-21 (`v1.25.6`) once the owner confirmed the Site Items tab layout on their own screen —
+see `done-list.md`. P10 closed in `v1.24.0`, owner-confirmed through the dialog. P4 and P5 native
 Rebar/BBS QA are complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material
 assignment is done after isolated Secondary rollback, assignment, export and save/reopen
 persistence QA (`v1.23.0`).
 
-### P7 — Site / Non-Model Structural Items — `building` (`v1.25.0`)
+### P8 — Structural Rule Engine / `script.py` split — `building` (`v1.25.7`)
 
-**Built:** `lib/site_items_engine.py` holds the Phase 7 rules — normalize what was typed, report
-every unusable field by name, price only complete lines, and build the export table. Absent,
-non-numeric, zero, negative and boolean quantities/rates all normalize to `None` and leave `Amount`
-blank rather than pricing work at zero.
-**Tested (harness):** 11 checks, all passing.
-**Owner decisions taken (2026-09-19):**
-1. **Storage** — a reusable **default list seeds a project the first time it is opened**, then the
-   project edits its own list. The default only ever seeds: changing it never rewrites a project
-   that already has its own list, because that would silently alter an already-priced BOQ.
-   Landed in `v1.25.1`.
-2. **Totals** — site items get their **own sheet and their own Costing lines**; `BOQ Summary` is not
-   touched. It totals concrete volume in m³, so adding a currency figure to that total would be
-   arithmetically wrong.
+**Why it is open:** P8 is two things at once — the configurable rule engine `PRD.md` §12 asks for,
+and the discipline of keeping `script.py` from becoming the place every rule hides in. The second
+half is what is being paid down, one coherent slice at a time, each one behaviour-neutral.
 
-**Landed in `v1.25.2`:** both workbook formats carry a `Site Items` sheet, and the typed items feed
-the existing `Costing` TOTAL so there is one cost figure covering model-derived and typed work.
-Live-verified on the P10-03 fixture: Classic `305/305` cells across 10 sheets and Site `228/228`
-across 6, both zero mismatches, with `E8=SUM(E2:E7)` spanning the site item rows.
+**Landed so far:**
+- `v1.24.0` — `lib/rule_engine.py`: label normalization, code-token matching, identity signals, the
+  routing key and the audit validation.
+- `v1.24.1` — `lib/parameter_engine.py`: the host-free parameter readers and the grade rules.
+- `v1.25.7` — the routing core. `classify_identity_text` now holds the whole Slab/Foundation
+  decision chain with no element in sight; `build_logical_rcc_collections` moved with the classifier
+  injected; the two audit-reporting functions moved verbatim. `script.py` 5,903 -> 5,688.
 
-**Built in `v1.25.3`:** the Site Items dialog tab — six entry boxes, the line list, Add / Update /
-Remove / Clear / Save as default, a live summary and a label saying whether the list is this
-project's own, a seeded default, or empty.
-**Verified as far as an agent can:** Revit 2025 loaded the real `ui.xaml` through WPF's own
-`XamlReader`, found all 15 controls with the right types, and attached a `Click` handler; `script.py`
-compiles and all seven imported engine names exist; a headless export still passes `265/265` cells.
-**Driven live in `v1.25.4`:** the shipping `script.py` ran in Revit 2025 with only
-`window.ShowDialog()` replaced by a driver hook, so the real window, handlers and engine were
-exercised. All twelve checks passed — Add, the unpriced line, the summary split, select-to-edit,
-Update, Remove, the refusal of an empty line, and Save as default writing the template without
-creating a per-document entry.
-**Fixed in `v1.25.4`:** a headless export (or the startup parameter restore) could persist an empty
-list as the document's own, losing a saved list and disabling seeding. `site_items_ready` now gates
-that write; a `KEEP-01` list survived a headless export under test.
-**Layout reviewed by the owner (`v1.25.5`):** a screenshot showed the entry boxes stretching
-absurdly on a wide monitor because one three-column grid served fields with opposite width needs.
-Columns are now paired by need, capped at 1100 px, the list sits in an **Items in this project**
-group box, and the intro wraps at 900 px. The tab was driven again after the change with all twelve
-checks passing.
-**Rendered and reviewed by the agent (`v1.25.6`):** the dialog is now rendered to PNG by WPF itself
-(`RenderTargetBitmap` over the real shown window), so the layout can be inspected without a human.
-Two faults were found that way and fixed — a source label that kept saying "nothing saved yet" while
-four lines were listed, and free-text fields collapsing to the width of `Unit`. Light and Dark both
-render correctly.
-**Still open — owner run:** a confirming look on the owner's own screen and monitor size. The
-behaviour, the layout and both themes are already verified.
+**How each slice is proved:** the harness resolves a function from `lib/` first and `script.py`
+second, so a verbatim move stays green by construction — which is exactly why a green harness is not
+enough on its own. Each slice is also checked against `HEAD`: for `v1.25.7` the pre-move decision
+chain was rebuilt from git and run beside the moved one over 312 identity x source combinations with
+identical results.
+
+**Still in `script.py` by design:** everything that touches Revit or pyRevit —
+`get_element_identity_text`, `_element_family_type_names`, `_read_identity_parameter`, the thin
+`classify_rcc_element` reader, and `emit_classification_audit`, which writes to the pyRevit output
+window.
+
+**Next candidates** (largest host-free blocks left, by the same rule: move the decision, keep the
+read): `get_sample_values` (68 lines), the grade/material resolution helpers
+(`structural_material_candidates`, `resolve_concrete_grade`, `resolve_structural_material`, ~61
+lines), and `filter_elements`. Nothing in the 2,600-line XAML wiring block moves as-is; it is
+host-bound.
+
+**Verified live (`v1.25.7`):** two `pyrevit run` sessions, neither touching the owner's Revit.
+One authored an eight-element fixture covering every branch of the moved rule chain; the other ran
+the production closure on those real elements. 13 of the 24 extracted functions resolved from
+`lib/rule_engine.py` and all 8 Revit-bound ones from `script.py`, all eight elements routed as
+expected through the injected classifier, and the audit balanced with exactly the two intended
+`Other` findings.
+
+The run was then repeated on the production **CP3123** engine (CPython 3.12.3, selected with a
+`#! python3` shebang) with identical results, so the split behaves the same on both engines.
+
+**Verified against HEAD on a real model:** a scratch copy of
+`R25-UMA NIWAS BUILDING-ST-31-08-2026` was opened read-only and its 325 Floor/Structural Foundation
+elements classified twice in one CP3123 session - once by the working tree, once by a git snapshot
+of the pre-refactor `HEAD`. **Zero mismatches** in group, subtype or reason; identical audits and
+identical compact findings. 303 of the 325 route from Structural Foundations to the Slab sheet, so
+the cross-routing case carried the test.
+
+**Not verified:** the BOQ dialog itself was not opened - `pyrevit run` has no `ActiveUIDocument`,
+which `script.py` needs. Earlier P8 slices were harness-proved and equivalence-checked only.
 
 ### INT-03 — Controlled Agent Bridge — **done** (`v1.19.0`, Bridge API `v2.3.0`)
 

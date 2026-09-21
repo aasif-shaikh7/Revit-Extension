@@ -171,9 +171,11 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
 8. **Document + category definitions** — `CATEGORY_INFO` mapping the five tabs to Revit
    `BuiltInCategory` values.
 9. **Collection / classification** — Structure Wall filters `OST_Walls` by the Revit Structural
-   flag; raw Floor/Foundation collections remain separate;
-   `classify_rcc_element` creates one structured logical result per element, from which exclusive
-   Slab/Foundation collections, subtype filters, parameter pools and a pre-export audit derive.
+   flag; raw Floor/Foundation collections remain separate; `classify_rcc_element` reads one element
+   and hands its identity text to `classify_identity_text` in `lib/rule_engine.py`, which owns the
+   Slab/Foundation decision. `build_logical_rcc_collections` (also in `rule_engine.py`, with the
+   reader injected) turns those results into exclusive collections, subtype filters, parameter pools
+   and a pre-export audit.
 10. **XAML wiring + main entry** — loads `ui.xaml`, wires search/filter/Add-Remove/export events,
     runs `window.ShowDialog()` inside a guarded `try/except`.
 
@@ -301,7 +303,7 @@ every phase:
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
 | P7 Site items | `lib/site_items_engine.py` (**exists since v1.25.0**: rules, pricing and table; settings/dialog/export still to come) |
-| P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1**: host-free classification, grade and parameter-reader rules; Revit-bound readers stay in `script.py`) |
+| P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1/v1.25.7**: host-free classification rules, the routing core and its audit reporting, grade and parameter-reader rules; Revit-bound readers stay in `script.py`) |
 | P9 Validation Engine | `lib/validation_engine.py` (**exists since v1.21.0** as the P10 foundation) |
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
