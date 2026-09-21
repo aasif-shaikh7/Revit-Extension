@@ -1676,7 +1676,8 @@ def sort_rows_by_identity(rows, columns=IDENTITY_COLUMNS):
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
                      site_format=False, validation_report_path=None,
-                     unmapped_report=None, site_items=None):
+                     unmapped_report=None, site_items=None,
+                     rate_analysis=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2002,6 +2003,19 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append("Structural Assembly")
         sheet_rows["Structural Assembly"] = assembly_table
         quantity_column_map["Structural Assembly"] = [3]
+
+    # P11: where a rate comes from. Emitted only when build-ups exist, so
+    # a project that has not costed anything keeps its familiar workbook.
+    from costing_engine import (
+        RATE_ANALYSIS_SHEET_NAME,
+        build_rate_analysis_sheet,
+    )
+    rate_table = build_rate_analysis_sheet(rate_analysis)
+    if len(rate_table) > 1:
+        sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
+        sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
+        # Material, Wastage, Labour, Machinery, Overheads, Analysed Rate.
+        quantity_column_map[RATE_ANALYSIS_SHEET_NAME] = [3, 4, 5, 6, 7, 8]
 
     # P2: level-wise grouping. One row per Level x Category with live SUMIF
     # formulas against the category sheets, placed between BOQ Summary and
@@ -2733,7 +2747,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
                     include_formwork=True, selected_parameters=None,
                     assembly_profile=None, validation_report_path=None,
-                    unmapped_report=None, site_items=None):
+                    unmapped_report=None, site_items=None,
+                    rate_analysis=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2841,6 +2856,24 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append("Structural Assembly")
         sheet_rows["Structural Assembly"] = assembly_table
         sheet_widths["Structural Assembly"] = assembly_widths
+
+    # P11: the rate build-up, in the site bands like every other sheet
+    # here. Appended only when build-ups exist.
+    from costing_engine import (
+        RATE_ANALYSIS_SHEET_NAME,
+        build_rate_analysis_sheet,
+    )
+    rate_plain_table = build_rate_analysis_sheet(rate_analysis)
+    if len(rate_plain_table) > 1:
+        rate_table, rate_widths = build_site_tabular_sheet(
+            project_name,
+            "RATE ANALYSIS",
+            rate_plain_table,
+            band_title="RCC - RATE ANALYSIS"
+        )
+        sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
+        sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
+        sheet_widths[RATE_ANALYSIS_SHEET_NAME] = rate_widths
 
     # P7: same typed line items as the classic workbook, wrapped in the
     # site title bands and appended only when there are items.

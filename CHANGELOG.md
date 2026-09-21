@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.2] - 2026-09-21
+
+### Added (P11 second slice: the rate build-ups are stored and exported)
+- `load_rate_analysis` / `save_rate_analysis` persist the build-ups in the settings document.
+  Only the declared fields are written, so an item cannot smuggle unrelated keys into settings, and
+  only the figures actually supplied are stored - a half-costed item stays half-costed rather than
+  being completed with zeros.
+- Both workbook formats gain a **Rate Analysis** sheet, classic and site. It is emitted **only when
+  build-ups exist**, so a project that has costed nothing keeps exactly the workbook it had.
+- The export handler loads the build-ups and hands them to both writers. The load is guarded: a
+  costing sheet is worth having, but never at the price of an export that is otherwise ready.
+- A corrupt or absent store returns an empty list rather than raising, so a damaged settings file
+  cannot stop an export.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **298 checks pass**, up from 290. The six new ones cover the store
+  keeping only declared and only supplied fields, a saved build-up pricing identically when loaded
+  back, a corrupt store being harmless, both writers building the sheet, the empty case leaving the
+  workbook unchanged, and the handler passing the build-ups on.
+
+### Not yet
+- No dialog tab: the build-ups still have to be written into the settings file by hand. That tab is
+  the next slice, and needs a live Revit session the way P7's did.
+- The live export of this slice has not run: the bridge write consent had expired.
+
+---
+
 ## [v1.26.1] - 2026-09-21
 
 ### Fixed (an export on another project erased the saved parameter selections)

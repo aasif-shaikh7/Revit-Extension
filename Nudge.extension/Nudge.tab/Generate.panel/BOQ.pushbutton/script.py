@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.26.1'
+__version__ = '1.26.2'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.26.1'
+SCRIPT_VERSION = '1.26.2'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5457,6 +5457,18 @@ try:
                         extra_findings,
                         element_materials
                     )
+
+                    # P11: the saved rate build-ups. Guarded - a costing
+                    # sheet is worth having, but never at the price of an
+                    # export that is otherwise ready to write.
+                    rate_analysis = []
+                    try:
+                        from costing_engine import load_rate_analysis
+                        rate_analysis = load_rate_analysis(
+                            load_app_settings()
+                        )
+                    except:
+                        rate_analysis = []
                     unmapped_count = len(unmapped_report) - 1
 
                     # P9: severity and a compact summary of exactly those
@@ -5510,6 +5522,7 @@ try:
                             assembly_profile=assembly_profile,
                             validation_report_path=validation_report_path,
                             unmapped_report=unmapped_report,
+                            rate_analysis=rate_analysis,
                             site_items=site_items
                         )
 
@@ -5531,6 +5544,7 @@ try:
                             assembly_profile=assembly_profile,
                             validation_report_path=validation_report_path,
                             unmapped_report=unmapped_report,
+                            rate_analysis=rate_analysis,
                             site_items=site_items
                         )
 

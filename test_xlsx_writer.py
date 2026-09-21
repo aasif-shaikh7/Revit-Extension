@@ -3584,6 +3584,50 @@ def main():
         "P11 no rate analysis yields a header-only sheet"
     )
 
+    # The store: only declared fields, junk refused, round-trip intact.
+    rate_stored = rate_engine.save_rate_analysis(
+        {"theme": "Auto"},
+        [full_buildup,
+         {"item_code": "SHUT", "unit": "m2", "material": 180,
+          "wastage_pct": 5, "labour": 120, "smuggled": "nope"}])
+    check(
+        sorted(rate_stored.keys()) == ["rate_analysis", "theme"]
+        and "smuggled" not in rate_stored["rate_analysis"][1]
+        and "machinery" not in rate_stored["rate_analysis"][1]
+        and rate_stored["rate_analysis"][1]["material"] == 180.0,
+        "P11 store keeps only declared fields, and only the ones supplied"
+    )
+    check(
+        rate_engine.compute_analysed_rate(
+            rate_engine.load_rate_analysis(rate_stored)[0])[0] == 7958.72,
+        "P11 a saved build-up prices identically when loaded back"
+    )
+    check(
+        rate_engine.load_rate_analysis({"rate_analysis": "nonsense"}) == []
+        and rate_engine.load_rate_analysis(None) == []
+        and rate_engine.load_rate_analysis({}) == [],
+        "P11 a corrupt or absent store cannot stop an export"
+    )
+
+    writer_source, _ = extract_from_sources(texts, "write_basic_xlsx")
+    site_writer_source, _ = extract_from_sources(texts, "write_site_xlsx")
+    check(
+        "rate_analysis" in writer_source
+        and "build_rate_analysis_sheet(rate_analysis)" in writer_source
+        and "build_rate_analysis_sheet(rate_analysis)" in site_writer_source,
+        "P11 both workbook formats build the Rate Analysis sheet"
+    )
+    check(
+        "if len(rate_table) > 1:" in writer_source
+        and "if len(rate_plain_table) > 1:" in site_writer_source,
+        "P11 a project with no build-ups keeps its familiar workbook"
+    )
+    check(
+        "rate_analysis=rate_analysis," in export_handler_source
+        and "load_rate_analysis(" in export_handler_source,
+        "P11 the export handler loads the build-ups and passes them on"
+    )
+
     rate_source = io.open(
         os.path.join(LIB_DIR, "costing_engine.py"),
         "r", encoding="utf-8-sig").read()

@@ -347,3 +347,47 @@ def build_rate_analysis_sheet(raw_analyses):
         ])
 
     return table
+
+
+def load_rate_analysis(settings):
+    """Read the saved rate build-ups out of the settings document.
+
+    Returns normalized rows, never None, and ignores anything that is not
+    a list of dictionaries - a corrupt settings file must not be able to
+    stop an export.
+    """
+    try:
+        raw = (settings or {}).get("rate_analysis")
+    except AttributeError:
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [normalize_rate_analysis(item)
+            for item in raw if isinstance(item, dict)]
+
+
+def save_rate_analysis(settings, analyses):
+    """Return the settings document with these build-ups stored.
+
+    Only the declared fields are written, so an item cannot smuggle
+    unrelated keys into the settings file.
+    """
+    document = settings if isinstance(settings, dict) else {}
+    stored = []
+
+    for analysis in list(analyses or []):
+        if not isinstance(analysis, dict):
+            continue
+        normalized = normalize_rate_analysis(analysis)
+        row = {}
+        for key in ("item_code", "description", "unit"):
+            if normalized.get(key):
+                row[key] = normalized[key]
+        for key in RATE_COST_COMPONENTS + RATE_PERCENT_COMPONENTS:
+            if normalized.get(key) is not None:
+                row[key] = normalized[key]
+        if row:
+            stored.append(row)
+
+    document["rate_analysis"] = stored
+    return document
