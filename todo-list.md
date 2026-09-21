@@ -51,7 +51,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` 5,931 -> 5,688) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `v1.21.0`, severity + compact report `v1.25.8`) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
-| P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | `todo` |
+| P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `todo` |
 | P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | `todo` |
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
@@ -64,7 +64,9 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** **P9**, the validation report (`v1.25.8` added severity and the
+**Current product focus:** **P12 Rate Database** is next - P11 closed on 2026-09-21 with its engine,
+store, workbook sheet and dialog tab all live-verified and owner-confirmed, and its build-ups are
+still typed per project. Before that: **P9**, the validation report (`v1.25.8` added severity and the
 compact summary; see P9 below for what is left). PRD section 12 gates **P11 Structural Rate
 Analysis** on quantities being stable, which is what P9 is for, so P11 waits. **P8**, the
 `script.py` split, is paid down to the point where more splitting would be splitting for its own

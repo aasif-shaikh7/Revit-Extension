@@ -73,6 +73,13 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   - and what the tab would save exports the same rates it showed:
     `[7106.0, "", 8911.84, ""]`.
 
+### Verified (owner, 2026-09-21) - P11 closed
+- The one path the drive could not reach - the list being written to settings on Close and read
+  back on the next open - was confirmed by the project owner in the real dialog: an item added to
+  the Rate Analysis tab, the dialog closed and reopened, and the item was still there. With that,
+  **P11 is done**: engine (`v1.26.0`), store and workbook sheet (`v1.26.2`) and dialog tab
+  (`v1.26.3`), each live-verified and the whole owner-confirmed.
+
 ---
 
 ## [v1.26.2] - 2026-09-21
