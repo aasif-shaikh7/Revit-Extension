@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.26.2'
+__version__ = '1.26.3'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.26.2'
+SCRIPT_VERSION = '1.26.3'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -280,6 +280,11 @@ from site_items_engine import (
 
 # The live list for the active document, rebuilt when the dialog opens.
 site_items_state = []
+
+# P11: the rate build-ups shown in the Rate Analysis tab. Same shape as
+# site_items_state - the list on screen is exactly what gets saved and
+# exported.
+rate_analysis_state = []
 
 # False until site_items_load_for_document() has run. Settings are saved
 # after every list mutation, including the parameter restore that happens
@@ -4240,6 +4245,240 @@ try:
             except:
                 pass
 
+        # ------------------------------------------------------------
+        # P11: RATE ANALYSIS TAB
+        #
+        # The build-ups live in rate_analysis_state. Every handler
+        # rewrites it and redraws, so the list on screen is exactly what
+        # is saved and exported - the same contract the Site Items tab
+        # uses.
+        # ------------------------------------------------------------
+
+        RATE_FIELD_CONTROLS = (
+            ("item_code", "RateItemCode"),
+            ("description", "RateDescription"),
+            ("unit", "RateUnit"),
+            ("material", "RateMaterial"),
+            ("wastage_pct", "RateWastagePct"),
+            ("labour", "RateLabour"),
+            ("machinery", "RateMachinery"),
+            ("overheads_pct", "RateOverheadsPct"),
+        )
+
+        def rate_display_text(analysis):
+            """One readable line: the item, and its rate or what is missing."""
+            from costing_engine import compute_analysed_rate
+
+            rate, missing = compute_analysed_rate(analysis)
+            if rate is None:
+                tail = "rate pending - needs {0}".format(", ".join(missing))
+            else:
+                tail = "rate {0:.2f} / {1}".format(
+                    rate, analysis.get("unit") or "unit")
+
+            return u"{0}  |  {1}  |  {2}".format(
+                analysis.get("item_code") or "(no code)",
+                analysis.get("description") or "(no description)",
+                tail
+            )
+
+        def rate_refresh(select_index=-1):
+            """Redraw the list and the summary line."""
+            from costing_engine import compute_analysed_rate
+
+            try:
+                list_box = window.FindName("RateList")
+                if list_box is not None:
+                    list_box.Items.Clear()
+                    for analysis in rate_analysis_state:
+                        list_box.Items.Add(
+                            ParameterItem(rate_display_text(analysis))
+                        )
+                    if 0 <= select_index < len(rate_analysis_state):
+                        list_box.SelectedIndex = select_index
+            except:
+                pass
+
+            try:
+                summary_box = window.FindName("RateSummary")
+                if summary_box is None:
+                    return
+
+                if not rate_analysis_state:
+                    summary_box.Text = (
+                        "No rate build-ups. Items added here export to their "
+                        "own Rate Analysis sheet."
+                    )
+                    return
+
+                priced = 0
+                pending = 0
+                for analysis in rate_analysis_state:
+                    if compute_analysed_rate(analysis)[0] is None:
+                        pending += 1
+                    else:
+                        priced += 1
+
+                text = "{0} item(s) | {1} priced".format(
+                    len(rate_analysis_state), priced)
+                if pending:
+                    text += (
+                        " | {0} awaiting a figure - those export with a "
+                        "blank rate rather than a zero".format(pending)
+                    )
+                summary_box.Text = text
+            except:
+                pass
+
+        def rate_fill_fields(analysis):
+            """Load one build-up into the entry boxes for editing."""
+            for key, control_name in RATE_FIELD_CONTROLS:
+                try:
+                    control = window.FindName(control_name)
+                    if control is None:
+                        continue
+                    value = analysis.get(key)
+                    control.Text = "" if value is None else str(value)
+                except:
+                    pass
+
+        def rate_read_fields():
+            """Read the entry boxes into a normalized build-up."""
+            from costing_engine import normalize_rate_analysis
+
+            values = {}
+            for key, control_name in RATE_FIELD_CONTROLS:
+                try:
+                    control = window.FindName(control_name)
+                    values[key] = control.Text if control is not None else ""
+                except:
+                    values[key] = ""
+            return normalize_rate_analysis(values)
+
+        def rate_clear_fields(sender=None, args=None):
+            for _key, control_name in RATE_FIELD_CONTROLS:
+                try:
+                    control = window.FindName(control_name)
+                    if control is not None:
+                        control.Text = ""
+                except:
+                    pass
+            set_status("Rate analysis | Fields cleared", "info")
+
+        def rate_selected_index():
+            try:
+                list_box = window.FindName("RateList")
+                if list_box is None:
+                    return -1
+                return int(list_box.SelectedIndex)
+            except:
+                return -1
+
+        def rate_add(sender=None, args=None):
+            """Add the typed build-up. An item needs at least a code."""
+            analysis = rate_read_fields()
+
+            if not analysis.get("item_code"):
+                set_status(
+                    "Rate analysis | Give the item a code before adding it",
+                    "warning"
+                )
+                return
+
+            rate_analysis_state.append(analysis)
+            rate_refresh(len(rate_analysis_state) - 1)
+            set_status(
+                "Rate analysis | Added {0}".format(analysis["item_code"]),
+                "success"
+            )
+
+        def rate_update(sender=None, args=None):
+            index = rate_selected_index()
+            if not (0 <= index < len(rate_analysis_state)):
+                set_status(
+                    "Rate analysis | Select an item to update", "warning")
+                return
+
+            analysis = rate_read_fields()
+            if not analysis.get("item_code"):
+                set_status(
+                    "Rate analysis | Give the item a code before updating it",
+                    "warning"
+                )
+                return
+
+            rate_analysis_state[index] = analysis
+            rate_refresh(index)
+            set_status(
+                "Rate analysis | Updated {0}".format(analysis["item_code"]),
+                "success"
+            )
+
+        def rate_remove(sender=None, args=None):
+            index = rate_selected_index()
+            if not (0 <= index < len(rate_analysis_state)):
+                set_status(
+                    "Rate analysis | Select an item to remove", "warning")
+                return
+
+            removed = rate_analysis_state.pop(index)
+            rate_refresh()
+            set_status(
+                "Rate analysis | Removed {0}".format(
+                    removed.get("item_code") or "item"),
+                "info"
+            )
+
+        def rate_selection_changed(sender=None, args=None):
+            index = rate_selected_index()
+            if 0 <= index < len(rate_analysis_state):
+                rate_fill_fields(rate_analysis_state[index])
+
+        def rate_load_saved():
+            """Load the saved build-ups into the tab."""
+            try:
+                from costing_engine import load_rate_analysis
+
+                del rate_analysis_state[:]
+                rate_analysis_state.extend(
+                    load_rate_analysis(load_app_settings())
+                )
+            except:
+                del rate_analysis_state[:]
+
+            try:
+                source_box = window.FindName("RateSource")
+                if source_box is not None:
+                    source_box.Text = (
+                        "Showing the saved build-ups; they are written back "
+                        "when you export or close."
+                        if rate_analysis_state
+                        else "No rate build-ups saved yet."
+                    )
+            except:
+                pass
+
+            rate_refresh()
+
+        def rate_wire_controls():
+            """Attach the tab's handlers once the window exists."""
+            try:
+                for control_name, handler in (
+                    ("RateAdd", rate_add),
+                    ("RateUpdate", rate_update),
+                    ("RateRemove", rate_remove),
+                    ("RateClear", rate_clear_fields),
+                ):
+                    control = window.FindName(control_name)
+                    if control is not None:
+                        control.Click += handler
+
+                list_box = window.FindName("RateList")
+                if list_box is not None:
+                    list_box.SelectionChanged += rate_selection_changed
+            except:
+                pass
+
         def capture_and_save_settings():
             """
             Persist the current selections, subtype filters and the
@@ -4417,6 +4656,13 @@ try:
                         safe_text(doc.Title, ""),
                         site_items_state
                     )
+            except:
+                pass
+
+            # P11: the rate build-ups shown in the tab.
+            try:
+                from costing_engine import save_rate_analysis
+                settings = save_rate_analysis(settings, rate_analysis_state)
             except:
                 pass
 
@@ -5854,6 +6100,13 @@ try:
             try:
                 site_items_wire_controls()
                 site_items_load_for_document()
+            except:
+                pass
+
+            # P11: the Rate Analysis tab, loaded from the saved build-ups.
+            try:
+                rate_wire_controls()
+                rate_load_saved()
             except:
                 pass
 

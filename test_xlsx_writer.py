@@ -3585,6 +3585,55 @@ def main():
     )
 
     # The store: only declared fields, junk refused, round-trip intact.
+    # The tab: every control the handlers look for must exist in the XAML,
+    # and every handler must be wired. A tab that looks right but is not
+    # connected is the failure this checks for.
+    xaml_source = io.open(
+        os.path.join(REPO_DIR, "Nudge.extension", "Nudge.tab",
+                     "Generate.panel", "BOQ.pushbutton", "ui.xaml"),
+        "r", encoding="utf-8-sig").read()
+    rate_controls = (
+        "RateItemCode", "RateDescription", "RateUnit", "RateMaterial",
+        "RateWastagePct", "RateLabour", "RateMachinery", "RateOverheadsPct",
+        "RateList", "RateAdd", "RateUpdate", "RateRemove", "RateClear",
+        "RateSummary", "RateSource",
+    )
+    missing_controls = [name for name in rate_controls
+                        if 'x:Name="{0}"'.format(name) not in xaml_source]
+    check(
+        not missing_controls,
+        "P11 tab declares every control its handlers use{0}".format(
+            "" if not missing_controls else
+            " (missing: {0})".format(", ".join(missing_controls)))
+    )
+
+    wire_block = nested_handler_source("rate_wire_controls")
+    check(
+        all(name in wire_block for name in
+            ("RateAdd", "RateUpdate", "RateRemove", "RateClear", "RateList"))
+        and "SelectionChanged" in wire_block,
+        "P11 tab wires all four buttons and the list selection"
+    )
+
+    read_block = nested_handler_source("rate_read_fields")
+    check(
+        "normalize_rate_analysis" in read_block,
+        "P11 tab normalizes what was typed instead of trusting the boxes"
+    )
+
+    add_block = nested_handler_source("rate_add")
+    check(
+        'if not analysis.get("item_code"):' in add_block
+        and "return" in add_block,
+        "P11 tab refuses an item with no code"
+    )
+
+    capture_rate_block = nested_handler_source("capture_and_save_settings")
+    check(
+        "save_rate_analysis(settings, rate_analysis_state)" in capture_rate_block,
+        "P11 tab's build-ups are saved with the rest of the settings"
+    )
+
     rate_stored = rate_engine.save_rate_analysis(
         {"theme": "Auto"},
         [full_buildup,

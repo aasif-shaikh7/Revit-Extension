@@ -22,6 +22,46 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.3] - 2026-09-21
+
+### Added (P11 third slice: the Rate Analysis dialog tab)
+- The build-ups no longer have to be written into the settings file by hand. A **Rate Analysis**
+  tab - eight entry boxes, the list, Add / Update / Remove / Clear, and a live summary - built on
+  the same contract the Site Items tab uses: the list on screen is exactly what is saved and
+  exported.
+- Each line says what it is worth, or what it still needs:
+  `RCC-M30 | M30 concrete | rate 7958.72 / m3` beside
+  `SHUT-BM | Beam shuttering | rate pending - needs machinery, overheads_pct`. The summary counts
+  both, and says plainly that the pending ones export with a blank rate rather than a zero.
+- What is typed is normalized through `normalize_rate_analysis` rather than trusted, so a stray
+  character cannot reach the arithmetic. An item with no code is refused.
+- The build-ups are written back with the rest of the settings on export or close.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **303 checks pass**, up from 298. Five new ones: every control the
+  handlers look for exists in the XAML, all four buttons and the list selection are wired, what is
+  typed is normalized, an item with no code is refused, and the build-ups are saved with the
+  settings.
+
+### Verified (live, Revit 2025)
+- **WPF itself parsed the shipping `ui.xaml`**, because well-formed XML is not the same as loadable
+  XAML - a bad style key or a control nested where WPF will not take it fails only here. The window
+  loaded, the tab list reads
+  `Beam, Column, Structure Wall, Rebar, Slab, Foundation, Assembly Profile, Site Items, Rate
+  Analysis`, all **16 controls resolved with the right types**, and all four buttons accepted a
+  Click handler.
+
+### Verified (owner)
+- The project owner opened the real BOQ dialog and exported normally, confirming the dialog path
+  that every change since `v1.25.7` had reached only through the headless bridge - including the
+  `v1.26.1` change to how selections are saved.
+
+### Not verified
+- The tab has not been driven end to end the way P7's was in `v1.25.4`: adding, editing and
+  removing a build-up through the running dialog still needs an owner run.
+
+---
+
 ## [v1.26.2] - 2026-09-21
 
 ### Added (P11 second slice: the rate build-ups are stored and exported)
