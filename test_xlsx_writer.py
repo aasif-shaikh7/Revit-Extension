@@ -3294,6 +3294,63 @@ def main():
         "P9 export handler summarizes the same report table it writes to the sheet"
     )
 
+    # ------------------------------------------------------------
+    # Identity row ordering (v1.25.9)
+    #
+    # Plain text sorting reads B10 as smaller than B2, which is exactly
+    # the mistake this replaces, so the checks pin the numeric ordering
+    # rather than just "is sorted".
+    # ------------------------------------------------------------
+    import export_engine as ordering_engine
+
+    check(
+        sorted(["B10", "B2", "B1", "B2A", "B10A", "B3", "B21"],
+               key=ordering_engine.identity_sort_key)
+        == ["B1", "B2", "B2A", "B3", "B10", "B10A", "B21"],
+        "Identity order reads the numbers as numbers: B2 before B10"
+    )
+    check(
+        sorted(["B2", "", "B1", None], key=ordering_engine.identity_sort_key)
+        == ["B1", "B2", "", None],
+        "Identity order puts rows with no identity last, not first"
+    )
+    check(
+        [row["ID_UNMT"] for row in ordering_engine.sort_rows_by_identity(
+            [{"ID_UNMT": value} for value in
+             ("B10", "B2", "B1", "C1", "B2A")])]
+        == ["B1", "B2", "B2A", "B10", "C1"],
+        "Identity order sorts the rows themselves, letters then numbers"
+    )
+
+    # A project that fills Mark instead of ID_UNMT is ordered by Mark.
+    check(
+        [row["Mark"] for row in ordering_engine.sort_rows_by_identity(
+            [{"ID_UNMT": "", "Mark": "C10"},
+             {"ID_UNMT": "", "Mark": "C2"}])] == ["C2", "C10"],
+        "Identity order falls back to Mark when ID_UNMT is empty"
+    )
+
+    # A project that fills neither keeps the order the model gave, rather
+    # than being shuffled by a field nobody uses.
+    untouched = [{"Element ID": "3"}, {"Element ID": "1"}]
+    check(
+        ordering_engine.sort_rows_by_identity(untouched)
+        == [{"Element ID": "3"}, {"Element ID": "1"}],
+        "Identity order leaves a project that fills no identity alone"
+    )
+
+    check(
+        ordering_engine.sort_rows_by_identity([]) == []
+        and ordering_engine.sort_rows_by_identity(None) == [],
+        "Identity order survives an empty category"
+    )
+
+    ordering_block, _ = extract_from_sources(texts, "build_element_data")
+    check(
+        "sort_rows_by_identity(" in ordering_block,
+        "build_element_data orders every category before returning it"
+    )
+
     engine_guard_block, _ = extract_from_sources(
         texts, "_warn_if_not_cp3123"
     )

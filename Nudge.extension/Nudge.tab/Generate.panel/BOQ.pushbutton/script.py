@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.25.8'
+__version__ = '1.25.9'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.25.8'
+SCRIPT_VERSION = '1.25.9'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2126,6 +2126,21 @@ def build_element_data(include_grade=True, material_sink=None):
             ].append(row)
 
             total_rows += 1
+
+    # Order every sheet by its identity code - B1, B2, B2A, B10 - rather
+    # than by the order Revit happened to hand the elements over. Done
+    # here, once, so the element sheets, the Costing rows and the
+    # unmapped report all read in the same order. Guarded: an ordering
+    # problem must never cost somebody their export.
+    try:
+        from export_engine import sort_rows_by_identity
+
+        for category_name in list(data_result.keys()):
+            data_result[category_name] = sort_rows_by_identity(
+                data_result[category_name]
+            )
+    except:
+        pass
 
     return (
         data_result,

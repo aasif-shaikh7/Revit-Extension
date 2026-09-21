@@ -22,6 +22,37 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.25.9] - 2026-09-21
+
+### Added (BOQ sheets read in identity order)
+- Element rows came out in whatever order Revit handed the elements over - `B10, B16, B2, B1, ...`
+  on the owner's model. Every category sheet is now ordered by its identity code instead.
+- **Plain text sorting would have been wrong**, which is the whole point of the change: it reads
+  `B10` as smaller than `B2` because `"1" < "2"`, giving `B1, B10, B10A, B11, B2`.
+  `identity_sort_key` in `lib/export_engine.py` compares the number runs as numbers, so the order is
+  `B1, B2, B2A, B3, ... B9, B10, B10A, B11`.
+- `sort_rows_by_identity` picks the column from the rows themselves - `ID_UNMT` where a project uses
+  it, otherwise `Mark`. A project that fills neither keeps the order the model gave rather than
+  being shuffled by a field nobody maintains. Rows with no identity sort last, not first, and the
+  sort is stable so elements sharing a code keep their model order.
+- The ordering is applied once, at the end of `build_element_data`, so the element sheets, the
+  Costing rows and the unmapped report all read in the same order. The call is guarded: an ordering
+  problem must never cost somebody their export.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **268 checks pass**, up from 261. The seven new ones pin the
+  numeric ordering (`B2` before `B10`), blanks last, row-level sorting, the `Mark` fallback, the
+  leave-it-alone case, empty categories, and that `build_element_data` actually calls it.
+
+### Verified (live, Revit 2025, real model)
+- A headless export of `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` through the
+  bridge's queued-job path, then every sheet checked against the sort key: **all five in true
+  ascending order**. Beam `B1 B2 B2A B3 ... B9 B10 B10A B11`, Column
+  `C1 C2 C3 C4 C5 C6 FC FC1 LW1 LW2 LW3 SW1`, Foundation `BS CF1 CF2 F1 F2 F3 F4 F5 PCC_FOOTING`.
+  Canonical validator 18,624/18,624 cells across 11 sheets, zero mismatches.
+
+---
+
 ## [v1.25.8] - 2026-09-21
 
 ### Added (P9 compact validation report)

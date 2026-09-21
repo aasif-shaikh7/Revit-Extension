@@ -1564,6 +1564,67 @@ def build_summary_cover_rows(
 # SITE FORMAT (v1.4.0) - PURE BUILDERS
 # ============================================================
 
+# ------------------------------------------------------------------
+# Row ordering
+# ------------------------------------------------------------------
+
+# Identity codes are text with numbers inside, so plain text sorting gets
+# them wrong: it reads B10 as smaller than B2 because "1" < "2". These two
+# helpers compare the number parts as numbers, which is what a person
+# means by "B1, B2, B3".
+IDENTITY_COLUMNS = ("ID_UNMT", "Mark")
+
+
+def identity_sort_key(value):
+    """Natural sort key: B1 < B2 < B2A < B10 < B10A, blanks last."""
+    try:
+        text = "" if value is None else str(value).strip()
+    except Exception:
+        text = ""
+
+    if not text:
+        # A row with no identity sorts after every row that has one,
+        # rather than jumping to the top as an empty string would.
+        return (1, ())
+
+    parts = []
+    for chunk in re.findall(r"\d+|\D+", text):
+        if chunk.isdigit():
+            parts.append((0, int(chunk), ""))
+        else:
+            parts.append((1, 0, chunk.upper()))
+
+    return (0, tuple(parts))
+
+
+def sort_rows_by_identity(rows, columns=IDENTITY_COLUMNS):
+    """Return the rows ordered by the first identity column they carry.
+
+    The column is chosen from the rows themselves - ID_UNMT if this
+    project uses it, otherwise Mark - so a project that identifies its
+    elements differently is left in its original order rather than
+    sorted by a field it does not fill. Python's sort is stable, so rows
+    sharing an identity keep the order the model gave them.
+    """
+    items = list(rows or [])
+    if not items:
+        return items
+
+    for column in columns:
+        filled = 0
+        for row in items:
+            try:
+                if str(row.get(column, "") or "").strip():
+                    filled += 1
+            except AttributeError:
+                return items
+        if filled:
+            return sorted(
+                items, key=lambda row: identity_sort_key(row.get(column, "")))
+
+    return items
+
+
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
                      site_format=False, validation_report_path=None,

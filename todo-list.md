@@ -101,6 +101,11 @@ changes nobody's flow. Blocking is a different product, so it is not being assum
 **Also open:** PRD section 12 lists missing rebar and missing parameters, neither of which the
 engine checks yet.
 
+**Related, landed separately (`v1.25.9`):** BOQ sheets now read in identity order
+(`B1, B2, B2A, B10`) rather than Revit's collection order - `identity_sort_key` and
+`sort_rows_by_identity` in `lib/export_engine.py`, applied once at the end of `build_element_data`.
+Belongs to P13 Professional Excel BOQ rather than P9, but it came out of reading a real export.
+
 **Not verified:** the dialog was not run; an agent cannot open it (see P8 below).
 
 ### P8 — Structural Rule Engine / `script.py` split — `building` (`v1.25.7`)
