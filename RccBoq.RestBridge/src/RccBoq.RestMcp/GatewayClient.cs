@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using RccBoq.RestCore;
 
@@ -7,6 +8,10 @@ namespace RccBoq.RestMcp;
 internal interface IGatewayClient
 {
     Task<GatewayResult> GetAsync(string path, CancellationToken cancellationToken);
+    Task<GatewayResult> PostAsync(
+        string path,
+        object body,
+        CancellationToken cancellationToken);
 }
 
 internal sealed record GatewayResult(int StatusCode, JsonElement Body)
@@ -35,6 +40,28 @@ internal sealed class GatewayClient(HttpClient httpClient) : IGatewayClient
             bodyStream,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return new GatewayResult((int)response.StatusCode, body.RootElement.Clone());
+    }
+
+    public async Task<GatewayResult> PostAsync(
+        string path,
+        object body,
+        CancellationToken cancellationToken)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ReadToken());
+        using HttpResponseMessage response = await httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        await using Stream bodyStream = await response.Content.ReadAsStreamAsync(
+            cancellationToken).ConfigureAwait(false);
+        using JsonDocument responseBody = await JsonDocument.ParseAsync(
+            bodyStream,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return new GatewayResult((int)response.StatusCode, responseBody.RootElement.Clone());
     }
 
     private static string ReadToken()

@@ -10,6 +10,7 @@ public sealed class App : IExternalApplication
     {
         try
         {
+            CreateAgentBridgeButton(application);
             _runtime = new BridgeRuntime();
             _runtime.Start();
             return Result.Succeeded;
@@ -25,8 +26,22 @@ public sealed class App : IExternalApplication
 
     public Result OnShutdown(UIControlledApplication application)
     {
+        WriteSessionConsent.Disable();
         _runtime?.Dispose();
         _runtime = null;
         return Result.Succeeded;
+    }
+
+    private static void CreateAgentBridgeButton(UIControlledApplication application)
+    {
+        RibbonPanel panel = application.CreateRibbonPanel("RCC BOQ Agent");
+        string assemblyPath = typeof(App).Assembly.Location;
+        PushButtonData button = new(
+            "RccBoqAgentBridge",
+            "Agent\nBridge",
+            assemblyPath,
+            typeof(AgentBridgeCommand).FullName);
+        button.ToolTip = "Inspect bridge status and temporarily enable controlled agent writes.";
+        panel.AddItem(button);
     }
 }

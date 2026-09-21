@@ -131,7 +131,7 @@ internal sealed class McpServer(
                 ["name"] = "rcc-boq-revit",
                 ["version"] = BridgeConstants.Version,
             },
-            ["instructions"] = "Read-only access to the active Revit 2025 document through the local RCC BOQ bridge. Check rcc_boq_status first. Use rcc_boq_selection for the current selection, then pass an element_id to rcc_boq_element or rcc_boq_rebar. Never describe these tools as proof of model edits; they cannot modify Revit.",
+            ["instructions"] = "Controlled access to the active Revit 2025 document through the local RCC BOQ Agent Bridge. Reads and dry-runs are always available. Actual parameter writes, structural-material assignments and fixed-folder BOQ exports require the user to enable a short write session from Revit's Agent Bridge pushbutton. Never claim a write or export succeeded unless its result reports completion; the bridge never saves the Revit document automatically.",
         });
     }
 
@@ -144,6 +144,37 @@ internal sealed class McpServer(
             Tool("rcc_boq_selection", "Read bounded identity for the current Revit selection.", EmptySchema()),
             Tool("rcc_boq_element", "Read bounded identity and parameters for one Revit element.", ElementSchema()),
             Tool("rcc_boq_rebar", "Read native and derived data for one Revit Rebar element.", ElementSchema()),
+            Tool(
+                "rcc_boq_materials",
+                "Read a bounded material catalog from the active Revit document.",
+                EmptySchema()),
+            Tool(
+                "rcc_boq_last_export_validation",
+                "Read the latest bounded canonical BOQ XLSX validation report produced by the exporter.",
+                EmptySchema()),
+            Tool(
+                "rcc_boq_export_status",
+                "Read bounded status for the latest Agent Bridge BOQ export job.",
+                EmptySchema()),
+            Tool(
+                "rcc_boq_start_export",
+                "Preview or queue a headless BOQ export in the fixed current-user AgentExports folder.",
+                StartExportSchema(),
+                readOnly: false,
+                destructive: false,
+                idempotent: false),
+            Tool(
+                "rcc_boq_set_parameter",
+                "Preview or apply one allow-listed Revit parameter edit. Dry-run defaults to true; apply requires temporary user consent in Revit.",
+                SetParameterSchema(),
+                readOnly: false,
+                destructive: true),
+            Tool(
+                "rcc_boq_set_structural_material",
+                "Preview or assign one active-document material to an allow-listed structural element type. Dry-run defaults to true; apply requires temporary user consent in Revit.",
+                SetStructuralMaterialSchema(),
+                readOnly: false,
+                destructive: true),
         ];
         return new JsonObject { ["tools"] = tools };
     }
@@ -168,8 +199,29 @@ internal sealed class McpServer(
             "rcc_boq_selection" => "/rcc-boq/selection",
             "rcc_boq_element" => ElementPath(parameters, "/rcc-boq/elements/"),
             "rcc_boq_rebar" => ElementPath(parameters, "/rcc-boq/rebar/"),
+            "rcc_boq_materials" => "/rcc-boq/materials",
+            "rcc_boq_last_export_validation" => "/rcc-boq/boq/last-validation",
+            "rcc_boq_export_status" => "/rcc-boq/boq/export-status",
             _ => null,
         };
+
+        if (name == "rcc_boq_set_parameter")
+        {
+            return await CallSetParameterAsync(id, parameters, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (name == "rcc_boq_set_structural_material")
+        {
+            return await CallSetStructuralMaterialAsync(id, parameters, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (name == "rcc_boq_start_export")
+        {
+            return await CallStartExportAsync(id, parameters, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         if (path is null)
         {
@@ -212,6 +264,151 @@ internal sealed class McpServer(
         }
     }
 
+    private async Task<JsonObject> CallSetParameterAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(parameters, out JsonElement arguments)
+            || !arguments.TryGetProperty("element_id", out JsonElement elementId)
+            || !elementId.TryGetInt64(out long elementIdValue)
+            || elementIdValue <= 0
+            || !arguments.TryGetProperty("parameter_name", out JsonElement parameterName)
+            || parameterName.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(parameterName.GetString())
+            || !arguments.TryGetProperty("value", out JsonElement value)
+            || value.ValueKind != JsonValueKind.String)
+        {
+            return Error(id, -32602, "Positive element_id, parameter_name and string value are required");
+        }
+
+        bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
+            || dryRunElement.ValueKind != JsonValueKind.False;
+        bool forceRollback = arguments.TryGetProperty(
+            "force_rollback", out JsonElement forceRollbackElement)
+            && forceRollbackElement.ValueKind == JsonValueKind.True;
+        string? expected = OptionalString(arguments, "expected_current_value");
+        string? requestId = OptionalString(arguments, "request_id");
+        object body = new
+        {
+            parameterName = parameterName.GetString(),
+            value = value.GetString(),
+            expectedCurrentValue = expected,
+            dryRun,
+            requestId,
+            forceRollback
+        };
+        try
+        {
+            GatewayResult result = await gateway.PostAsync(
+                $"/rcc-boq/elements/{elementIdValue}/parameter",
+                body,
+                cancellationToken).ConfigureAwait(false);
+            return ToolResult(id, result);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return BridgeUnavailable(id, exception);
+        }
+    }
+
+    private async Task<JsonObject> CallStartExportAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(parameters, out JsonElement arguments))
+        {
+            return Error(id, -32602, "Export arguments are required");
+        }
+        string format = OptionalString(arguments, "export_format") ?? "site";
+        if (format is not ("classic" or "site"))
+        {
+            return Error(id, -32602, "export_format must be classic or site");
+        }
+        bool includeFormwork = !arguments.TryGetProperty(
+            "include_formwork", out JsonElement formwork)
+            || formwork.ValueKind != JsonValueKind.False;
+        bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
+            || dryRunElement.ValueKind != JsonValueKind.False;
+        object body = new
+        {
+            exportFormat = format,
+            includeFormwork,
+            dryRun,
+            requestId = OptionalString(arguments, "request_id")
+        };
+        try
+        {
+            GatewayResult result = await gateway.PostAsync(
+                "/rcc-boq/boq/export",
+                body,
+                cancellationToken).ConfigureAwait(false);
+            return ToolResult(id, result);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return BridgeUnavailable(id, exception);
+        }
+    }
+
+    private async Task<JsonObject> CallSetStructuralMaterialAsync(
+        JsonNode id,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryArguments(parameters, out JsonElement arguments)
+            || !arguments.TryGetProperty("element_id", out JsonElement elementId)
+            || !elementId.TryGetInt64(out long elementIdValue)
+            || elementIdValue <= 0
+            || !arguments.TryGetProperty("material_id", out JsonElement materialId)
+            || !materialId.TryGetInt64(out long materialIdValue)
+            || materialIdValue <= 0)
+        {
+            return Error(id, -32602, "Positive element_id and material_id are required");
+        }
+
+        long? expectedCurrentMaterialId = null;
+        if (arguments.TryGetProperty(
+                "expected_current_material_id", out JsonElement expectedElement))
+        {
+            if (!expectedElement.TryGetInt64(out long expectedValue) || expectedValue < 0)
+            {
+                return Error(
+                    id,
+                    -32602,
+                    "expected_current_material_id must be zero or a positive integer");
+            }
+            expectedCurrentMaterialId = expectedValue;
+        }
+
+        bool dryRun = !arguments.TryGetProperty("dry_run", out JsonElement dryRunElement)
+            || dryRunElement.ValueKind != JsonValueKind.False;
+        bool forceRollback = arguments.TryGetProperty(
+            "force_rollback", out JsonElement forceRollbackElement)
+            && forceRollbackElement.ValueKind == JsonValueKind.True;
+        object body = new
+        {
+            materialId = materialIdValue,
+            expectedCurrentMaterialId,
+            dryRun,
+            requestId = OptionalString(arguments, "request_id"),
+            forceRollback
+        };
+        try
+        {
+            GatewayResult result = await gateway.PostAsync(
+                $"/rcc-boq/element-types/{elementIdValue}/structural-material",
+                body,
+                cancellationToken).ConfigureAwait(false);
+            return ToolResult(id, result);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return BridgeUnavailable(id, exception);
+        }
+    }
+
     private static string? ElementPath(JsonElement parameters, string prefix)
     {
         if (!parameters.TryGetProperty("arguments", out JsonElement arguments)
@@ -225,16 +422,22 @@ internal sealed class McpServer(
         return prefix + value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static JsonObject Tool(string name, string description, JsonObject inputSchema) => new()
+    private static JsonObject Tool(
+        string name,
+        string description,
+        JsonObject inputSchema,
+        bool readOnly = true,
+        bool destructive = false,
+        bool idempotent = true) => new()
     {
         ["name"] = name,
         ["description"] = description,
         ["inputSchema"] = inputSchema,
         ["annotations"] = new JsonObject
         {
-            ["readOnlyHint"] = true,
-            ["destructiveHint"] = false,
-            ["idempotentHint"] = true,
+            ["readOnlyHint"] = readOnly,
+            ["destructiveHint"] = destructive,
+            ["idempotentHint"] = idempotent,
             ["openWorldHint"] = false,
         },
     };
@@ -261,6 +464,148 @@ internal sealed class McpServer(
         ["required"] = new JsonArray("element_id"),
         ["additionalProperties"] = false,
     };
+
+    private static JsonObject SetParameterSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["element_id"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1 },
+            ["parameter_name"] = new JsonObject { ["type"] = "string", ["minLength"] = 1, ["maxLength"] = 250 },
+            ["value"] = new JsonObject { ["type"] = "string", ["maxLength"] = 2000 },
+            ["expected_current_value"] = new JsonObject { ["type"] = "string" },
+            ["dry_run"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true,
+                ["description"] = "Keep true to preview. False requires a temporary write session enabled in Revit."
+            },
+            ["force_rollback"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = false,
+                ["description"] = "QA only: apply the value, force a controlled exception, roll back, and verify the original value."
+            },
+            ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
+        },
+        ["required"] = new JsonArray("element_id", "parameter_name", "value"),
+        ["additionalProperties"] = false,
+    };
+
+    private static JsonObject SetStructuralMaterialSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["element_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+                ["description"] = "Positive Revit element type ID."
+            },
+            ["material_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+                ["description"] = "Positive material ID from rcc_boq_materials."
+            },
+            ["expected_current_material_id"] = new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 0,
+                ["description"] = "Optimistic concurrency guard. Use 0 to require the current material to be blank."
+            },
+            ["dry_run"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true,
+                ["description"] = "Keep true to preview. False requires a temporary write session enabled in Revit."
+            },
+            ["force_rollback"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = false,
+                ["description"] = "QA only: assign the material, force a controlled exception, roll back, and verify the original material."
+            },
+            ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
+        },
+        ["required"] = new JsonArray("element_id", "material_id"),
+        ["additionalProperties"] = false,
+    };
+
+    private static JsonObject StartExportSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["export_format"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = new JsonArray("classic", "site"),
+                ["default"] = "site"
+            },
+            ["include_formwork"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true
+            },
+            ["dry_run"] = new JsonObject
+            {
+                ["type"] = "boolean",
+                ["default"] = true,
+                ["description"] = "False queues one unique fixed-folder export and requires temporary user consent."
+            },
+            ["request_id"] = new JsonObject { ["type"] = "string", ["maxLength"] = 100 }
+        },
+        ["additionalProperties"] = false,
+    };
+
+    private static bool TryArguments(JsonElement parameters, out JsonElement arguments)
+    {
+        arguments = default;
+        return parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("arguments", out arguments)
+            && arguments.ValueKind == JsonValueKind.Object;
+    }
+
+    private static string? OptionalString(JsonElement arguments, string name)
+    {
+        return arguments.TryGetProperty(name, out JsonElement value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+    }
+
+    private static JsonObject ToolResult(JsonNode id, GatewayResult gatewayResult)
+    {
+        string body = JsonSerializer.Serialize(
+            gatewayResult.Body,
+            new JsonSerializerOptions { WriteIndented = true });
+        return Result(id, new JsonObject
+        {
+            ["content"] = new JsonArray
+            {
+                new JsonObject { ["type"] = "text", ["text"] = body },
+            },
+            ["isError"] = !gatewayResult.IsSuccess,
+        });
+    }
+
+    private static JsonObject BridgeUnavailable(JsonNode id, Exception exception)
+    {
+        return Result(id, new JsonObject
+        {
+            ["content"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = $"RCC BOQ bridge unavailable: {exception.Message}",
+                },
+            },
+            ["isError"] = true,
+        });
+    }
 
     private static JsonObject Result(JsonNode id, JsonNode result) => new()
     {

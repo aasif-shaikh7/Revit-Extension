@@ -35,7 +35,8 @@ Revit-Extension/
 ├── todo-list.md
 ├── scripts/
 │   ├── install_rest_bridge.ps1  <- build/publish/install the Revit bridge
-│   └── rcc_boq_rest_client.py   <- dependency-free local Gateway client
+│   ├── rcc_boq_rest_client.py   <- dependency-free local Gateway client
+│   └── revit_authoring.py       <- Revit-bound model builder, run via `pyrevit run`
 ├── RccBoq.RestBridge/
 │   ├── RccBoq.RestBridge.addin.template
 │   └── src/
@@ -103,6 +104,13 @@ Nudge.extension/
     ├── rest_api.py          <- legacy prototype serializers retained for regression coverage
     ├── costing_engine.py    <- per-element rate x quantity costing sheet (pure Python)
     ├── export_engine.py     <- dependency-free Open XML XLSX writer (pure Python)
+    ├── export_validation.py <- canonical XLSX cell validation + bounded report (pure Python)
+    ├── validation_engine.py <- P9/P10 model-quality checks + unmapped element report (pure Python)
+    ├── rule_engine.py       <- P8 host-free RCC classification/audit + grade rules (pure Python)
+    ├── parameter_engine.py  <- P8 host-free parameter readers + ParameterItem (pure Python)
+    ├── site_items_engine.py <- P7 non-model line items: rules, pricing, table (pure Python)
+    ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
+    ├── agent_export_job.py  <- fixed-path headless export job contract (pure Python)
     └── Resources/
         ├── Brand.Colors.Light.xaml
         ├── Brand.Colors.Dark.xaml
@@ -118,7 +126,8 @@ Nudge.extension/
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
   dictionaries. Since P4 it also hosts six
   **pure-Python engine modules** (`settings_engine`, `quantity_engine`,
-  `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`) that the BOQ
+  `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`, `export_validation`,
+  `agent_export_job`, `validation_engine`) that the BOQ
   pushbutton imports by plain module name — pyRevit puts the extension
   `lib/` folder on `sys.path` (the mechanism `theme_manager` already
   relied on). The engines must stay dependency-free: stdlib only, no
@@ -127,14 +136,16 @@ Nudge.extension/
   and the XAML dictionaries) must never import the engine modules, and
   the engine modules must never import UI/Revit code.
 
-Two pushbuttons exist today; nesting stays intentionally flat.
+Two pyRevit pushbuttons exist today; nesting stays intentionally flat. The installed native bridge
+adds a separate Agent Bridge consent/status button under Revit Add-Ins.
 
 The pyRevit Routes prototype is deliberately disabled because live host testing was unstable. The
 supported integration lives in `RccBoq.RestBridge`: a localhost-only out-of-process Gateway talks to
-a Revit 2025 add-in over a current-user-only Named Pipe. The add-in marshals its fixed read-only
-allow-list through `ExternalEvent`; it must never expose evaluation, arbitrary method names,
-transactions, document paths or token values. `RccBoq.RestMcp` exposes the same five reads as STDIO
-MCP tools and calls this Gateway rather than duplicating Revit reads.
+a Revit 2025 add-in over a current-user-only Named Pipe. The add-in marshals a fixed operation
+allow-list through `ExternalEvent`. Reads are always available; controlled writes require explicit,
+short-lived consent and execute in named Revit transactions with rollback. It must never expose
+evaluation, arbitrary method names, document save/close, document paths or token values.
+`RccBoq.RestMcp` calls this Gateway rather than duplicating Revit work.
 
 ---
 
@@ -160,9 +171,11 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
 8. **Document + category definitions** — `CATEGORY_INFO` mapping the five tabs to Revit
    `BuiltInCategory` values.
 9. **Collection / classification** — Structure Wall filters `OST_Walls` by the Revit Structural
-   flag; raw Floor/Foundation collections remain separate;
-   `classify_rcc_element` creates one structured logical result per element, from which exclusive
-   Slab/Foundation collections, subtype filters, parameter pools and a pre-export audit derive.
+   flag; raw Floor/Foundation collections remain separate; `classify_rcc_element` reads one element
+   and hands its identity text to `classify_identity_text` in `lib/rule_engine.py`, which owns the
+   Slab/Foundation decision. `build_logical_rcc_collections` (also in `rule_engine.py`, with the
+   reader injected) turns those results into exclusive collections, subtype filters, parameter pools
+   and a pre-export audit.
 10. **XAML wiring + main entry** — loads `ui.xaml`, wires search/filter/Add-Remove/export events,
     runs `window.ShowDialog()` inside a guarded `try/except`.
 
@@ -288,14 +301,15 @@ every phase:
 | P3 Formwork Engine | `lib/formwork_engine.py` (**exists since v1.8.6**) |
 | P4 Rebar Engine | `lib/rebar_engine.py` (**exists since v1.10.0**; Revit reads stay in `script.py`) |
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
-| P6 Assembly | settings-driven configuration + export |
-| P7 Site items | settings + element sheets |
-| P8 Rule Engine | `rule_engine.py` |
-| P9 Validation Engine | `validation_engine.py` |
-| P10 Unmapped report | reuse validation engine |
+| P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
+| P7 Site items | `lib/site_items_engine.py` (**exists since v1.25.0**: rules, pricing and table; settings/dialog/export still to come) |
+| P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1/v1.25.7**: host-free classification rules, the routing core and its audit reporting, grade and parameter-reader rules; Revit-bound readers stay in `script.py`) |
+| P9 Validation Engine | `lib/validation_engine.py` (**since v1.21.0** as the P10 foundation; **v1.25.8** adds issue severity and the compact pre-export report) |
+| P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
 | P12 Rate Database | settings + data module |
 | P13 Professional Excel BOQ | `lib/export_engine.py` (**exists since v1.8.6**) |
 | P14 Revision | `lib/export_engine.py` |
 | P15 Model change detection | separate diagnostic module |
 | P16 Dashboard | new feature/UI module |
+| QA fixtures (not a roadmap phase) | `lib/authoring_spec.py` (pure declarations + expected quantities, **exists since v1.24.0**) with the Revit-bound builder in `scripts/revit_authoring.py`, run through `pyrevit run` |

@@ -8,9 +8,9 @@
 This repository contains a **pyRevit extension** that runs inside Autodesk Revit and
 automates the generation of **RCC (Reinforced Cement Concrete) BOQ** workbooks.
 
-Right now it ships two buttons — **BOQ** in the **Generate** panel of the **Nudge** tab, which
-opens the **RCC BOQ Parameter Manager**, and **Brand Showcase** in the **Brand** panel — a live
-preview of the toolkit's brand/theme system that doubles as a Light/Dark visual QA tool.
+The pyRevit extension ships **BOQ** and **Brand Showcase**. The separately installed native
+`RccBoq.RestBridge` add-in also provides an **Agent Bridge** button under Revit Add-Ins for viewing
+bridge state and granting or revoking short controlled-write sessions.
 
 **Target environment:**
 
@@ -111,8 +111,8 @@ dependencies imported into the pyRevit host.
 - **Add / Remove selection** with a live search box per tab.
 - **Central logical classification** for Slab and Foundation. Floors and Structural Foundations
   are both routed by construction identity, not physical category: `S1`, `GS`, Grade/Fold Slab
-  and Chajja go to Slab; exact `F<number>` / `CF<number>`, PCC and raft identities go to
-  Foundation. A pre-export audit prevents duplicate or missing element IDs and retains unknowns
+  and Chajja go to Slab; exact `F<number>` / `CF<number>` / `WF<number>` codes (optionally with one
+  variant letter, such as `F2A`), PCC and raft identities go to Foundation. A pre-export audit prevents duplicate or missing element IDs and retains unknowns
   under a controlled `Other` subtype.
 - **Export scope** — optionally restrict output to exactly the elements selected in the current
   Revit view.
@@ -141,12 +141,13 @@ dependencies imported into the pyRevit host.
 
 ---
 
-## Local REST + MCP Integration (`v1.14.1`)
+## Local REST + MCP Integration (`v2.5.0`)
 
 The integration uses a Revit 2025 .NET add-in plus an out-of-process ASP.NET Core Gateway at
-`http://127.0.0.1:48884/rcc-boq`. Revit API reads are marshalled through `ExternalEvent` and a
-current-user-only Named Pipe. The fixed endpoint allow-list cannot modify the model or execute an
-arbitrary Revit API call. The earlier pyRevit Routes prototype is disabled and must stay disabled.
+`http://127.0.0.1:48885/rcc-boq`. Revit API work is marshalled through `ExternalEvent` and a
+current-user-only Named Pipe. The closed operation allow-list supports bounded reads, controlled
+text-parameter edits and controlled structural-material type assignments; arbitrary Revit calls and
+code evaluation remain forbidden.
 
 Close Revit 2025, then build and install the bridge for the current Windows user:
 
@@ -155,7 +156,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1
 ```
 
 The installer publishes the Gateway and STDIO MCP server below
-`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v1.14.1` and creates
+`%LOCALAPPDATA%\RCC_BOQ\RestBridge\v2.5.0` and creates
 `%APPDATA%\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin`. Restart Revit after installation.
 
 The first extension startup creates a random token at
@@ -168,24 +169,75 @@ python scripts/rcc_boq_rest_client.py document
 python scripts/rcc_boq_rest_client.py selection
 python scripts/rcc_boq_rest_client.py element 3411763
 python scripts/rcc_boq_rest_client.py rebar 3411763
+python scripts/rcc_boq_rest_client.py materials
+python scripts/rcc_boq_rest_client.py last-validation
+python scripts/rcc_boq_rest_client.py start-export --format site
+python scripts/rcc_boq_rest_client.py start-export --format site --apply
+python scripts/rcc_boq_rest_client.py export-status
+python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value QA
+python scripts/rcc_boq_rest_client.py set-parameter 3411763 --parameter-name Comments --value "Rollback probe" --expected-current-value "" --force-rollback --apply
+$materialId = 123456 # replace with an ID returned by the materials command
+python scripts/rcc_boq_rest_client.py set-structural-material 3070326 --material-id $materialId --expected-current-material-id 0
+python scripts/rcc_boq_rest_client.py set-structural-material 3070326 --material-id $materialId --expected-current-material-id 0 --apply
 ```
 
 Available REST endpoints are `GET /status`, `/document`, `/selection`,
-`/elements/<element_id>` and `/rebar/<element_id>` below the `/rcc-boq` root. Selection output is
-limited to 100 elements and parameter output to 250 values per element. The document title may be
-returned, but its filesystem path and the API token are never returned.
+`/elements/<element_id>`, `/rebar/<element_id>`, `/materials`, `/boq/last-validation` and
+`/boq/export-status`, plus `POST /boq/export`, `/elements/<element_id>/parameter` and
+`/element-types/<element_id>/structural-material`, below the `/rcc-boq` root. Writes and Agent
+exports default to dry-run. Actual apply also requires a write session enabled from Revit's Agent
+Bridge button; the bridge never saves the document. The material catalog is limited to 1,000
+active-document materials. Structural-material assignment accepts only an explicit catalog material ID and
+an ElementType in Structural Foundations, Floors, Structural Framing, Structural Columns or Walls;
+`expected_current_material_id=0` means the current material must be blank. Selection output is
+limited to 100 elements and parameter output to 250 values per element. Document paths and API
+tokens are never returned.
 
-Register the installed read-only MCP server with Codex, then restart Codex:
+For family types, assignment uses Revit's built-in Structural Material parameter. For system types
+where that parameter is derived/read-only, the bridge accepts only one unambiguous compound-structure
+layer whose function is `Structure`, assigns its material, and designates that layer as the
+structural-material source. It never adds, removes or reorders compound-structure layers.
+
+Register the installed controlled MCP server with Codex, then restart Codex:
 
 ```powershell
-codex mcp add rcc-boq -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v1.14.1\Mcp\RccBoq.RestMcp.exe"
+codex mcp remove rcc-boq-v2
+codex mcp add rcc-boq-v2 -- "$env:LOCALAPPDATA\RCC_BOQ\RestBridge\v2.5.0\Mcp\RccBoq.RestMcp.exe"
 codex mcp list
 ```
 
 The MCP tools are `rcc_boq_status`, `rcc_boq_document`, `rcc_boq_selection`,
-`rcc_boq_element` and `rcc_boq_rebar`. The MCP process reads the same per-user token itself; the
-token is not stored in Codex configuration or emitted in tool results. All tools are annotated
-read-only and route only to the fixed REST allow-list.
+`rcc_boq_element`, `rcc_boq_rebar`, `rcc_boq_materials`, `rcc_boq_last_export_validation`,
+`rcc_boq_export_status`, `rcc_boq_start_export`, `rcc_boq_set_parameter` and
+`rcc_boq_set_structural_material`. The MCP process reads the same per-user token itself; the token is
+not stored in agent configuration or emitted in tool results. Both write tools are explicitly
+annotated non-read-only/destructive and default to dry-run.
+Every successful BOQ export is reread before publication and compared cell-for-cell with its
+canonical Revit-derived rows. The completion dialog shows `Workbook validation: PASS`; the Agent
+Bridge returns only the fixed, bounded latest report and never accepts an arbitrary workbook path.
+An applied Agent export posts the same BOQ command in hidden one-shot mode and writes a unique file
+below `%LOCALAPPDATA%\RCC_BOQ\AgentExports`. It does not overwrite a requested path, open Excel or
+save the Revit document. Poll `rcc_boq_export_status` until `completed`, then read
+`rcc_boq_last_export_validation`.
+
+For isolated native QA while another Revit process keeps the Primary bridge, save the Primary
+manifest, install the Secondary build, start only the test Revit, then immediately copy the saved
+manifest back:
+
+```powershell
+$manifest = "$env:APPDATA\Autodesk\Revit\Addins\2025\RccBoq.RestBridge.addin"
+Copy-Item $manifest "$env:TEMP\RccBoq.RestBridge.addin.primary"
+powershell -ExecutionPolicy Bypass -File scripts\install_rest_bridge.ps1 -BridgeChannel Secondary
+# Start the dedicated test Revit process here and wait until port 48886 answers.
+Copy-Item "$env:TEMP\RccBoq.RestBridge.addin.primary" $manifest -Force
+python scripts\rcc_boq_rest_client.py status --base-url http://127.0.0.1:48886
+```
+
+Do not restore by re-running the installer for Primary while the Primary Revit is running: its
+add-in and Gateway files are locked, the copy fails, and the shared manifest stays on Secondary.
+
+The Secondary channel is fixed to loopback port `48886` with its own current-user mutex and Named
+Pipe. It shares no Revit API context with the Primary channel on `48885`.
 
 Host-free verification:
 
@@ -357,9 +409,37 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.14.1`
-adds a dependency-free, read-only STDIO MCP adapter over the token-protected localhost .NET Gateway
-and Revit add-in. Revit 2025 live
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.2`
+routes owner-confirmed footing codes with a variant letter (`F2A`) and wall-footing codes (`WF1`)
+to Foundation / Footing. Version `v1.23.1`
+fixes the Classic `BOQ Summary` GRAND TOTAL, which previously omitted the last category row
+(Foundation). Version `v1.23.0`
+adds a bounded material catalog and a guarded, dry-run-first Structural Material type assignment
+through Agent Bridge `v2.5.0`; isolated live assignment, rollback, export and save/reopen persistence
+checks pass. Version `v1.22.2` uses only the
+owner-confirmed `GRADE OF CONCRETE` and `Grade` Text parameters as authoritative grade sources;
+material/name inference is deliberately excluded. Version `v1.22.0`
+adds missing structural material to the Unmapped Element Report. Version `v1.21.1`
+lists workbook sheets in their real order in the export popup. Version `v1.21.0`
+adds the P10 Unmapped Element Report: an `Unmapped Elements` sheet in Classic and Site workbooks
+listing exported elements with missing concrete grade, missing/zero volume or uncertain
+Slab/Foundation routing, backed by the new pure `lib/validation_engine.py`. Version `v1.20.0`
+widens the Agent Bridge write-consent window to 1 hour and derives the consent dialog text from the
+single duration constant, installed as Agent Bridge `v2.4.0`. Version `v1.19.1`
+preserves Selected/export column order under IP27 with ordered row dictionaries. Version `v1.19.0`
+added isolated multi-Revit rollback QA through Agent Bridge `v2.3.0`. Version `v1.18.2` hardened live
+headless export against optional .NET null values and Windows ZIP-handle locks.
+Version `v1.18.1` fixed live pyRevit command discovery in Agent Bridge `v2.2.1`; `v1.18.0` added
+consent-gated fixed-folder headless export and job polling. Version
+`v1.17.0` added canonical cell-for-cell validation and a bounded last-validation tool. The earlier
+`v1.16.0` foundation provides bounded reads plus a dry-run-first,
+consent-gated parameter write. Live Revit QA verifies v2 startup beside v1, bounded reads, dry-run,
+the consent-off write guard, a consent-enabled write/read-back/restore cycle, stale-value rejection,
+manual revocation, automatic expiry and Codex registration. Native Site and Classic headless exports
+both pass canonical cell-for-cell validation. The isolated Secondary channel also passes native
+forced-failure transaction rollback QA with fresh parameter read-back and no document save.
+The earlier `v1.14.1` release established the dependency-free STDIO
+MCP adapter over the token-protected localhost .NET Gateway and Revit add-in. Revit 2025 live
 testing of `v1.13.1` verified startup, authentication, document, empty selection, element and
 varying-Rebar reads plus controlled 404/422 responses; it also exposed a missing varying-dimension
 marker. `v1.13.3` mirrors the BOQ rule by mapping a dimension with `HasValue=false` to `Varies`.
@@ -383,4 +463,8 @@ the `v1.11.2` behavior that keeps every
 Available -> Selected parameter choice and its order across dialog close, pyRevit reload and Revit
 restart. It retains the `v1.11.1` P5
 shape-aware Rebar BBS and diameter summary on top of the P4 quantity/weight engine; the harness
-passes and live Revit 2025 verification of the new sheets is pending.
+passes. A `v1.19.0` read-only native Revit audit closed P4 quantity QA and verified P5 numeric/BBS
+parity for fixed and variable samples plus all workbook totals. A changed non-empty selection/order
+was restored after a fresh test-Revit restart. Its first Classic export exposed the IP27 ordering
+defect fixed in `v1.19.1`; the corrected native export placed the three selections consecutively
+and passed 118,101/118,101 canonical cells with zero mismatches. P5 is complete.

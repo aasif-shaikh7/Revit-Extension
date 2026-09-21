@@ -36,27 +36,61 @@ app.Use(async (context, next) =>
 
 static async Task<IResult> ForwardAsync(
     RevitPipeClient pipe,
-    string operation,
-    long? elementId,
+    BridgeRequest request,
     CancellationToken cancellationToken)
 {
-    BridgeResponse response = await pipe.SendAsync(
-        new BridgeRequest(operation, elementId), cancellationToken);
+    BridgeResponse response = await pipe.SendAsync(request, cancellationToken);
     return Results.Json(response.Body, statusCode: response.StatusCode);
 }
 
 app.MapGet("/rcc-boq/status", (RevitPipeClient pipe, CancellationToken token) =>
-    ForwardAsync(pipe, "status", null, token));
+    ForwardAsync(pipe, new BridgeRequest("status"), token));
 app.MapGet("/rcc-boq/document", (RevitPipeClient pipe, CancellationToken token) =>
-    ForwardAsync(pipe, "document", null, token));
+    ForwardAsync(pipe, new BridgeRequest("document"), token));
 app.MapGet("/rcc-boq/selection", (RevitPipeClient pipe, CancellationToken token) =>
-    ForwardAsync(pipe, "selection", null, token));
+    ForwardAsync(pipe, new BridgeRequest("selection"), token));
 app.MapGet("/rcc-boq/elements/{elementId:long}",
     (long elementId, RevitPipeClient pipe, CancellationToken token) =>
-        ForwardAsync(pipe, "element", elementId, token));
+        ForwardAsync(pipe, new BridgeRequest("element", elementId), token));
 app.MapGet("/rcc-boq/rebar/{elementId:long}",
     (long elementId, RevitPipeClient pipe, CancellationToken token) =>
-        ForwardAsync(pipe, "rebar", elementId, token));
+        ForwardAsync(pipe, new BridgeRequest("rebar", elementId), token));
+app.MapGet("/rcc-boq/materials", (RevitPipeClient pipe, CancellationToken token) =>
+    ForwardAsync(pipe, new BridgeRequest("materials"), token));
+app.MapGet("/rcc-boq/boq/last-validation", (RevitPipeClient pipe, CancellationToken token) =>
+    ForwardAsync(pipe, new BridgeRequest("last_export_validation"), token));
+app.MapGet("/rcc-boq/boq/export-status", (RevitPipeClient pipe, CancellationToken token) =>
+    ForwardAsync(pipe, new BridgeRequest("boq_export_status"), token));
+app.MapPost("/rcc-boq/boq/export",
+    (StartBoqExportBody body, RevitPipeClient pipe, CancellationToken token) =>
+        ForwardAsync(pipe, new BridgeRequest(
+            Operation: "start_boq_export",
+            DryRun: body.DryRun,
+            RequestId: body.RequestId,
+            ExportFormat: body.ExportFormat,
+            IncludeFormwork: body.IncludeFormwork), token));
+app.MapPost("/rcc-boq/elements/{elementId:long}/parameter",
+    (long elementId, SetParameterBody body, RevitPipeClient pipe, CancellationToken token) =>
+        ForwardAsync(pipe, new BridgeRequest(
+            "set_parameter",
+            elementId,
+            body.ParameterName,
+            body.Value,
+            body.ExpectedCurrentValue,
+            body.DryRun,
+            body.RequestId,
+            ForceRollback: body.ForceRollback), token));
+app.MapPost("/rcc-boq/element-types/{elementId:long}/structural-material",
+    (long elementId, SetStructuralMaterialBody body, RevitPipeClient pipe,
+        CancellationToken token) =>
+        ForwardAsync(pipe, new BridgeRequest(
+            Operation: "set_structural_material",
+            ElementId: elementId,
+            DryRun: body.DryRun,
+            RequestId: body.RequestId,
+            ForceRollback: body.ForceRollback,
+            MaterialId: body.MaterialId,
+            ExpectedCurrentMaterialId: body.ExpectedCurrentMaterialId), token));
 
 int? parentProcessId = ParseParentProcessId(args);
 if (parentProcessId is not null)
@@ -92,3 +126,24 @@ static async Task MonitorParentAsync(int processId, IHostApplicationLifetime lif
         lifetime.StopApplication();
     }
 }
+
+internal sealed record SetParameterBody(
+    string ParameterName,
+    string Value,
+    string? ExpectedCurrentValue = null,
+    bool DryRun = true,
+    string? RequestId = null,
+    bool ForceRollback = false);
+
+internal sealed record StartBoqExportBody(
+    string ExportFormat = "site",
+    bool IncludeFormwork = true,
+    bool DryRun = true,
+    string? RequestId = null);
+
+internal sealed record SetStructuralMaterialBody(
+    long MaterialId,
+    long? ExpectedCurrentMaterialId = null,
+    bool DryRun = true,
+    string? RequestId = null,
+    bool ForceRollback = false);

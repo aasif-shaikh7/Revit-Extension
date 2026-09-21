@@ -1,5 +1,6 @@
 """Plain-Python regression tests for the secure RCC BOQ REST contract."""
 
+import json
 import os
 import sys
 import tempfile
@@ -11,6 +12,7 @@ if LIB not in sys.path:
     sys.path.insert(0, LIB)
 
 import rest_api
+import agent_export_job
 
 CLIENT_PATH = os.path.join(ROOT, "scripts", "rcc_boq_rest_client.py")
 CLIENT_SPEC = importlib.util.spec_from_file_location("rcc_boq_rest_client", CLIENT_PATH)
@@ -116,8 +118,139 @@ def run():
         gateway_source = gateway_file.read()
     check("127.0.0.1" not in gateway_source, "gateway URL must come from shared constants")
     check("Headers.Authorization" in gateway_source, "Bearer authorization is missing")
-    check("MapGet" in gateway_source and "MapPost" not in gateway_source,
-          "API must use bounded GET routes")
+    check(gateway_source.count("app.MapPost(") == 3,
+          "API must expose exactly three bounded write routes")
+    check('"/rcc-boq/elements/{elementId:long}/parameter"' in gateway_source,
+          "bounded parameter-write route missing")
+    check('"/rcc-boq/element-types/{elementId:long}/structural-material"' in gateway_source,
+          "bounded structural-material write route missing")
+    check('"/rcc-boq/boq/last-validation"' in gateway_source,
+          "bounded last-export validation route missing")
+    check('"/rcc-boq/boq/export-status"' in gateway_source,
+          "bounded export-status route missing")
+    check('"/rcc-boq/boq/export"' in gateway_source,
+          "bounded headless-export route missing")
+    headless_service_path = os.path.join(
+        ROOT, "RccBoq.RestBridge", "src", "RccBoq.RestRevit",
+        "HeadlessBoqExportService.cs",
+    )
+    with open(headless_service_path, "r", encoding="utf-8") as service_file:
+        headless_service_source = service_file.read()
+    check(
+        '"CustomCtrl_%CustomCtrl_%Nudge%Generate%BOQ"'
+        in headless_service_source,
+        "journal-confirmed pyRevit BOQ command identifier missing",
+    )
+    check(
+        rest_client.endpoint_path("last-validation")
+        == "/rcc-boq/boq/last-validation",
+        "last-export validation client route missing",
+    )
+    check(
+        rest_client.endpoint_path("export-status")
+        == "/rcc-boq/boq/export-status"
+        and rest_client.endpoint_path("start-export")
+        == "/rcc-boq/boq/export",
+        "headless export client routes missing",
+    )
+
+    original_local_app_data = os.environ.get("LOCALAPPDATA")
+    try:
+        with tempfile.TemporaryDirectory() as job_root:
+            os.environ["LOCALAPPDATA"] = job_root
+            export_root = agent_export_job.agent_export_root()
+            os.makedirs(export_root)
+            output_path = os.path.join(export_root, "safe-agent-export.xlsx")
+            job = {
+                "schema": agent_export_job.JOB_SCHEMA,
+                "job_id": "12345678-1234-1234-1234-123456789abc",
+                "status": "queued",
+                "document_title": "QA Model",
+                "export_format": "site",
+                "include_formwork": True,
+                "output_name": os.path.basename(output_path),
+                "output_path": output_path,
+                "error": "",
+            }
+            agent_export_job._write_job(job)
+            loaded = agent_export_job.load_queued_export_job("QA Model")
+            check(loaded is not None, "safe queued Agent export job rejected")
+            agent_export_job.mark_export_job_running(loaded)
+            agent_export_job.complete_export_job(loaded, {
+                "ok": True,
+                "workbook_name": os.path.basename(output_path),
+                "workbook_sha256": "a" * 64,
+                "expected_sheet_count": 2,
+                "actual_sheet_count": 2,
+                "expected_cell_count": 20,
+                "actual_cell_count": 20,
+                "mismatch_count": 0,
+            })
+            with open(agent_export_job.agent_export_job_path(), "r", encoding="utf-8") as job_file:
+                completed = json.load(job_file)
+            check(
+                completed["status"] == "completed"
+                and completed["validation"]["mismatch_count"] == 0,
+                "Agent export job completion result missing",
+            )
+            job["status"] = "queued"
+            agent_export_job.fail_export_job(
+                job,
+                'Traceback: File "C:\\private\\workspace\\script.py", line 10',
+            )
+            with open(agent_export_job.agent_export_job_path(), "r", encoding="utf-8") as job_file:
+                failed = json.load(job_file)
+            check(
+                'C:\\private' not in failed["error"]
+                and 'File "script.py"' in failed["error"],
+                "Agent export failure leaked an absolute source path",
+            )
+            job["status"] = "queued"
+            job["output_path"] = os.path.join(job_root, "outside.xlsx")
+            agent_export_job._write_job(job)
+            check(
+                agent_export_job.load_queued_export_job("QA Model") is None,
+                "Agent export accepted a path outside its fixed folder",
+            )
+    finally:
+        if original_local_app_data is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = original_local_app_data
+
+    write_service_path = os.path.join(
+        ROOT, "RccBoq.RestBridge", "src", "RccBoq.RestRevit", "RevitWriteService.cs"
+    )
+    with open(write_service_path, "r", encoding="utf-8") as write_file:
+        write_source = write_file.read()
+    check("request.DryRun" in write_source, "write preview gate missing")
+    check("WriteSessionConsent.GetState" in write_source, "write consent gate missing")
+    check("transaction.RollBack" in write_source, "transaction rollback missing")
+    check("ForcedRollbackProbeException" in write_source,
+          "controlled forced-failure rollback probe missing")
+    check("rollbackVerified" in write_source,
+          "post-rollback read-back verification missing")
+    check("document_saved = false" in write_source, "no-auto-save contract missing")
+    check("Evaluate" not in write_source and "InvokeMember" not in write_source,
+          "arbitrary execution surface detected")
+
+    rollback_args = rest_client.build_parser().parse_args([
+        "set-parameter", "3411763",
+        "--parameter-name", "Comments",
+        "--value", "rollback probe",
+        "--force-rollback",
+        "--apply",
+    ])
+    check(rollback_args.force_rollback and rollback_args.apply,
+          "forced rollback CLI flags missing")
+
+    installer_path = os.path.join(ROOT, "scripts", "install_rest_bridge.ps1")
+    with open(installer_path, "r", encoding="utf-8-sig") as installer_file:
+        installer_source = installer_file.read()
+    check('ValidateSet("Primary", "Secondary")' in installer_source,
+          "fixed bridge channel installer contract missing")
+    check("48886" in installer_source and "-secondary" in installer_source,
+          "isolated Secondary bridge endpoint missing")
 
     with tempfile.TemporaryDirectory() as directory:
         client_token_path = os.path.join(directory, "token.txt")
@@ -154,6 +287,24 @@ def run():
         check(request.get_header("Authorization") == "Bearer " + "a" * 64,
               "client Bearer token missing")
         check(status == 200 and payload["ok"], "client response parsing failed")
+
+        captured.clear()
+        original_urlopen = rest_client.urllib.request.urlopen
+        try:
+            rest_client.urllib.request.urlopen = fake_urlopen
+            status, payload = rest_client.call_api(
+                "/rcc-boq/elements/7/parameter",
+                token_path=client_token_path,
+                body={"parameterName": "Comments", "value": "QA", "dryRun": True},
+            )
+        finally:
+            rest_client.urllib.request.urlopen = original_urlopen
+        request = captured["request"]
+        check(request.get_method() == "POST", "write client must use POST")
+        sent = json.loads(request.data.decode("utf-8"))
+        check(sent["dryRun"] is True, "write client must preserve dry-run")
+        check(request.get_header("Content-type") == "application/json",
+              "write client content type missing")
 
     with tempfile.TemporaryDirectory() as directory:
         token_path = os.path.join(directory, "private", "token.txt")

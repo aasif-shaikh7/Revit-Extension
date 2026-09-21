@@ -12,9 +12,12 @@ python test_xlsx_writer.py
 """
 
 import io
+import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import zipfile
 from xml.dom import minidom
 
@@ -45,8 +48,14 @@ ENGINE_MODULES = [
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "quantity_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "formwork_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "rebar_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "assembly_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "rule_engine.py"),
+    # Appended last on purpose: export_engine.py carries its own
+    # behaviorally identical safe_text, and resolving that name from
+    # where it already resolved keeps this split behavior-neutral.
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "parameter_engine.py"),
 ]
 
 # The exec'd write_basic_xlsx does a call-time
@@ -81,6 +90,7 @@ FUNCTION_NAMES = [
     "sanitize_file_name",
     "build_default_output_name",
     "build_summary_cover_rows",
+    "_publish_temp_workbook",
     "write_basic_xlsx",
     "get_parameters",
     "read_metric_parameter",
@@ -104,6 +114,9 @@ FUNCTION_NAMES = [
     "normalize_rebar_dimension_mm",
     "build_rebar_bbs_table",
     "build_rebar_diameter_summary_table",
+    "normalize_assembly_profile",
+    "_assembly_sum",
+    "build_structural_assembly_table",
     "_site_sort_key",
     "_sort_site_rows",
     "_site_cell_value",
@@ -195,6 +208,7 @@ def main():
         print("Source: {}".format(os.path.relpath(path, REPO_DIR)))
 
     CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
+    CONSTANT_LINES.append('DEFAULT_ASSEMBLY_PROFILE = {"id": "global-custom", "name": "Global / Custom", "edition": "1.0.0", "source": "Project specification / applicable local SOR", "binding_wire_factor": None, "cover_block_factor": None, "labour_factor": None}')
 
     import time
 
@@ -211,6 +225,8 @@ def main():
 
     from xml.sax.saxutils import escape as xml_escape
     namespace["xml_escape"] = xml_escape
+    from collections import OrderedDict
+    namespace["OrderedDict"] = OrderedDict
 
     source_tally = {}
     for name in FUNCTION_NAMES:
@@ -227,7 +243,8 @@ def main():
         "SITE_DETAIL_BAND_ROWS",
         "SITE_DETAIL_DATA_START_ROW",
         "SITE_DETAIL_COLUMN_WIDTHS",
-        "CONCRETE_GRADE_VALUES"
+        "CONCRETE_GRADE_VALUES",
+        "SITE_ITEMS_SHEET_NAME"
     ):
         constant_line, _ = extract_constant_from_sources(texts, constant_name)
         exec(constant_line, namespace)
@@ -245,6 +262,59 @@ def main():
             "{} x{}".format(fname, count)
             for fname, count in sorted(source_tally.items()))
     ))
+
+    class BrokenInteropFloat(object):
+        def __float__(self):
+            raise SystemError("simulated interop null")
+
+    interop_profile = namespace["normalize_assembly_profile"]({
+        "binding_wire_factor": BrokenInteropFloat(),
+        "cover_block_factor": None,
+        "labour_factor": None,
+    })
+    check(
+        interop_profile["binding_wire_factor"] is None
+        and interop_profile["cover_block_factor"] is None
+        and interop_profile["labour_factor"] is None,
+        "Assembly profile treats CPython/.NET null coercion failures as missing factors"
+    )
+
+    retry_root = tempfile.mkdtemp(prefix="rcc-boq-publish-")
+    real_os = namespace["os"]
+    publish_temp = os.path.join(retry_root, "workbook.xlsx.tmp")
+    publish_target = os.path.join(retry_root, "workbook.xlsx")
+
+    class TransientRenameOs(object):
+        def __init__(self):
+            self.path = real_os.path
+            self.rename_calls = 0
+
+        def __getattr__(self, name):
+            return getattr(real_os, name)
+
+        def rename(self, source, destination):
+            self.rename_calls += 1
+            if self.rename_calls < 3:
+                raise OSError(13, "simulated Windows file lock")
+            return real_os.rename(source, destination)
+
+    rename_proxy = TransientRenameOs()
+    published_after_retry = False
+    try:
+        with io.open(publish_temp, "wb") as test_workbook:
+            test_workbook.write(b"validated workbook")
+        namespace["os"] = rename_proxy
+        namespace["_publish_temp_workbook"](
+            publish_temp, publish_target, attempts=3, delay_seconds=0)
+        with io.open(publish_target, "rb") as published_workbook:
+            published_after_retry = published_workbook.read() == b"validated workbook"
+    finally:
+        namespace["os"] = real_os
+        shutil.rmtree(retry_root, ignore_errors=True)
+    check(
+        published_after_retry and rename_proxy.rename_calls == 3,
+        "Validated workbook publish retries transient Windows file locks"
+    )
 
     check(
         namespace["xlsx_sheet_reference"]("Beam") == "Beam"
@@ -360,6 +430,10 @@ def main():
         os.path.dirname(os.path.abspath(__file__)),
         "_boq_writer_test.xlsx"
     )
+    validation_report_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "_boq_validation_test.json"
+    )
 
     sheet_rows = namespace["write_basic_xlsx"](
         output_path,
@@ -367,7 +441,8 @@ def main():
         parameter_metadata,
         project_name="CHHANYADO HOSPITAL SURAT",
         tool_version="RCC BOQ Parameter Manager v1.4.0",
-        generated_stamp="2026-08-26 10:00"
+        generated_stamp="2026-08-26 10:00",
+        validation_report_path=validation_report_path
     )
 
     try:
@@ -375,6 +450,66 @@ def main():
         check(
             "BOQ Summary" in sheet_rows,
             "BOQ Summary sheet was generated"
+        )
+
+        with io.open(validation_report_path, "r", encoding="utf-8") as report_file:
+            validation_report = json.load(report_file)
+        check(
+            validation_report.get("schema")
+            == "rcc-boq-export-validation/1.0.0"
+            and validation_report.get("ok") is True
+            and validation_report.get("mismatch_count") == 0
+            and validation_report.get("expected_cell_count")
+            == validation_report.get("actual_cell_count")
+            and len(validation_report.get("workbook_sha256", "")) == 64,
+            "Canonical validator rereads every generated Classic XLSX cell"
+        )
+
+        import export_validation
+        with zipfile.ZipFile(output_path, "r") as validation_archive:
+            validation_sheet_names = [
+                item[0]
+                for item in export_validation._workbook_sheet_targets(
+                    validation_archive)
+            ]
+        tampered_rows = dict(
+            (name, [list(row) for row in rows])
+            for name, rows in sheet_rows.items()
+        )
+        tampered_rows["Beam"][1][0] = "unexpected-element-id"
+        tampered_report = export_validation.validate_workbook(
+            output_path,
+            validation_sheet_names,
+            tampered_rows,
+            document_title="CHHANYADO HOSPITAL SURAT",
+            export_format="classic",
+            tool_version="RCC BOQ Parameter Manager v1.17.0"
+        )
+        check(
+            tampered_report.get("ok") is False
+            and tampered_report.get("mismatch_count") == 1
+            and tampered_report.get("mismatches", [])[0].get("sheet")
+            == "Beam",
+            "Canonical validator detects a persisted XLSX cell mismatch"
+        )
+
+        assembly_table = sheet_rows.get("Structural Assembly", [])
+        check(
+            bool(assembly_table)
+            and assembly_table[0] == ["Category", "Component", "Quantity", "Unit", "Basis", "Status", "Profile", "Source"],
+            "P6 Structural Assembly sheet was generated with auditable headers"
+        )
+        column_rebar = [row for row in assembly_table[1:]
+                        if row[0] == "Column" and row[1] == "Reinforcement"]
+        check(
+            bool(column_rebar) and column_rebar[0][2] == 10.667,
+            "P6 hosted Rebar weight maps to its structural assembly"
+        )
+        input_rows = [row for row in assembly_table[1:]
+                      if row[1] in ("Binding Wire", "Cover Blocks", "Labour")]
+        check(
+            bool(input_rows) and all(row[2] == "" and row[5] == "Input required" for row in input_rows),
+            "P6 unsupported global allowances stay blank instead of inventing quantities"
         )
 
         beam_table = sheet_rows["Beam"]
@@ -1536,12 +1671,17 @@ def main():
         expected_order = [
             "Summary", "Beam", "Column", "Structure Wall", "Foundation",
             "Rebar", "Rebar Summary", "Rebar BBS", "BOQ Summary",
-            "BOQ by Level", "BOQ by Grade", "Costing"
+            "Structural Assembly", "BOQ by Level", "BOQ by Grade", "Costing"
         ]
 
         check(
             sheet_order == expected_order,
             "Sheet order correct: {}".format(sheet_order)
+        )
+
+        check(
+            list(sheet_rows.keys()) == sheet_order,
+            "Classic writer returns sheets in workbook order for the export popup listing"
         )
 
         check(
@@ -1618,6 +1758,23 @@ def main():
             "BOQ Summary has a GRAND TOTAL row"
         )
 
+        summary_row_numbers = [
+            int(number)
+            for number in re.findall(r'<row r="(\d+)"', summary_xml)
+        ]
+        grand_total_row = max(summary_row_numbers)
+        last_category_row = grand_total_row - 1
+
+        check(
+            last_category_row >= 2
+            and all(
+                "<f>SUM({0}2:{0}{1})</f>".format(letter, last_category_row)
+                in summary_xml
+                for letter in ("B", "C", "D", "E")
+            ),
+            "BOQ Summary GRAND TOTAL sums every category row, including the last"
+        )
+
         styles_xml = archive.read("xl/styles.xml").decode("utf-8")
 
         check(
@@ -1645,6 +1802,10 @@ def main():
 
         try:
             os.remove(output_path)
+        except:
+            pass
+        try:
+            os.remove(validation_report_path)
         except:
             pass
 
@@ -1770,7 +1931,7 @@ def main():
         check(
             sheet_order_site == [
                 "Summary", "Beam", "Structure Wall", "Rebar",
-                "Rebar Summary", "Rebar BBS"
+                "Rebar Summary", "Rebar BBS", "Structural Assembly"
             ],
             "Site workbook order: Summary then populated categories "
             "(got {})".format(sheet_order_site)
@@ -2176,6 +2337,29 @@ def main():
         "Structure Wall XAML tab is valid and exposes every wired control"
     )
 
+    required_assembly_controls = (
+        "AssemblyProfileName", "AssemblyProfileSource",
+        "AssemblyBindingWireFactor", "AssemblyCoverBlockFactor",
+        "AssemblyLabourFactor"
+    )
+    check(
+        ui_valid
+        and 'Header="Assembly Profile"' in ui_text
+        and all(name in ui_text for name in required_assembly_controls)
+        and 'settings["assembly_profile"]' in script_text
+        and "assembly_profile=assembly_profile" in script_text,
+        "P6 Assembly Profile UI, persistence and exporter wiring are present"
+    )
+    check(
+        'x:Name="StatusText"' in ui_text
+        and 'TextTrimming="CharacterEllipsis"' in ui_text
+        and 'ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"' in ui_text
+        and 'x:Name="SiteFormatCheck"' in ui_text
+        and 'x:Name="IncludeFormworkCheck"' in ui_text
+        and '<ColumnDefinition Width="*"/>' in ui_text,
+        "v1.15.1 footer keeps options visible while long status text truncates"
+    )
+
     required_rebar_controls = (
         "RebarSearch", "RebarAvailable", "RebarSelected", "RebarAdd",
         "RebarRemove", "RebarUp", "RebarDown", "RebarTop", "RebarBottom"
@@ -2191,6 +2375,11 @@ def main():
         all(name in rebar_available_names for name in rebar_derived_names)
         and "derived_names = REBAR_DERIVED_PARAMETERS" in script_text,
         "Rebar Available list includes every automatic P4 export column"
+    )
+    check(
+        "from collections import OrderedDict" in script_text
+        and "row = OrderedDict([" in script_text,
+        "IP27 rows preserve Selected parameter order with OrderedDict"
     )
 
     def nested_handler_source(name):
@@ -2241,11 +2430,11 @@ def main():
     check(
         "if use_site_format:" in export_handler_source
         and "parameter_metadata = {}" in export_handler_source
-        and "include_grade=not use_site_format" in export_handler_source
+        and "include_grade=True" in export_handler_source
         and "metadata_seconds" in export_handler_source
         and "data_seconds" in export_handler_source
         and "workbook_seconds" in export_handler_source,
-        "Fast Site export skips Classic metadata/grade work and reports phase timings"
+        "Fast Site export skips Classic metadata work, keeps P10 grade resolution and reports phase timings"
     )
     check(
         'needs_bbox = element_name in ("Slab", "Foundation")' in script_text
@@ -2336,6 +2525,8 @@ def main():
         "_element_family_type_names",
         "_element_routing_key",
         "_safe_element_id_text",
+        "classify_identity_text",
+        "_route",
         "classify_rcc_element",
         "build_logical_rcc_collections",
         "validate_classification_audit",
@@ -2414,6 +2605,11 @@ def main():
         ("F1", "Floors", "Foundation", "Footing"),
         ("F10", "Floors", "Foundation", "Footing"),
         ("CF2", "Floors", "Foundation", "Combined Footing"),
+        ("F2A", "Structural Foundations", "Foundation", "Footing"),
+        ("CF1A", "Floors", "Foundation", "Combined Footing"),
+        ("WF1", "Structural Foundations", "Foundation", "Footing"),
+        ("Foundation Slab: F2A", "Structural Foundations", "Foundation", "Footing"),
+        ("Foundation Slab: WF2", "Structural Foundations", "Foundation", "Footing"),
         ("PCC_FOOTING", "Floors", "Foundation", "PCC"),
         ("RAFT_PCC", "Floors", "Foundation", "PCC"),
         ("RCC_SLAB_F1", "Floors", "Foundation", "Footing"),
@@ -2436,7 +2632,7 @@ def main():
             )
         )
 
-    for unsafe_name in ("F", "SF", "FLOOR", "FOLD"):
+    for unsafe_name in ("F", "SF", "FLOOR", "FOLD", "WF", "F2AB"):
         unsafe = classify_name(unsafe_name, "Floors")
         check(
             unsafe["logical_group"] == "Slab"
@@ -2504,6 +2700,7 @@ def main():
             FakeElement(name, "Structural Foundations")
             for name in case_a_foundation_names + case_a_slab_names
         ],
+        routing_ns["classify_rcc_element"],
     )
     check(
         [e.Name for e in case_a["Foundation"]]
@@ -2522,6 +2719,7 @@ def main():
             for name in case_b_foundation_names + case_b_slab_names
         ],
         [],
+        routing_ns["classify_rcc_element"],
     )
     check(
         [e.Name for e in case_b["Foundation"]]
@@ -2538,6 +2736,7 @@ def main():
             FakeElement(name, "Structural Foundations")
             for name in mixed_foundation
         ],
+        routing_ns["classify_rcc_element"],
     )
     check(
         [e.Name for e in mixed["Slab"]] == [
@@ -2569,7 +2768,8 @@ def main():
 
     duplicate = FakeElement("F1", "Floors", element_id=9999)
     duplicate_route = routing_ns["build_logical_rcc_collections"](
-        [duplicate], [duplicate]
+        [duplicate], [duplicate],
+        routing_ns["classify_rcc_element"],
     )
     check(
         duplicate_route["audit"]["eligible_unique"] == 1
@@ -2599,6 +2799,7 @@ def main():
             FakeElement("S2", "Floors"),
         ],
         [],
+        routing_ns["classify_rcc_element"],
     )
     other_details = routing_ns[
         "classification_audit_detail_results"
@@ -2620,6 +2821,915 @@ def main():
         "Completion popup compactly identifies only Other routing elements"
     )
 
+    # -----------------------------------------------------------------
+    # v1.21.0 P10 Unmapped Element Report (pure validation engine).
+    # Feeds the real classifier audit rows above through the engine so the
+    # routing contract between script.py and lib/validation_engine.py stays
+    # exercised, then proves both workbook writers publish the sheet.
+    # -----------------------------------------------------------------
+    import validation_engine
+
+    other_id = str(other_details[0]["element_id"])
+    unmapped_data = {
+        "Beam": [
+            {"Element ID": "1", "Level": "L1", "Grade": "M30",
+             "Qty: Volume (m3)": 0.5},
+            {"Element ID": "2", "Level": "L1", "Grade": "(No Grade)",
+             "Qty: Volume (m3)": 0.4},
+        ],
+        "Column": [
+            {"Element ID": "3", "Level": "L2", "Grade": "",
+             "Qty: Volume (m3)": ""},
+            {"Element ID": "4", "Level": "L2", "Grade": "M40",
+             "Qty: Volume (m3)": "0"},
+            {"Element ID": "5", "Level": "L2", "Grade": "M40",
+             "Qty: Volume (m3)": "n/a"},
+        ],
+        "Slab": [
+            {"Element ID": "6", "Level": "L3"},
+            {"Element ID": other_id, "Level": "L3", "Grade": "M25",
+             "Qty: Volume (m3)": 1.2},
+        ],
+        "Rebar": [
+            {"Element ID": "9", "Level": "L1",
+             "Rebar: Total Weight (kg)": ""},
+        ],
+    }
+    p10_findings = validation_engine.collect_routing_findings(
+        list(other_details) + [{
+            "element_id": "777", "subtype": "Other",
+            "logical_group": "Slab", "reason": "Filtered out of export",
+        }],
+        ["888", other_id]
+    )
+    check(
+        [(item["element_id"], item["issue"]) for item in p10_findings] == [
+            (other_id, validation_engine.ISSUE_UNCERTAIN_ROUTING),
+            (other_id, validation_engine.ISSUE_DUPLICATE_ROUTING),
+            ("777", validation_engine.ISSUE_UNCERTAIN_ROUTING),
+            ("888", validation_engine.ISSUE_DUPLICATE_ROUTING),
+        ]
+        and "Unknown identity retained" in p10_findings[0]["detail"],
+        "P10 routing findings flatten real classifier audit rows and duplicate IDs"
+    )
+    p10_report = validation_engine.build_unmapped_element_report(
+        unmapped_data, p10_findings
+    )
+    check(
+        p10_report[0] == ["Category", "Element ID", "Level", "Issue", "Detail"],
+        "P10 report headers are Category / Element ID / Level / Issue / Detail"
+    )
+    check(
+        [(row[0], row[1], row[3]) for row in p10_report[1:]] == [
+            ("Beam", "2", validation_engine.ISSUE_MISSING_GRADE),
+            ("Column", "3", validation_engine.ISSUE_MISSING_GRADE),
+            ("Column", "3", validation_engine.ISSUE_MISSING_VOLUME),
+            ("Column", "4", validation_engine.ISSUE_MISSING_VOLUME),
+            ("Column", "5", validation_engine.ISSUE_MISSING_VOLUME),
+            ("Slab", other_id, validation_engine.ISSUE_UNCERTAIN_ROUTING),
+            ("Slab", other_id, validation_engine.ISSUE_DUPLICATE_ROUTING),
+        ],
+        "P10 flags (No Grade)/blank grade and blank/zero/non-numeric volume; "
+        "skips Rebar, rows without those columns and non-exported routing IDs"
+    )
+    check(
+        all(
+            row[4] == validation_engine.MISSING_GRADE_DETAIL
+            for row in p10_report[1:]
+            if row[3] == validation_engine.ISSUE_MISSING_GRADE
+        )
+        and "GRADE OF CONCRETE" in validation_engine.MISSING_GRADE_DETAIL
+        and "Grade" in validation_engine.MISSING_GRADE_DETAIL
+        and "material" not in validation_engine.MISSING_GRADE_DETAIL.lower()
+        and "identity" not in validation_engine.MISSING_GRADE_DETAIL.lower(),
+        "P10 missing-grade detail names only the two authoritative fields"
+    )
+    check(
+        all(row[2] == "L3" for row in p10_report[1:] if row[1] == other_id),
+        "P10 routing findings inherit the exported element category and level"
+    )
+    check(
+        validation_engine.build_unmapped_element_report(
+            {"Beam": [{"Element ID": "1", "Level": "L1", "Grade": "M30",
+                       "Qty: Volume (m3)": 0.5}]},
+            []
+        ) == [["Category", "Element ID", "Level", "Issue", "Detail"]],
+        "P10 clean export yields a header-only report"
+    )
+
+    # ------------------------------------------------------------
+    # P9 compact validation report (v1.25.8)
+    #
+    # Deliberately summarizes `p10_report` - the same table the workbook
+    # sheet is built from - so the count a person reads before export can
+    # never disagree with the rows they find afterwards.
+    # ------------------------------------------------------------
+    # ------------------------------------------------------------
+    # P9 missing parameters and missing rebar (v1.25.11)
+    #
+    # Both refuse to report what a project does not use: a parameter its
+    # own category leaves blank everywhere, or rebar in a model that
+    # models none. Without that, each would bury the real findings.
+    # ------------------------------------------------------------
+    p9_param_data = {
+        "Beam": [
+            {"Element ID": "1", "ID_UNMT": "B1", "NEVER_USED": ""},
+            {"Element ID": "2", "ID_UNMT": "B2", "NEVER_USED": ""},
+            {"Element ID": "3", "ID_UNMT": "", "NEVER_USED": ""},
+            {"Element ID": "4", "ID_UNMT": "B4", "NEVER_USED": ""},
+        ]
+    }
+    p9_param_findings = validation_engine.collect_missing_parameter_findings(
+        p9_param_data)
+    check(
+        [(row["element_id"], row["issue"]) for row in p9_param_findings]
+        == [("3", validation_engine.ISSUE_MISSING_PARAMETER)]
+        and "3 of 4" in p9_param_findings[0]["detail"],
+        "P9 reports a blank parameter its own category otherwise fills"
+    )
+    check(
+        all("NEVER_USED" not in row["detail"] for row in p9_param_findings),
+        "P9 ignores a parameter this project fills nowhere, instead of "
+        "flagging every element"
+    )
+    check(
+        validation_engine.collect_missing_parameter_findings(
+            {"Beam": [{"Element ID": "1", "ID_UNMT": "B1"},
+                      {"Element ID": "2", "ID_UNMT": "B2"}]}) == [],
+        "P9 reports nothing when every element carries the parameter"
+    )
+    check(
+        validation_engine.collect_missing_parameter_findings(
+            {"Beam": [{"Element ID": "1", "Qty: Volume (m3)": "",
+                       "Level": "", "Grade": ""},
+                      {"Element ID": "2", "Qty: Volume (m3)": 1.0,
+                       "Level": "L1", "Grade": "M30"}]}) == [],
+        "P9 never reports the export's own columns as missing parameters"
+    )
+
+    # Rebar: silent on a model that models none, specific once it does.
+    p9_rebar_data = {
+        "Beam": [{"Element ID": "1"}, {"Element ID": "2"},
+                 {"Element ID": "3"}]
+    }
+    check(
+        validation_engine.collect_missing_rebar_findings(p9_rebar_data) == [],
+        "P9 stays silent about rebar in a model that models none"
+    )
+    p9_rebar_data["Rebar"] = [{"Rebar: Host Element ID": "1"},
+                              {"Rebar: Host Element ID": "1"}]
+    check(
+        [row["element_id"] for row in
+         validation_engine.collect_missing_rebar_findings(p9_rebar_data)]
+        == ["2", "3"],
+        "P9 names the concrete elements no rebar is hosted by"
+    )
+    check(
+        validation_engine.issue_severity(
+            validation_engine.ISSUE_MISSING_PARAMETER) == "Warning"
+        and validation_engine.issue_severity(
+            validation_engine.ISSUE_MISSING_REBAR) == "Warning",
+        "P9 treats both new checks as warnings, not errors"
+    )
+
+    check(
+        "collect_missing_parameter_findings(" in export_handler_source
+        and "collect_missing_rebar_findings(" in export_handler_source,
+        "P9 export handler feeds both new checks into the one report"
+    )
+
+    p9_summary = validation_engine.summarize_validation_findings(p10_report)
+    check(
+        [(entry["issue"], entry["count"], entry["severity"])
+         for entry in p9_summary] == [
+            (validation_engine.ISSUE_MISSING_VOLUME, 3, "Error"),
+            (validation_engine.ISSUE_DUPLICATE_ROUTING, 1, "Error"),
+            (validation_engine.ISSUE_MISSING_GRADE, 2, "Warning"),
+            (validation_engine.ISSUE_UNCERTAIN_ROUTING, 1, "Warning"),
+        ],
+        "P9 summary groups findings by issue, errors first then by count"
+    )
+    check(
+        validation_engine.count_validation_findings(p10_report) == (4, 3, 7)
+        and sum(entry["count"] for entry in p9_summary) == len(p10_report) - 1,
+        "P9 counts every report row exactly once as an error or a warning"
+    )
+    check(
+        p9_summary[0]["categories"] == {"Column": 3}
+        and p9_summary[2]["categories"] == {"Beam": 1, "Column": 1},
+        "P9 summary says which categories an issue came from"
+    )
+
+    p9_report = validation_engine.build_validation_report(p10_report)
+    check(
+        p9_report["ok"] is False
+        and p9_report["headline"] == "4 error(s), 3 warning(s) in 7 finding(s)"
+        and p9_report["lines"][0]
+        == "Error: 3 x Missing or zero volume (Column 3)"
+        and p9_report["text"].startswith(p9_report["headline"]),
+        "P9 report headline and first line read as a person would say them"
+    )
+    check(
+        len(p9_report["lines"]) == 4
+        and all("x " in line for line in p9_report["lines"]),
+        "P9 report prints one short line per issue, not one per finding"
+    )
+
+    # A warning is worth reading but is not a reason to stop: the
+    # quantities it describes are still right.
+    warnings_only = [list(validation_engine.UNMAPPED_HEADERS)] + [
+        ["Beam", "1", "L1", validation_engine.ISSUE_MISSING_GRADE, "d"],
+        ["Slab", "2", "L1", validation_engine.ISSUE_MISSING_MATERIAL, "d"],
+    ]
+    warning_report = validation_engine.build_validation_report(warnings_only)
+    check(
+        warning_report["ok"] is True
+        and warning_report["errors"] == 0
+        and warning_report["warnings"] == 2,
+        "P9 warnings alone leave the export ok; only errors clear that flag"
+    )
+
+    clean_report = validation_engine.build_validation_report(
+        [list(validation_engine.UNMAPPED_HEADERS)])
+    check(
+        clean_report["ok"] is True
+        and clean_report["total"] == 0
+        and clean_report["lines"] == []
+        and clean_report["text"] == "No validation findings",
+        "P9 a clean export says so in one line and lists nothing"
+    )
+
+    # An issue this engine has never heard of must still be reported.
+    unknown_table = [list(validation_engine.UNMAPPED_HEADERS)] + [
+        ["Beam", "9", "L1", "Some future issue", "d"]]
+    unknown_report = validation_engine.build_validation_report(unknown_table)
+    check(
+        unknown_report["total"] == 1
+        and unknown_report["warnings"] == 1
+        and "Some future issue" in unknown_report["text"],
+        "P9 an unrecognized issue is reported as a warning, never dropped"
+    )
+
+    check(
+        validation_engine.build_validation_report(
+            p10_report, max_lines=2)["lines"][-1] == "...and 2 more issue type(s)",
+        "P9 the compact report caps its lines and counts the remainder"
+    )
+
+    p9_source = io.open(
+        os.path.join(LIB_DIR, "validation_engine.py"),
+        "r", encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in p9_source
+        and "from Autodesk" not in p9_source
+        and "from pyrevit" not in p9_source
+        and "import pyrevit" not in p9_source,
+        "P9 validation engine imports no Revit or pyRevit symbol"
+    )
+
+    # v1.22.0 P10-02: missing structural material.
+    material_report = validation_engine.build_unmapped_element_report(
+        {
+            "Beam": [
+                {"Element ID": "11", "Level": "L1", "Grade": "M30",
+                 "Qty: Volume (m3)": 0.5},
+                {"Element ID": "12", "Level": "L1", "Grade": "M30",
+                 "Qty: Volume (m3)": 0.5},
+                {"Element ID": "13", "Level": "L1", "Grade": "M30",
+                 "Qty: Volume (m3)": 0.5},
+            ],
+            "Foundation": [
+                {"Element ID": "14", "Level": "L0", "Grade": "M30",
+                 "Qty: Volume (m3)": 1.0},
+                {"Element ID": "15", "Level": "L0", "Grade": "M30",
+                 "Qty: Volume (m3)": 1.0},
+            ],
+        },
+        [],
+        {"11": "RCC_BEAM", "12": "", "14": "<By Category>", "15": "GRADE_SLAB"}
+    )
+    check(
+        [(row[0], row[1], row[3]) for row in material_report[1:]] == [
+            ("Beam", "12", validation_engine.ISSUE_MISSING_MATERIAL),
+            ("Foundation", "14", validation_engine.ISSUE_MISSING_MATERIAL),
+        ],
+        "P10-02 flags blank and <By Category> structural material; skips "
+        "present materials and elements the export never resolved"
+    )
+
+    material_ns = {
+        "safe_parameter_value": lambda parameter: (
+            "" if parameter is None else parameter.value
+        ),
+    }
+    material_constant, _ = extract_constant_from_sources(
+        texts, "STRUCTURAL_MATERIAL_PARAMETER_NAMES"
+    )
+    exec(material_constant, material_ns)
+    for material_helper in (
+        "structural_material_candidates",
+        "resolve_structural_material",
+    ):
+        material_block, _ = extract_from_sources(texts, material_helper)
+        exec(material_block, material_ns)
+    resolve_material = material_ns["resolve_structural_material"]
+
+    class FakeMaterialParameter(object):
+        def __init__(self, value):
+            self.value = value
+
+    check(
+        resolve_material({
+            "instance": {"structural material": FakeMaterialParameter("RCC_BEAM")},
+            "type": {},
+        }) == "RCC_BEAM"
+        and resolve_material({
+            "instance": {"structural material": FakeMaterialParameter("")},
+            "type": {"structural material": FakeMaterialParameter("RCC_WALL")},
+        }) == "RCC_WALL"
+        and resolve_material({
+            "instance": {},
+            "type": {"structural material": FakeMaterialParameter("<By Category>")},
+        }) == ""
+        and resolve_material({
+            "instance": {"material": FakeMaterialParameter("Concrete M25")},
+            "type": {},
+        }) == "Concrete M25"
+        and resolve_material({"instance": {}, "type": {}}) == ""
+        and resolve_material(None) == "",
+        "P10-02 material resolver reads instance then type Structural Material, "
+        "falls back to Material and treats <By Category> as missing"
+    )
+
+    # v1.22.2 P10-03: only owner-confirmed grade fields are authoritative.
+    grade_ns = {
+        "re": re,
+        "safe_parameter_value": material_ns["safe_parameter_value"],
+    }
+    grade_line, _ = extract_constant_from_sources(
+        texts, "CONCRETE_GRADE_VALUES"
+    )
+    exec(grade_line, grade_ns)
+    exec(
+        re.search(
+            r"^CONCRETE_GRADE_PARAMETER_HINTS = \(.*?\)$",
+            script_text,
+            re.S | re.M
+        ).group(0),
+        grade_ns
+    )
+    for grade_helper in (
+        "normalize_concrete_grade",
+        "concrete_grade_parameter_candidates",
+        "resolve_concrete_grade",
+    ):
+        grade_block, _ = extract_from_sources(texts, grade_helper)
+        exec(grade_block, grade_ns)
+    resolve_grade = grade_ns["resolve_concrete_grade"]
+
+    class FakeGradeElement(object):
+        def __init__(self, identity=""):
+            self.identity = identity
+
+    def grade_context(instance=None, type_values=None):
+        return {
+            "instance": dict(
+                (name.lower(), FakeMaterialParameter(value))
+                for name, value in (instance or {}).items()
+            ),
+            "type": dict(
+                (name.lower(), FakeMaterialParameter(value))
+                for name, value in (type_values or {}).items()
+            ),
+            "type_element": None,
+        }
+
+    check(
+        resolve_grade(FakeGradeElement(), grade_context({
+            "GRADE OF CONCRETE": "M30",
+            "Grade": "M20",
+            "Structural Material": "Concrete - M25",
+        })) == "M30"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Grade": "M40",
+        })) == "M40"
+        and resolve_grade(FakeGradeElement(), grade_context(
+            {"Grade of Concrete": ""},
+            {"Grade of Concrete": "M35"},
+        )) == "M35"
+        and resolve_grade(FakeGradeElement(), grade_context(
+            {"Grade of Concrete": "TBD"},
+            {"Grade of Concrete": "M25"},
+        )) == "M25"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Grade of Concrete": "TBD",
+            "Grade": "M20",
+        })) == "M20"
+        and resolve_grade(FakeGradeElement(), grade_context({
+            "Structural Material": "Concrete - M25",
+        })) == "(No Grade)"
+        and resolve_grade(FakeGradeElement("B1 M45"), grade_context({
+            "Structural Material": "RCC_BEAM",
+        })) == "(No Grade)",
+        "P10-03 grade resolver uses only Grade of Concrete then Grade, "
+        "falls through instance to type, and never infers from material or identity"
+    )
+    check(
+        "element_materials = {}" in export_handler_source
+        and "material_sink=element_materials" in export_handler_source
+        and "material_sink[" in script_text
+        and "and needs_parameter_context" in script_text,
+        "P10-02 export collects materials only for indexed elements and feeds the report"
+    )
+
+    def p10_sheet_order(workbook_path):
+        with zipfile.ZipFile(workbook_path, "r") as p10_archive:
+            return re.findall(
+                r'<sheet name="([^"]+)"',
+                p10_archive.read("xl/workbook.xml").decode("utf-8")
+            )
+
+    def p10_validation(report_path):
+        with io.open(report_path, "r", encoding="utf-8") as p10_json:
+            return json.load(p10_json)
+
+    p10_root = tempfile.mkdtemp(prefix="rcc-boq-p10-")
+    try:
+        p10_classic_data = {
+            "Beam": [
+                {"Element ID": "1", "Level": "L1", "Grade": "M30",
+                 "Mark": "B1", "Qty: Volume (m3)": 0.5, "Qty: Count": 1},
+                {"Element ID": "2", "Level": "L1", "Grade": "(No Grade)",
+                 "Mark": "B2", "Qty: Volume (m3)": 0.4, "Qty: Count": 1},
+            ],
+        }
+        classic_report = validation_engine.build_unmapped_element_report(
+            p10_classic_data, []
+        )
+        classic_rows = namespace["write_basic_xlsx"](
+            os.path.join(p10_root, "classic.xlsx"),
+            p10_classic_data,
+            {},
+            project_name="P10 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.21.0",
+            generated_stamp="2026-09-15 12:00",
+            validation_report_path=os.path.join(p10_root, "classic.json"),
+            unmapped_report=classic_report
+        )
+        classic_order = p10_sheet_order(os.path.join(p10_root, "classic.xlsx"))
+        cover_names = set(
+            row[0] for row in classic_rows["Summary"] if row
+        )
+        check(
+            classic_order[-1] == validation_engine.UNMAPPED_SHEET_NAME
+            and classic_order[-2] == "Costing"
+            and classic_rows[validation_engine.UNMAPPED_SHEET_NAME]
+            == classic_report
+            and validation_engine.UNMAPPED_SHEET_NAME in cover_names
+            and p10_validation(
+                os.path.join(p10_root, "classic.json")
+            ).get("ok") is True,
+            "P10 Classic workbook appends a validated Unmapped Elements "
+            "sheet after Costing and lists it on the cover"
+        )
+
+        namespace["write_basic_xlsx"](
+            os.path.join(p10_root, "clean.xlsx"),
+            p10_classic_data,
+            {},
+            validation_report_path=os.path.join(p10_root, "clean.json"),
+            unmapped_report=[list(validation_engine.UNMAPPED_HEADERS)]
+        )
+        check(
+            validation_engine.UNMAPPED_SHEET_NAME
+            not in p10_sheet_order(os.path.join(p10_root, "clean.xlsx")),
+            "P10 header-only report adds no empty tab to the workbook"
+        )
+
+        p10_site_data = {
+            "Beam": [
+                {"Element ID": "1", "Level": "L1", "Grade": "(No Grade)",
+                 "Mark": "B1", "Qty: Volume (m3)": 0.5,
+                 "Qty: Dim L (m)": 3.0, "Qty: Dim W (m)": 0.23,
+                 "Qty: Dim H (m)": 0.6, "Qty: Shuttering (m2)": 4.29},
+            ],
+        }
+        site_report = validation_engine.build_unmapped_element_report(
+            p10_site_data, []
+        )
+        site_rows = namespace["write_site_xlsx"](
+            os.path.join(p10_root, "site.xlsx"),
+            p10_site_data,
+            project_name="P10 TEST",
+            selected_parameters={"Beam": ["Mark"]},
+            validation_report_path=os.path.join(p10_root, "site.json"),
+            unmapped_report=site_report
+        )
+        site_unmapped = site_rows.get(validation_engine.UNMAPPED_SHEET_NAME, [])
+        check(
+            p10_sheet_order(os.path.join(p10_root, "site.xlsx"))[-1]
+            == validation_engine.UNMAPPED_SHEET_NAME
+            and len(site_unmapped) > 6
+            and site_unmapped[1] == ["RCC - MODEL VALIDATION"]
+            and site_unmapped[2] == ["UNMAPPED ELEMENTS"]
+            and site_unmapped[4][3] == ("MERGE_V", "ISSUE")
+            and site_unmapped[6] == site_report[1]
+            and p10_validation(
+                os.path.join(p10_root, "site.json")
+            ).get("ok") is True,
+            "P10 Site workbook appends a validated Unmapped Elements sheet "
+            "inside the site title bands"
+        )
+        check(
+            all("GRADE" not in str(cell) for cell in site_rows["Beam"][4]),
+            "P10 grade resolution adds no Grade column to Site detail sheets"
+        )
+        check(
+            list(site_rows.keys())
+            == p10_sheet_order(os.path.join(p10_root, "site.xlsx")),
+            "Site writer returns sheets in workbook order for the export popup listing"
+        )
+    finally:
+        shutil.rmtree(p10_root, ignore_errors=True)
+
+    check(
+        export_handler_source.count("unmapped_report=unmapped_report") == 2
+        and "build_unmapped_element_report(" in export_handler_source
+        and "classification_audit_detail_results(" in export_handler_source
+        and "UNMAPPED_SHEET_NAME" in export_handler_source,
+        "P10 export handler builds one report and passes it to both workbook writers"
+    )
+
+    check(
+        "build_validation_report(unmapped_report)" in export_handler_source
+        and 'p9_report["headline"]' in export_handler_source
+        and 'p9_report["lines"]' in export_handler_source
+        and "Unmapped elements: {} finding(s)" not in export_handler_source,
+        "P9 export handler summarizes the same report table it writes to the sheet"
+    )
+
+    # ------------------------------------------------------------
+    # Identity row ordering (v1.25.9)
+    #
+    # Plain text sorting reads B10 as smaller than B2, which is exactly
+    # the mistake this replaces, so the checks pin the numeric ordering
+    # rather than just "is sorted".
+    # ------------------------------------------------------------
+    import export_engine as ordering_engine
+
+    check(
+        sorted(["B10", "B2", "B1", "B2A", "B10A", "B3", "B21"],
+               key=ordering_engine.identity_sort_key)
+        == ["B1", "B2", "B2A", "B3", "B10", "B10A", "B21"],
+        "Identity order reads the numbers as numbers: B2 before B10"
+    )
+    check(
+        sorted(["B2", "", "B1", None], key=ordering_engine.identity_sort_key)
+        == ["B1", "B2", "", None],
+        "Identity order puts rows with no identity last, not first"
+    )
+    check(
+        [row["ID_UNMT"] for row in ordering_engine.sort_rows_by_identity(
+            [{"ID_UNMT": value} for value in
+             ("B10", "B2", "B1", "C1", "B2A")])]
+        == ["B1", "B2", "B2A", "B10", "C1"],
+        "Identity order sorts the rows themselves, letters then numbers"
+    )
+
+    # A project that fills Mark instead of ID_UNMT is ordered by Mark.
+    check(
+        [row["Mark"] for row in ordering_engine.sort_rows_by_identity(
+            [{"ID_UNMT": "", "Mark": "C10"},
+             {"ID_UNMT": "", "Mark": "C2"}])] == ["C2", "C10"],
+        "Identity order falls back to Mark when ID_UNMT is empty"
+    )
+
+    # A project that fills neither keeps the order the model gave, rather
+    # than being shuffled by a field nobody uses.
+    untouched = [{"Element ID": "3"}, {"Element ID": "1"}]
+    check(
+        ordering_engine.sort_rows_by_identity(untouched)
+        == [{"Element ID": "3"}, {"Element ID": "1"}],
+        "Identity order leaves a project that fills no identity alone"
+    )
+
+    check(
+        ordering_engine.sort_rows_by_identity([]) == []
+        and ordering_engine.sort_rows_by_identity(None) == [],
+        "Identity order survives an empty category"
+    )
+
+    # Level first, identity inside the level - how a BOQ is read.
+    level_rows = [
+        {"Level": "04 1ST LEVEL", "ID_UNMT": "B10"},
+        {"Level": "03 PLINTH LEVEL", "ID_UNMT": "B2"},
+        {"Level": "04 1ST LEVEL", "ID_UNMT": "B2"},
+        {"Level": "13 OHW/LMR LEVEL", "ID_UNMT": "B1"},
+        {"Level": "12 TERRACE LEVEL", "ID_UNMT": "B1"},
+        {"Level": "03 PLINTH LEVEL", "ID_UNMT": "B1"},
+    ]
+    check(
+        [(row["Level"], row["ID_UNMT"])
+         for row in ordering_engine.sort_rows_for_boq(level_rows)] == [
+            ("03 PLINTH LEVEL", "B1"),
+            ("03 PLINTH LEVEL", "B2"),
+            ("04 1ST LEVEL", "B2"),
+            ("04 1ST LEVEL", "B10"),
+            ("12 TERRACE LEVEL", "B1"),
+            ("13 OHW/LMR LEVEL", "B1"),
+        ],
+        "BOQ order is level first, then identity inside the level"
+    )
+    check(
+        [row["Level"] for row in ordering_engine.sort_rows_for_boq(
+            [{"Level": "13 OHW/LMR LEVEL"}, {"Level": "12 TERRACE LEVEL"},
+             {"Level": "03 PLINTH LEVEL"}])]
+        == ["03 PLINTH LEVEL", "12 TERRACE LEVEL", "13 OHW/LMR LEVEL"],
+        "BOQ order reads the level number, so 12 TERRACE precedes 13 OHW/LMR"
+    )
+    check(
+        [row["ID_UNMT"] for row in ordering_engine.sort_rows_for_boq(
+            [{"ID_UNMT": "B10"}, {"ID_UNMT": "B2"}])] == ["B2", "B10"]
+        and ordering_engine.sort_rows_for_boq([{"X": 2}, {"X": 1}])
+        == [{"X": 2}, {"X": 1}],
+        "BOQ order uses whichever of level and identity the project fills"
+    )
+
+    # ------------------------------------------------------------
+    # Top-level billing (v1.25.10)
+    #
+    # A column runs between two floors and Revit's Level for it is the
+    # base, so the level-wise BOQ was putting every column a storey low.
+    # These checks pin which categories are billed to their top level and
+    # that the fallback still protects an element that has no top.
+    # ------------------------------------------------------------
+    top_level_constant, _ = extract_constant_from_sources(
+        texts, "TOP_LEVEL_CATEGORIES")
+    check(
+        '"Column"' in top_level_constant
+        and '"Structure Wall"' in top_level_constant
+        and '"Beam"' not in top_level_constant
+        and '"Slab"' not in top_level_constant
+        and '"Foundation"' not in top_level_constant,
+        "Only Column and Structure Wall are billed to the level they support"
+    )
+
+    top_level_block, _ = extract_from_sources(texts, "get_element_top_level")
+    check(
+        'return ""' in top_level_block
+        and "SCHEDULE_TOP_LEVEL_PARAM" in top_level_constant + top_level_block
+        or "TOP_LEVEL_BUILT_IN_NAMES" in top_level_block,
+        "The top-level reader returns empty rather than guessing a level"
+    )
+
+    level_choice_block, _ = extract_from_sources(texts, "build_element_data")
+    check(
+        "TOP_LEVEL_CATEGORIES" in level_choice_block
+        and "get_element_top_level(" in level_choice_block
+        and "get_element_level(" in level_choice_block,
+        "build_element_data takes the top level first and falls back to the base"
+    )
+
+    ordering_block, _ = extract_from_sources(texts, "build_element_data")
+    check(
+        "sort_rows_for_boq(" in ordering_block,
+        "build_element_data orders every category before returning it"
+    )
+
+    # ------------------------------------------------------------
+    # P11 rate analysis (v1.26.0)
+    #
+    # The arithmetic is checked by hand below rather than against the
+    # engine's own output, and the incomplete case is checked as hard as
+    # the complete one: a build-up missing a figure must stay blank, not
+    # price the work at zero.
+    # ------------------------------------------------------------
+    import costing_engine as rate_engine
+
+    full_buildup = {
+        "item_code": "RCC-M30", "description": "M30 concrete in beams",
+        "unit": "m3", "material": 5200, "wastage_pct": 3,
+        "labour": 1400, "machinery": 350, "overheads_pct": 12,
+    }
+    analysed, missing = rate_engine.compute_analysed_rate(
+        rate_engine.normalize_rate_analysis(full_buildup))
+    # 5200 + 3% of 5200 = 5356; + 1400 + 350 = 7106; + 12% = 7958.72
+    check(
+        analysed == 7958.72 and missing == [],
+        "P11 wastage applies to material and overheads to the subtotal"
+    )
+
+    zero_pct = dict(full_buildup, wastage_pct=0, overheads_pct=0)
+    check(
+        rate_engine.compute_analysed_rate(
+            rate_engine.normalize_rate_analysis(zero_pct))[0] == 6950.0,
+        "P11 zero percentages are honoured, not treated as missing"
+    )
+
+    for absent in ("material", "labour", "machinery", "wastage_pct",
+                   "overheads_pct"):
+        partial = dict(full_buildup)
+        del partial[absent]
+        rate, gaps = rate_engine.compute_analysed_rate(
+            rate_engine.normalize_rate_analysis(partial))
+        if rate is not None or gaps != [absent]:
+            check(False, "P11 a build-up missing {0} must not be priced".format(
+                absent))
+            break
+    else:
+        check(
+            True,
+            "P11 a build-up missing any one of the five is left unpriced"
+        )
+
+    for bad in (-1, "", "abc", None, True):
+        rate, gaps = rate_engine.compute_analysed_rate(
+            rate_engine.normalize_rate_analysis(
+                dict(full_buildup, labour=bad)))
+        if rate is not None or gaps != ["labour"]:
+            check(False,
+                  "P11 an unusable labour figure ({0!r}) must not be "
+                  "priced".format(bad))
+            break
+    else:
+        check(
+            True,
+            "P11 negative, blank, non-numeric and boolean figures are refused"
+        )
+
+    rate_table = rate_engine.build_rate_analysis_sheet([
+        full_buildup,
+        {"item_code": "SHUT-BM", "description": "Beam shuttering",
+         "unit": "m2", "material": 180, "wastage_pct": 5, "labour": 120},
+    ])
+    check(
+        rate_table[0] == list(rate_engine.RATE_ANALYSIS_HEADERS)
+        and rate_table[1][-1] == rate_engine.STATUS_PRICED
+        and rate_table[1][-2] == 7958.72,
+        "P11 sheet prices a complete item and names its rate"
+    )
+    check(
+        rate_table[2][-2] == ""
+        and rate_table[2][-1].startswith(rate_engine.STATUS_INPUT_REQUIRED)
+        and "machinery" in rate_table[2][-1]
+        and rate_table[2][3] == 180.0,
+        "P11 sheet keeps an incomplete item, blank rate, and says what is "
+        "missing"
+    )
+    check(
+        rate_engine.build_rate_analysis_sheet([])
+        == [list(rate_engine.RATE_ANALYSIS_HEADERS)]
+        and rate_engine.build_rate_analysis_sheet(None)
+        == [list(rate_engine.RATE_ANALYSIS_HEADERS)],
+        "P11 no rate analysis yields a header-only sheet"
+    )
+
+    # The store: only declared fields, junk refused, round-trip intact.
+    # The tab: every control the handlers look for must exist in the XAML,
+    # and every handler must be wired. A tab that looks right but is not
+    # connected is the failure this checks for.
+    xaml_source = io.open(
+        os.path.join(REPO_DIR, "Nudge.extension", "Nudge.tab",
+                     "Generate.panel", "BOQ.pushbutton", "ui.xaml"),
+        "r", encoding="utf-8-sig").read()
+    rate_controls = (
+        "RateItemCode", "RateDescription", "RateUnit", "RateMaterial",
+        "RateWastagePct", "RateLabour", "RateMachinery", "RateOverheadsPct",
+        "RateList", "RateAdd", "RateUpdate", "RateRemove", "RateClear",
+        "RateSummary", "RateSource",
+    )
+    missing_controls = [name for name in rate_controls
+                        if 'x:Name="{0}"'.format(name) not in xaml_source]
+    check(
+        not missing_controls,
+        "P11 tab declares every control its handlers use{0}".format(
+            "" if not missing_controls else
+            " (missing: {0})".format(", ".join(missing_controls)))
+    )
+
+    wire_block = nested_handler_source("rate_wire_controls")
+    check(
+        all(name in wire_block for name in
+            ("RateAdd", "RateUpdate", "RateRemove", "RateClear", "RateList"))
+        and "SelectionChanged" in wire_block,
+        "P11 tab wires all four buttons and the list selection"
+    )
+
+    read_block = nested_handler_source("rate_read_fields")
+    check(
+        "normalize_rate_analysis" in read_block,
+        "P11 tab normalizes what was typed instead of trusting the boxes"
+    )
+
+    add_block = nested_handler_source("rate_add")
+    check(
+        'if not analysis.get("item_code"):' in add_block
+        and "return" in add_block,
+        "P11 tab refuses an item with no code"
+    )
+
+    capture_rate_block = nested_handler_source("capture_and_save_settings")
+    check(
+        "save_rate_analysis(settings, rate_analysis_state)" in capture_rate_block,
+        "P11 tab's build-ups are saved with the rest of the settings"
+    )
+
+    # One code, one rate. Found from the owner's screenshot: RCC-M30 twice.
+    rate_list = [{"item_code": "RCC-M30"}, {"item_code": "RCC-M40"}]
+    check(
+        rate_engine.find_rate_code_conflict(rate_list, "RCC-M30") == 0
+        and rate_engine.find_rate_code_conflict(rate_list, " rcc-m30 ") == 0
+        and rate_engine.find_rate_code_conflict(rate_list, "PCC-M10") == -1
+        and rate_engine.find_rate_code_conflict(rate_list, "") == -1,
+        "P11 a repeated item code is caught, ignoring case and spaces"
+    )
+    check(
+        rate_engine.find_rate_code_conflict(rate_list, "RCC-M30", 0) == -1
+        and rate_engine.find_rate_code_conflict(rate_list, "RCC-M40", 0) == 1,
+        "P11 a line may keep its own code but not take another's"
+    )
+    rate_add_block = nested_handler_source("rate_add")
+    rate_update_block = nested_handler_source("rate_update")
+    check(
+        "find_rate_code_conflict(" in rate_add_block
+        and "find_rate_code_conflict(" in rate_update_block
+        and "index) >= 0" in rate_update_block,
+        "P11 tab refuses a duplicate code on both Add and Update"
+    )
+
+    rate_stored = rate_engine.save_rate_analysis(
+        {"theme": "Auto"},
+        [full_buildup,
+         {"item_code": "SHUT", "unit": "m2", "material": 180,
+          "wastage_pct": 5, "labour": 120, "smuggled": "nope"}])
+    check(
+        sorted(rate_stored.keys()) == ["rate_analysis", "theme"]
+        and "smuggled" not in rate_stored["rate_analysis"][1]
+        and "machinery" not in rate_stored["rate_analysis"][1]
+        and rate_stored["rate_analysis"][1]["material"] == 180.0,
+        "P11 store keeps only declared fields, and only the ones supplied"
+    )
+    check(
+        rate_engine.compute_analysed_rate(
+            rate_engine.load_rate_analysis(rate_stored)[0])[0] == 7958.72,
+        "P11 a saved build-up prices identically when loaded back"
+    )
+    check(
+        rate_engine.load_rate_analysis({"rate_analysis": "nonsense"}) == []
+        and rate_engine.load_rate_analysis(None) == []
+        and rate_engine.load_rate_analysis({}) == [],
+        "P11 a corrupt or absent store cannot stop an export"
+    )
+
+    writer_source, _ = extract_from_sources(texts, "write_basic_xlsx")
+    site_writer_source, _ = extract_from_sources(texts, "write_site_xlsx")
+    check(
+        "rate_analysis" in writer_source
+        and "build_rate_analysis_sheet(rate_analysis)" in writer_source
+        and "build_rate_analysis_sheet(rate_analysis)" in site_writer_source,
+        "P11 both workbook formats build the Rate Analysis sheet"
+    )
+    check(
+        "if len(rate_table) > 1:" in writer_source
+        and "if len(rate_plain_table) > 1:" in site_writer_source,
+        "P11 a project with no build-ups keeps its familiar workbook"
+    )
+    check(
+        "rate_analysis=rate_analysis," in export_handler_source
+        and "load_rate_analysis(" in export_handler_source,
+        "P11 the export handler loads the build-ups and passes them on"
+    )
+
+    rate_source = io.open(
+        os.path.join(LIB_DIR, "costing_engine.py"),
+        "r", encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in rate_source
+        and "from pyrevit" not in rate_source
+        and "wastage" in rate_engine.RATE_BASIS.lower()
+        and "overheads" in rate_engine.RATE_BASIS.lower(),
+        "P11 engine imports no Revit symbol and states its basis"
+    )
+
+    # ------------------------------------------------------------
+    # Saved selections survive a document that has none of them (v1.26.1)
+    #
+    # Found live: an export run on an architectural model with no
+    # structural elements discovered no parameters, restored none, and
+    # then saved that emptiness over a working BOQ setup.
+    # ------------------------------------------------------------
+    capture_block = nested_handler_source("capture_and_save_settings")
+    check(
+        "previous_selected" in capture_block
+        and "category_parameters.get(element_name" in capture_block,
+        "Saving selections consults what this document actually discovered"
+    )
+    check(
+        capture_block.count("settings[\"selected\"][element_name] = current") == 1
+        and "if not discovered:" in capture_block,
+        "An empty category with no discovered parameters keeps its saved list"
+    )
+
     engine_guard_block, _ = extract_from_sources(
         texts, "_warn_if_not_cp3123"
     )
@@ -2627,6 +3737,614 @@ def main():
         "get_output" not in engine_guard_block
         and "not is_cp3123 and not is_ironpython" in engine_guard_block,
         "Known CP3123/IP27 engines do not force an output popup"
+    )
+
+    # ------------------------------------------------------------
+    # P8 rule engine split (lib/rule_engine.py)
+    #
+    # The routing regression above already runs these rules; these
+    # checks pin down *where* they come from, so a future edit cannot
+    # quietly move a rule back into script.py and lose its isolation.
+    # ------------------------------------------------------------
+    rule_engine_path = os.path.join(LIB_DIR, "rule_engine.py")
+    with io.open(rule_engine_path, "r", encoding="utf-8-sig") as handle:
+        rule_engine_source = handle.read()
+
+    check(
+        "import Autodesk" not in rule_engine_source
+        and "from Autodesk" not in rule_engine_source
+        and "from pyrevit" not in rule_engine_source
+        and "import pyrevit" not in rule_engine_source,
+        "P8 rule engine imports no Revit or pyRevit symbol"
+    )
+
+    moved_rules = (
+        "normalize_label",
+        "code_token_match",
+        "_contains_rcc_identity_signal",
+        "_element_source_category",
+        "_element_routing_key",
+        "_safe_element_id_text",
+        "classify_identity_text",
+        "build_logical_rcc_collections",
+        "validate_classification_audit",
+        "classification_audit_has_findings",
+        "classification_audit_detail_results",
+        "build_compact_classification_findings",
+    )
+    rule_sources = {}
+    for rule_name in moved_rules:
+        _block, rule_path = extract_from_sources(texts, rule_name)
+        rule_sources[rule_name] = os.path.basename(rule_path)
+    check(
+        set(rule_sources.values()) == {"rule_engine.py"},
+        "P8 classification rules resolve from lib/rule_engine.py"
+    )
+
+    parameter_engine_path = os.path.join(LIB_DIR, "parameter_engine.py")
+    with io.open(parameter_engine_path, "r", encoding="utf-8-sig") as handle:
+        parameter_engine_source = handle.read()
+
+    check(
+        "import Autodesk" not in parameter_engine_source
+        and "from Autodesk" not in parameter_engine_source
+        and "from pyrevit" not in parameter_engine_source
+        and "import pyrevit" not in parameter_engine_source,
+        "P8 parameter engine imports no Revit or pyRevit symbol"
+    )
+
+    moved_readers = (
+        "safe_storage_type",
+        "safe_is_shared",
+        "safe_is_read_only",
+        "safe_definition_info",
+        "find_parameter_on_element",
+        "find_parameter_in_context",
+        "count_parameter_metadata",
+        "get_parameters",
+    )
+    reader_sources = {}
+    for reader_name in moved_readers:
+        _block, reader_path = extract_from_sources(texts, reader_name)
+        reader_sources[reader_name] = os.path.basename(reader_path)
+    check(
+        set(reader_sources.values()) == {"parameter_engine.py"},
+        "P8 parameter readers resolve from lib/parameter_engine.py"
+    )
+
+    # safe_text is the one moved name that also exists in
+    # export_engine.py. What matters is that script.py no longer owns a
+    # copy - whichever engine module answers, it is not the pushbutton.
+    _safe_text_block, safe_text_path = extract_from_sources(texts, "safe_text")
+    check(
+        os.path.basename(safe_text_path) != "script.py",
+        "P8 leaves no safe_text definition in script.py"
+    )
+
+    _grade_block, grade_path = extract_from_sources(
+        texts, "normalize_concrete_grade")
+    check(
+        os.path.basename(grade_path) == "rule_engine.py",
+        "P8 concrete-grade normalization resolves from lib/rule_engine.py"
+    )
+
+    for revit_bound in ("classify_rcc_element",):
+        _block, bound_path = extract_from_sources(texts, revit_bound)
+        check(
+            os.path.basename(bound_path) == "script.py",
+            "P8 leaves the Revit-bound {} in script.py".format(revit_bound)
+        )
+
+    # classify_rcc_element is now a reader, not a rule: the route must
+    # come from the engine, and the element-bound identity reads must
+    # stay behind in the pushbutton.
+    classifier_block, _ = extract_from_sources(texts, "classify_rcc_element")
+    check(
+        "classify_identity_text(" in classifier_block
+        and "code_token_match(" not in classifier_block
+        and "get_element_identity_text(" in classifier_block,
+        "P8 classify_rcc_element reads the element and defers the route"
+    )
+
+    # The point of the split: the route rules can now be imported and
+    # argued with directly, on plain text, with no element, no fake and
+    # no exec. If this import ever needs a Revit symbol, it fails here.
+    import rule_engine as rule_engine_module
+
+    route_cases = (
+        ("pcc footing", "Floors", "Foundation", "PCC"),
+        ("combined footing c1", "Floors", "Foundation", "Combined Footing"),
+        ("cf1a", "Floors", "Foundation", "Combined Footing"),
+        ("wf1", "Structural Foundations", "Foundation", "Footing"),
+        ("combined raft", "Floors", "Foundation", "Combined Raft"),
+        ("raft", "Floors", "Foundation", "Raft"),
+        ("grade slab", "Floors", "Slab", "Grade Slab"),
+        ("gs", "Floors", "Slab", "Grade Slab"),
+        ("fold slab", "Floors", "Slab", "Fold Slab"),
+        ("s1", "Floors", "Slab", "Slab"),
+        ("chajja2", "Floors", "Slab", "Slab"),
+        ("lobby", "Floors", "Slab", "Slab"),
+        ("ramp", "Floors", "Slab", "Slab"),
+    )
+    route_failures = []
+    for text, source_name, expected_group, expected_subtype in route_cases:
+        route = rule_engine_module.classify_identity_text(text, source_name)
+        if (
+            route["logical_group"] != expected_group
+            or route["subtype"] != expected_subtype
+            or not route["reason"]
+        ):
+            route_failures.append(
+                "{} -> {}/{}".format(
+                    text, route["logical_group"], route["subtype"]
+                )
+            )
+    check(
+        not route_failures,
+        "P8 route rules decide every known identity from text alone{}".format(
+            "" if not route_failures else " ({})".format(
+                "; ".join(route_failures))
+        )
+    )
+
+    # An unknown identity is never dropped and never guessed into a
+    # priced subtype: it stays under the sheet its own source category
+    # implies, marked Other so the audit reports it.
+    unknown_floor = rule_engine_module.classify_identity_text(
+        "unmapped thing", "Floors")
+    unknown_foundation = rule_engine_module.classify_identity_text(
+        "unmapped thing", "Structural Foundations")
+    check(
+        unknown_floor["logical_group"] == "Slab"
+        and unknown_floor["subtype"] == "Other"
+        and unknown_foundation["logical_group"] == "Foundation"
+        and unknown_foundation["subtype"] == "Other",
+        "P8 an unknown identity stays on its source sheet as Other"
+    )
+
+    # Foundation wording must keep winning over generic slab wording:
+    # a foundation slab named for its footing is a footing, not a slab.
+    precedence = rule_engine_module.classify_identity_text(
+        "foundation slab f2a", "Structural Foundations")
+    pcc_precedence = rule_engine_module.classify_identity_text(
+        "rcc slab pcc", "Floors")
+    check(
+        precedence["logical_group"] == "Foundation"
+        and precedence["subtype"] == "Footing"
+        and pcc_precedence["subtype"] == "PCC",
+        "P8 foundation identities still precede generic slab wording"
+    )
+
+    # safe_is_project_parameter reads doc.ParameterBindings, so it is
+    # host-bound despite naming no Revit type, and must not have moved.
+    for revit_bound in ("safe_parameter_value", "find_parameter_with_scope",
+                        "build_parameter_metadata", "resolve_concrete_grade",
+                        "safe_is_project_parameter"):
+        _block, bound_path = extract_from_sources(texts, revit_bound)
+        check(
+            os.path.basename(bound_path) == "script.py",
+            "P8 leaves the Revit-bound {} in script.py".format(revit_bound)
+        )
+
+    # ------------------------------------------------------------
+    # P7 site items engine (lib/site_items_engine.py)
+    #
+    # Imported directly, like the authoring engine: it is a self
+    # contained pure module, so importing keeps its internal calls
+    # intact and shadows nothing in the shared extraction namespace.
+    # ------------------------------------------------------------
+    import site_items_engine
+
+    site_items_path = os.path.join(LIB_DIR, "site_items_engine.py")
+    with io.open(site_items_path, "r", encoding="utf-8-sig") as handle:
+        site_items_source = handle.read()
+
+    check(
+        "import Autodesk" not in site_items_source
+        and "from Autodesk" not in site_items_source
+        and "from pyrevit" not in site_items_source
+        and "import pyrevit" not in site_items_source,
+        "P7 site items engine imports no Revit or pyRevit symbol"
+    )
+
+    typed = site_items_engine.normalize_site_items([
+        {"code": "SI-01", "description": "Binding wire", "quantity": "25",
+         "unit": "kg", "rate": "85.5"},
+        {"code": "SI-02", "description": "Scaffolding hire", "quantity": 1,
+         "unit": "LS", "rate": None, "remarks": "awaiting quote"},
+    ])
+
+    check(
+        typed[0]["quantity"] == 25.0 and typed[0]["rate"] == 85.5
+        and typed[1]["rate"] is None,
+        "P7 normalizes typed numbers and keeps an absent rate as None"
+    )
+
+    # A zero or negative rate must not survive as a number: pricing real
+    # work at nothing is the failure mode this guards against.
+    refused = site_items_engine.normalize_site_items([
+        {"code": "Z", "description": "d", "quantity": "0", "unit": "u", "rate": "-5"},
+        {"code": "T", "description": "d", "quantity": True, "unit": "u", "rate": "abc"},
+    ])
+    check(
+        all(item["quantity"] is None and item["rate"] is None for item in refused),
+        "P7 refuses zero, negative, boolean and non-numeric quantity or rate"
+    )
+
+    check(
+        site_items_engine.site_item_amount(typed[0]) == 2137.5
+        and site_items_engine.site_item_amount(typed[1]) is None,
+        "P7 amount is quantity x rate, and blank when either is unusable"
+    )
+
+    summary = site_items_engine.summarize_site_items(typed)
+    check(
+        summary == {"count": 2, "priced_count": 1, "unpriced_count": 1,
+                    "amount_total": 2137.5},
+        "P7 summary totals only priced lines and counts the rest separately"
+    )
+
+    incomplete = site_items_engine.normalize_site_items([
+        {"code": "SI-01", "description": "Binding wire", "quantity": "25",
+         "unit": "kg", "rate": "85.5"},
+        {"code": "SI-01", "description": "", "quantity": "-4", "unit": "",
+         "rate": "0"},
+        {"description": "", "quantity": "", "unit": "", "rate": ""},
+    ])
+    findings = site_items_engine.validate_site_items(incomplete)
+    check(
+        any("Duplicate item code: SI-01" in f for f in findings)
+        and any("SI-01: missing description" in f for f in findings)
+        and any("SI-01: quantity is missing" in f for f in findings)
+        and any("SI-01: missing unit" in f for f in findings)
+        and any("SI-01: rate is missing" in f for f in findings),
+        "P7 validation names every unusable field on a line"
+    )
+
+    check(
+        any(f.startswith("Row 3:") for f in findings),
+        "P7 validation falls back to the row number when a line has no code"
+    )
+
+    check(
+        site_items_engine.validate_site_items(
+            site_items_engine.normalize_site_items([typed[0]])) == [],
+        "P7 validation accepts a complete line item"
+    )
+
+    table = site_items_engine.build_site_items_table(typed)
+    check(
+        list(table[0]) == list(site_items_engine.SITE_ITEM_HEADERS)
+        and table[1][5] == 2137.5
+        and table[2][4] == "" and table[2][5] == ""
+        and table[-1][0] == "TOTAL" and table[-1][5] == 2137.5,
+        "P7 table blanks unpriced cells and totals only what could be priced"
+    )
+
+    check(
+        site_items_engine.build_site_items_table([]) == [
+            list(site_items_engine.SITE_ITEM_HEADERS)],
+        "P7 an empty item list yields a header-only table with no TOTAL row"
+    )
+
+    check(
+        len(site_items_engine.priceable_site_items(typed)) == 1,
+        "P7 priceable_site_items returns only fully priced lines"
+    )
+
+    # Store: a default list seeds a project the first time it is opened,
+    # and the project's own list is editable from there (owner decision,
+    # 2026-09-19).
+    store = site_items_engine.normalize_site_items_store({
+        "default": [{"code": "D-01", "description": "Scaffolding",
+                     "quantity": "1", "unit": "LS", "rate": "50000"}],
+    })
+
+    seeded = site_items_engine.resolve_site_items(store, "AMANI")
+    check(
+        seeded["source"] == "default"
+        and [item["code"] for item in seeded["items"]] == ["D-01"],
+        "P7 a document with no list of its own is seeded from the default"
+    )
+
+    store = site_items_engine.save_site_items(store, "AMANI", [
+        {"code": "A-01", "description": "Site office", "quantity": "1",
+         "unit": "LS", "rate": "20000"},
+    ])
+    owned = site_items_engine.resolve_site_items(store, "AMANI")
+    check(
+        owned["source"] == "document"
+        and [item["code"] for item in owned["items"]] == ["A-01"],
+        "P7 once saved, a document uses its own list instead of the default"
+    )
+
+    # The decision that matters: changing the default must never reach a
+    # project that was already priced from its own list.
+    store = site_items_engine.set_default_site_items(store, [
+        {"code": "D-99", "description": "New template line", "quantity": "2",
+         "unit": "nos", "rate": "100"},
+    ])
+    after = site_items_engine.resolve_site_items(store, "AMANI")
+    fresh = site_items_engine.resolve_site_items(store, "UMA-NIWAS")
+    check(
+        [item["code"] for item in after["items"]] == ["A-01"]
+        and after["source"] == "document"
+        and [item["code"] for item in fresh["items"]] == ["D-99"]
+        and fresh["source"] == "default",
+        "P7 a changed default seeds only new documents and never edits a saved one"
+    )
+
+    reset = site_items_engine.forget_document_site_items(store, "AMANI")
+    check(
+        site_items_engine.resolve_site_items(reset, "AMANI")["source"] == "default",
+        "P7 forgetting a document's list re-seeds it from the default"
+    )
+
+    check(
+        site_items_engine.resolve_site_items(
+            site_items_engine.normalize_site_items_store({}), "ANY") ==
+        {"items": [], "source": "empty"},
+        "P7 an empty store resolves to no items rather than raising"
+    )
+
+    check(
+        site_items_engine.normalize_site_items_store(
+            {"default": "junk", "by_document": ["not", "a", "dict"]}) ==
+        {"default": [], "by_document": {}},
+        "P7 a corrupt or hand-edited store degrades to empty instead of raising"
+    )
+
+    check(
+        site_items_engine.save_site_items(store, "", typed)[
+            "by_document"].get("") is None,
+        "P7 a blank document title is never used as a store key"
+    )
+
+    # P7 export: the sheet in both formats, and the Costing roll-up.
+    p7_root = tempfile.mkdtemp(prefix="rcc-boq-p7-")
+    try:
+        p7_data = {
+            "Beam": [
+                {"Element ID": "1", "Level": "L1", "Grade": "M30",
+                 "Rate": 4500, "Qty: Volume (m3)": 2.0, "Qty: Count": 1},
+            ],
+        }
+        p7_items = site_items_engine.normalize_site_items([
+            {"code": "SI-01", "description": "Binding wire", "quantity": "25",
+             "unit": "kg", "rate": "85.5"},
+            {"code": "SI-02", "description": "Scaffolding hire", "quantity": "1",
+             "unit": "LS", "rate": None, "remarks": "awaiting quote"},
+        ])
+
+        p7_rows = namespace["write_basic_xlsx"](
+            os.path.join(p7_root, "classic.xlsx"),
+            p7_data,
+            {},
+            project_name="P7 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.25.2",
+            generated_stamp="2026-09-19 12:00",
+            site_items=p7_items
+        )
+        p7_order = p10_sheet_order(os.path.join(p7_root, "classic.xlsx"))
+        p7_cover = set(row[0] for row in p7_rows["Summary"] if row)
+
+        check(
+            "Site Items" in p7_order
+            and p7_order.index("Site Items") < p7_order.index("Costing")
+            and "Site Items" in p7_cover,
+            "P7 Classic lists Site Items on the cover and before Costing"
+        )
+
+        check(
+            p7_rows["Site Items"]
+            == site_items_engine.build_site_items_table(p7_items),
+            "P7 Classic Site Items sheet carries the engine's own table"
+        )
+
+        costing = p7_rows["Costing"]
+        site_rows = [row for row in costing if row[0] == "Site Item"]
+        total_row = [row for row in costing if row[0] == "TOTAL"][0]
+        check(
+            [row[1] for row in site_rows] == ["SI-01", "SI-02"]
+            and site_rows[0][4] == ("FORMULA", "C3*D3")
+            and site_rows[1][4] == "",
+            "P7 Costing prices site items by formula and blanks the unpriced one"
+        )
+
+        check(
+            total_row[4] == ("FORMULA", "SUM(E2:E{0})".format(len(costing) - 1)),
+            "P7 the Costing TOTAL spans the site item rows too"
+        )
+
+        clean_rows = namespace["write_basic_xlsx"](
+            os.path.join(p7_root, "clean.xlsx"),
+            p7_data,
+            {},
+            project_name="P7 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.25.2",
+            generated_stamp="2026-09-19 12:00"
+        )
+        check(
+            "Site Items" not in clean_rows
+            and not [row for row in clean_rows["Costing"]
+                     if row[0] == "Site Item"],
+            "P7 a project with no site items keeps its familiar workbook"
+        )
+
+        p7_site_rows = namespace["write_site_xlsx"](
+            os.path.join(p7_root, "site.xlsx"),
+            p7_data,
+            project_name="P7 TEST",
+            tool_version="RCC BOQ Parameter Manager v1.25.2",
+            generated_stamp="2026-09-19 12:00",
+            site_items=p7_items
+        )
+        site_sheet = p7_site_rows.get("Site Items") or []
+        flat = [u"{0}".format(cell) for row in site_sheet for cell in row]
+        check(
+            site_sheet
+            and "SITE / NON-MODEL ITEMS" in flat
+            and "SI-01" in flat and "SI-02" in flat,
+            "P7 Site workbook carries the items inside the site title bands"
+        )
+    finally:
+        shutil.rmtree(p7_root, ignore_errors=True)
+
+    # ------------------------------------------------------------
+    # Authoring spec engine (lib/authoring_spec.py)
+    #
+    # Imported directly rather than name-extracted: it is a self
+    # contained pure module, so importing it keeps the engine's own
+    # internal calls intact and avoids shadowing names that the
+    # extracted BOQ engines already define in the shared namespace.
+    # ------------------------------------------------------------
+    import authoring_spec
+
+    authoring_source_path = os.path.join(LIB_DIR, "authoring_spec.py")
+    with io.open(authoring_source_path, "r", encoding="utf-8-sig") as handle:
+        authoring_source = handle.read()
+
+    check(
+        "import Autodesk" not in authoring_source
+        and "from Autodesk" not in authoring_source
+        and "from pyrevit" not in authoring_source
+        and "import pyrevit" not in authoring_source,
+        "Authoring spec engine imports no Revit or pyRevit symbol"
+    )
+
+    authored = authoring_spec.normalize_model_spec({
+        "template": "T.rte",
+        "output_path": "out.rvt",
+        "levels": [
+            {"name": "Level 2", "elevation_mm": 3000.0},
+            {"name": "Level 1", "elevation_mm": 0.0},
+        ],
+        "elements": [
+            {"kind": "column", "name": "C1", "top_level": "Level 2"},
+            {"kind": "beam", "name": "B1"},
+            {"kind": "slab", "name": "S1"},
+            {"kind": "foundation", "name": "F1"},
+        ],
+    })
+
+    check(
+        [level["name"] for level in authored["levels"]] == ["Level 1", "Level 2"],
+        "Authoring spec sorts declared levels by elevation"
+    )
+
+    check(
+        authored["elements"][0]["width_mm"] == 300.0
+        and authored["elements"][0]["depth_mm"] == 450.0
+        and authored["elements"][1]["length_mm"] == 4000.0
+        and authored["elements"][2]["thickness_mm"] == 150.0,
+        "Authoring spec fills per-kind dimension defaults"
+    )
+
+    # 300 x 450 mm over a 3000 mm storey is the column the live Revit
+    # session actually produced (0.4050 m3 read back from the model).
+    check(
+        abs(authoring_spec.expected_element_volume_m3(
+            authored, authored["elements"][0]) - 0.405) < 1e-9,
+        "Authoring spec column volume matches width x depth x storey height"
+    )
+
+    check(
+        abs(authoring_spec.expected_element_volume_m3(
+            authored, authored["elements"][2]) - 1.8) < 1e-9
+        and abs(authoring_spec.expected_element_volume_m3(
+            authored, authored["elements"][3]) - 1.0125) < 1e-9,
+        "Authoring spec footprint volumes cover slab and foundation"
+    )
+
+    check(
+        authoring_spec.validate_model_spec(authored) == [],
+        "Authoring spec accepts a fully declared model"
+    )
+
+    summary = authoring_spec.summarize_expected_quantities(authored)
+    check(
+        summary["total"]["count"] == 4
+        and abs(summary["total"]["volume_m3"]
+                - (0.405 + 0.4140 + 1.8 + 1.0125)) < 1e-9,
+        "Authoring spec summary totals every declared kind"
+    )
+
+    broken = authoring_spec.normalize_model_spec({
+        "levels": [{"name": "Level 1", "elevation_mm": 0.0}],
+        "elements": [
+            {"kind": "column", "name": "C1"},
+            {"kind": "column", "name": "C1", "top_level": "Roof"},
+            {"kind": "wall", "name": "W1"},
+            {"kind": "slab", "name": "S1", "thickness_mm": 0,
+             "base_level": "Basement"},
+        ],
+    })
+    broken_findings = authoring_spec.validate_model_spec(broken)
+    check(
+        any("needs a top_level" in f for f in broken_findings)
+        and any("Duplicate element name: C1" in f for f in broken_findings)
+        and any("top level 'Roof' not declared" in f for f in broken_findings)
+        and any("unknown kind 'wall'" in f for f in broken_findings)
+        and any("non-positive thickness_mm" in f for f in broken_findings)
+        and any("base level 'Basement' not declared" in f
+                for f in broken_findings),
+        "Authoring spec reports every unbuildable declaration by name"
+    )
+
+    check(
+        authoring_spec.expected_element_volume_m3(
+            broken, broken["elements"][0]) is None,
+        "Authoring spec returns no volume when a column has no top level"
+    )
+
+    check(
+        authoring_spec.compare_actual_to_expected(authored, [
+            {"name": "C1", "volume_m3": 0.405},
+            {"name": "B1", "volume_m3": 0.414},
+            {"name": "S1", "volume_m3": 1.8},
+            {"name": "F1", "volume_m3": 1.0125},
+        ]) == [],
+        "Authoring spec comparison passes when Revit built what was declared"
+    )
+
+    drifted = authoring_spec.compare_actual_to_expected(authored, [
+        {"name": "C1", "volume_m3": 0.500},
+        {"name": "B1", "volume_m3": 0.414},
+        {"name": "S1", "volume_m3": 1.8},
+        {"name": "X9", "volume_m3": 2.0},
+    ])
+    check(
+        any("C1: volume 0.5000 m3 differs from declared 0.4050 m3" in f
+            for f in drifted)
+        and any("F1: declared but not built" in f for f in drifted)
+        and any("X9: built but never declared" in f for f in drifted),
+        "Authoring spec comparison flags drift, missing and stray elements"
+    )
+
+    # family_path lets a spec pin the family file, because the family
+    # NAME is itself identity the BOQ classifier reads - the P10-03
+    # fixture needs a foundation whose family name carries no routing
+    # token (M_Footing-Rectangular would contribute "footing").
+    pinned = authoring_spec.normalize_model_spec({
+        "elements": [
+            {"kind": "foundation", "name": "Pedestal PD1",
+             "family_path": "C:/lib/M_Cup Foundation.rfa"},
+            {"kind": "slab", "name": "Deck Panel PX1"},
+        ],
+    })
+    check(
+        pinned["elements"][0]["family_path"] == "C:/lib/M_Cup Foundation.rfa"
+        and pinned["elements"][1]["family_path"] == ""
+        and authoring_spec.validate_model_spec(pinned) == [],
+        "Authoring spec carries an optional family_path and defaults it empty"
+    )
+
+    check(
+        abs(authoring_spec.mm_to_feet(304.8) - 1.0) < 1e-12
+        and abs(authoring_spec.feet_to_mm(1.0) - 304.8) < 1e-12
+        and abs(authoring_spec.cubic_feet_to_cubic_meters(1.0)
+                - 0.028316846592) < 1e-15,
+        "Authoring spec unit conversions round-trip against Revit internals"
     )
 
     print("")

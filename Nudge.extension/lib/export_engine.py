@@ -16,12 +16,30 @@ import os
 import re
 import time
 import zipfile
+from collections import OrderedDict
 from xml.sax.saxutils import escape as xml_escape
 
 from formwork_engine import (
     build_shuttering_formula,
     get_formwork_factor,
 )
+
+
+def _publish_temp_workbook(temp_path, file_path, attempts=30, delay_seconds=0.2):
+    """Atomically publish a validated workbook despite short Windows locks."""
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    last_error = None
+    for attempt in range(max(1, int(attempts))):
+        try:
+            os.rename(temp_path, file_path)
+            return
+        except OSError as error:
+            last_error = error
+            if attempt + 1 >= max(1, int(attempts)):
+                break
+            time.sleep(max(0.0, float(delay_seconds)))
+    raise last_error
 
 def safe_text(value, fallback="Unknown"):
     """
@@ -1546,9 +1564,120 @@ def build_summary_cover_rows(
 # SITE FORMAT (v1.4.0) - PURE BUILDERS
 # ============================================================
 
+# ------------------------------------------------------------------
+# Row ordering
+# ------------------------------------------------------------------
+
+# Identity codes are text with numbers inside, so plain text sorting gets
+# them wrong: it reads B10 as smaller than B2 because "1" < "2". These two
+# helpers compare the number parts as numbers, which is what a person
+# means by "B1, B2, B3".
+IDENTITY_COLUMNS = ("ID_UNMT", "Mark")
+
+
+def identity_sort_key(value):
+    """Natural sort key: B1 < B2 < B2A < B10 < B10A, blanks last."""
+    try:
+        text = "" if value is None else str(value).strip()
+    except Exception:
+        text = ""
+
+    if not text:
+        # A row with no identity sorts after every row that has one,
+        # rather than jumping to the top as an empty string would.
+        return (1, ())
+
+    parts = []
+    for chunk in re.findall(r"\d+|\D+", text):
+        if chunk.isdigit():
+            parts.append((0, int(chunk), ""))
+        else:
+            parts.append((1, 0, chunk.upper()))
+
+    return (0, tuple(parts))
+
+
+LEVEL_COLUMNS = ("Level",)
+
+
+def _first_filled_column(rows, columns):
+    """The first of these columns any row actually carries a value in."""
+    for column in columns:
+        for row in rows:
+            try:
+                if str(row.get(column, "") or "").strip():
+                    return column
+            except AttributeError:
+                return None
+    return None
+
+
+def sort_rows_for_boq(rows, level_columns=LEVEL_COLUMNS,
+                      identity_columns=IDENTITY_COLUMNS):
+    """Order rows by level, then by identity code inside each level.
+
+    Level names in this project carry their own sequence number
+    ("01 FOUNDATION LEVEL", "03 PLINTH LEVEL"), which is why the same
+    natural key works for both: it reads those numbers as numbers, so
+    "12 TERRACE" comes before "13 OHW/LMR" rather than after it.
+
+    Whichever column is missing simply drops out of the key, so a project
+    with no level, or no identity, is still ordered by the other one.
+    """
+    items = list(rows or [])
+    if not items:
+        return items
+
+    level_column = _first_filled_column(items, level_columns)
+    identity_column = _first_filled_column(items, identity_columns)
+
+    if level_column is None and identity_column is None:
+        return items
+
+    def key(row):
+        parts = []
+        if level_column is not None:
+            parts.append(identity_sort_key(row.get(level_column, "")))
+        if identity_column is not None:
+            parts.append(identity_sort_key(row.get(identity_column, "")))
+        return tuple(parts)
+
+    return sorted(items, key=key)
+
+
+def sort_rows_by_identity(rows, columns=IDENTITY_COLUMNS):
+    """Return the rows ordered by the first identity column they carry.
+
+    The column is chosen from the rows themselves - ID_UNMT if this
+    project uses it, otherwise Mark - so a project that identifies its
+    elements differently is left in its original order rather than
+    sorted by a field it does not fill. Python's sort is stable, so rows
+    sharing an identity keep the order the model gave them.
+    """
+    items = list(rows or [])
+    if not items:
+        return items
+
+    for column in columns:
+        filled = 0
+        for row in items:
+            try:
+                if str(row.get(column, "") or "").strip():
+                    filled += 1
+            except AttributeError:
+                return items
+        if filled:
+            return sorted(
+                items, key=lambda row: identity_sort_key(row.get(column, "")))
+
+    return items
+
+
 def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
-                     project_name="", tool_version="", generated_stamp="",
-                     site_format=False):
+                     project_name="", tool_version="", generated_stamp="", assembly_profile=None,
+                     site_format=False, validation_report_path=None,
+                     unmapped_report=None, site_items=None,
+                     rate_analysis=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -1570,7 +1699,10 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             data_result,
             project_name=project_name,
             tool_version=tool_version,
-            generated_stamp=generated_stamp
+            generated_stamp=generated_stamp,
+            validation_report_path=validation_report_path,
+            unmapped_report=unmapped_report,
+            site_items=site_items
         )
 
     # Only categories that actually contain at least one element produce a
@@ -1829,7 +1961,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
 
     if len(summary_table) > 1:
 
-        summary_data_end = len(summary_table) - 1
+        # Row 1 is the header, so the last category sits on this row.
+        summary_data_end = len(summary_table)
 
         grand_values = ["GRAND TOTAL"]
 
@@ -1863,6 +1996,26 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_rows["BOQ Summary"] = summary_table
 
         quantity_column_map["BOQ Summary"] = [2, 3, 4, 5]
+
+    from assembly_engine import build_structural_assembly_table
+    assembly_table = build_structural_assembly_table(data_result, assembly_profile)
+    if len(assembly_table) > 1:
+        sheet_names.append("Structural Assembly")
+        sheet_rows["Structural Assembly"] = assembly_table
+        quantity_column_map["Structural Assembly"] = [3]
+
+    # P11: where a rate comes from. Emitted only when build-ups exist, so
+    # a project that has not costed anything keeps its familiar workbook.
+    from costing_engine import (
+        RATE_ANALYSIS_SHEET_NAME,
+        build_rate_analysis_sheet,
+    )
+    rate_table = build_rate_analysis_sheet(rate_analysis)
+    if len(rate_table) > 1:
+        sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
+        sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
+        # Material, Wastage, Labour, Machinery, Overheads, Analysed Rate.
+        quantity_column_map[RATE_ANALYSIS_SHEET_NAME] = [3, 4, 5, 6, 7, 8]
 
     # P2: level-wise grouping. One row per Level x Category with live SUMIF
     # formulas against the category sheets, placed between BOQ Summary and
@@ -1899,14 +2052,37 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     # workbook writer and the costing engine.
     from costing_engine import build_costing_sheet
 
+    # P7: typed non-model items, listed before Costing because Costing
+    # rolls them up. Appended only when there is something to list, so a
+    # project without site items keeps its familiar workbook.
+    site_items_table = []
+    if site_items:
+        from site_items_engine import build_site_items_table
+        site_items_table = build_site_items_table(site_items)
+
+    if len(site_items_table) > 1:
+        sheet_names.append(SITE_ITEMS_SHEET_NAME)
+        sheet_rows[SITE_ITEMS_SHEET_NAME] = site_items_table
+        quantity_column_map[SITE_ITEMS_SHEET_NAME] = [3, 5, 6]
+
     costing_sheet = build_costing_sheet(
-        data_result
+        data_result,
+        site_items=site_items
     )
 
     if len(costing_sheet) > 1:
         sheet_names.append("Costing")
         sheet_rows["Costing"] = costing_sheet
         quantity_column_map["Costing"] = [3, 4, 5]
+
+    # P10: unmapped element report, appended only when the exporter found
+    # something to fix so a clean model keeps its familiar workbook.
+    if unmapped_report and len(unmapped_report) > 1:
+        from validation_engine import UNMAPPED_SHEET_NAME
+        sheet_names.append(UNMAPPED_SHEET_NAME)
+        sheet_rows[UNMAPPED_SHEET_NAME] = [
+            list(row) for row in unmapped_report
+        ]
 
     # Professional output: front Summary cover as the first sheet.
     summary_cover = build_summary_cover_rows(
@@ -1979,15 +2155,38 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                 ).encode("utf-8")
             )
 
-    if os.path.exists(file_path):
+    from export_validation import validate_workbook, write_validation_report
+    validation_report = validate_workbook(
+        temp_path,
+        sheet_names,
+        sheet_rows,
+        document_title=project_name,
+        export_format="classic",
+        tool_version=tool_version
+    )
+    validation_report["workbook_name"] = os.path.basename(file_path)[:250]
+
+    if not validation_report.get("ok"):
+        if validation_report_path:
+            write_validation_report(validation_report_path, validation_report)
         try:
-            os.remove(file_path)
+            os.remove(temp_path)
         except:
             pass
+        raise ValueError(
+            "Generated XLSX failed canonical validation with {0} mismatch(es)"
+            .format(validation_report.get("mismatch_count", 0))
+        )
 
-    os.rename(temp_path, file_path)
+    _publish_temp_workbook(temp_path, file_path)
 
-    return sheet_rows
+    if validation_report_path:
+        write_validation_report(validation_report_path, validation_report)
+
+    # Return sheets in workbook order. The export popup lists these keys;
+    # a plain dict keeps no order under IP27, and Summary is stored last
+    # even on CPython although it is the first workbook sheet.
+    return OrderedDict((name, sheet_rows[name]) for name in sheet_names)
 
 
 # ============================================================
@@ -2500,7 +2699,8 @@ def build_site_summary_sheet(data_result, site_detail_meta, project_name,
     return (out_rows, meta)
 
 
-def build_site_tabular_sheet(project_name, title, plain_table):
+def build_site_tabular_sheet(project_name, title, plain_table,
+                             band_title="RCC - REINFORCEMENT BBS"):
     """Wrap a plain summary/BBS table in the site workbook title bands."""
     table = list(plain_table or [])
     if not table:
@@ -2508,7 +2708,7 @@ def build_site_tabular_sheet(project_name, title, plain_table):
     headers = list(table[0])
     out_rows = [
         [str(project_name or "")],
-        ["RCC - REINFORCEMENT BBS"],
+        [str(band_title or "")],
         [str(title or "")],
         [""],
         [("MERGE_V", str(header).upper()) for header in headers],
@@ -2528,6 +2728,10 @@ def build_site_tabular_sheet(project_name, title, plain_table):
             widths.append(18)
         elif header_text == "Length Status":
             widths.append(28)
+        elif header_text == "Issue":
+            widths.append(32)
+        elif header_text == "Detail":
+            widths.append(60)
         else:
             widths.append(14)
     return (out_rows, widths)
@@ -2535,10 +2739,16 @@ def build_site_tabular_sheet(project_name, title, plain_table):
 
 SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]
 
+# P7: non-model line items get their own sheet in both formats.
+SITE_ITEMS_SHEET_NAME = "Site Items"
+
 
 def write_site_xlsx(file_path, data_result, project_name="",
                     tool_version="", generated_stamp="",
-                    include_formwork=True, selected_parameters=None):
+                    include_formwork=True, selected_parameters=None,
+                    assembly_profile=None, validation_report_path=None,
+                    unmapped_report=None, site_items=None,
+                    rate_analysis=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -2634,6 +2844,67 @@ def write_site_xlsx(file_path, data_result, project_name="",
             sheet_names.append(p5_sheet_name)
             sheet_rows[p5_sheet_name] = p5_table
             sheet_widths[p5_sheet_name] = p5_widths
+
+    from assembly_engine import build_structural_assembly_table
+    assembly_plain_table = build_structural_assembly_table(data_result, assembly_profile)
+    if len(assembly_plain_table) > 1:
+        assembly_table, assembly_widths = build_site_tabular_sheet(
+            project_name,
+            "STRUCTURAL ASSEMBLY",
+            assembly_plain_table
+        )
+        sheet_names.append("Structural Assembly")
+        sheet_rows["Structural Assembly"] = assembly_table
+        sheet_widths["Structural Assembly"] = assembly_widths
+
+    # P11: the rate build-up, in the site bands like every other sheet
+    # here. Appended only when build-ups exist.
+    from costing_engine import (
+        RATE_ANALYSIS_SHEET_NAME,
+        build_rate_analysis_sheet,
+    )
+    rate_plain_table = build_rate_analysis_sheet(rate_analysis)
+    if len(rate_plain_table) > 1:
+        rate_table, rate_widths = build_site_tabular_sheet(
+            project_name,
+            "RATE ANALYSIS",
+            rate_plain_table,
+            band_title="RCC - RATE ANALYSIS"
+        )
+        sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
+        sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
+        sheet_widths[RATE_ANALYSIS_SHEET_NAME] = rate_widths
+
+    # P7: same typed line items as the classic workbook, wrapped in the
+    # site title bands and appended only when there are items.
+    if site_items:
+        from site_items_engine import build_site_items_table
+        site_items_plain = build_site_items_table(site_items)
+
+        if len(site_items_plain) > 1:
+            site_items_table, site_items_widths = build_site_tabular_sheet(
+                project_name,
+                "SITE / NON-MODEL ITEMS",
+                site_items_plain,
+                band_title="RCC - SITE ITEMS"
+            )
+            sheet_names.append(SITE_ITEMS_SHEET_NAME)
+            sheet_rows[SITE_ITEMS_SHEET_NAME] = site_items_table
+            sheet_widths[SITE_ITEMS_SHEET_NAME] = site_items_widths
+
+    # P10: same unmapped element report as the classic workbook, wrapped in
+    # the site title bands and appended only when findings exist.
+    if unmapped_report and len(unmapped_report) > 1:
+        from validation_engine import UNMAPPED_SHEET_NAME
+        unmapped_table, unmapped_widths = build_site_tabular_sheet(
+            project_name,
+            "UNMAPPED ELEMENTS",
+            unmapped_report,
+            band_title="RCC - MODEL VALIDATION"
+        )
+        sheet_names.append(UNMAPPED_SHEET_NAME)
+        sheet_rows[UNMAPPED_SHEET_NAME] = unmapped_table
+        sheet_widths[UNMAPPED_SHEET_NAME] = unmapped_widths
 
     summary_table, summary_meta = build_site_summary_sheet(
         data_result,
@@ -2739,18 +3010,38 @@ def write_site_xlsx(file_path, data_result, project_name="",
                 sheet_xml.encode("utf-8")
             )
 
-    if os.path.exists(file_path):
+    from export_validation import validate_workbook, write_validation_report
+    validation_report = validate_workbook(
+        temp_path,
+        sheet_names,
+        sheet_rows,
+        document_title=project_name,
+        export_format="site",
+        tool_version=tool_version
+    )
+    validation_report["workbook_name"] = os.path.basename(file_path)[:250]
+
+    if not validation_report.get("ok"):
+        if validation_report_path:
+            write_validation_report(validation_report_path, validation_report)
         try:
-            os.remove(file_path)
+            os.remove(temp_path)
         except:
             pass
+        raise ValueError(
+            "Generated XLSX failed canonical validation with {0} mismatch(es)"
+            .format(validation_report.get("mismatch_count", 0))
+        )
 
-    os.rename(temp_path, file_path)
+    _publish_temp_workbook(temp_path, file_path)
 
-    # Plain {sheet_name: table} mapping - same contract as
-    # write_basic_xlsx, so the export dialog code can treat both
-    # writers uniformly.
-    return sheet_rows
+    if validation_report_path:
+        write_validation_report(validation_report_path, validation_report)
+
+    # {sheet_name: table} mapping in workbook order - same contract as
+    # write_basic_xlsx, so the export dialog code can treat both writers
+    # uniformly and list sheets in the order Excel shows them.
+    return OrderedDict((name, sheet_rows[name]) for name in sheet_names)
 
 
 def enforce_uniform_grid_borders(styles_xml):

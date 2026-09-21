@@ -22,6 +22,1452 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.4] - 2026-09-21
+
+### Fixed (the Rate Analysis tab accepted the same item code twice)
+- **Found in the owner's own screenshot** of the tab: `RCC-M30` appeared twice, same description,
+  same rate, and the saved settings held both. Selecting a line fills the entry boxes, so pressing
+  **Add item** instead of **Update selected** made a silent second copy. A rate schedule is looked
+  up by item code; two lines with one code - possibly at different rates - leave nobody sure which
+  one the BOQ means.
+- `find_rate_code_conflict` in `lib/costing_engine.py` finds another line using a code, comparing
+  case-insensitively and ignoring surrounding spaces, since `RCC-M30` and `rcc-m30 ` are one item to
+  a reader. **Add** now refuses a code already in the list and says to use Update selected;
+  **Update** lets a line keep its own code but refuses to give it another line's.
+- This stops new duplicates. It does not remove the one already saved; the owner removes that in
+  the tab.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **306 checks pass**, up from 303.
+
+### Verified (live, driven end to end)
+- The owner's mistake was reproduced in Revit 2025 against the real window and the shipping
+  handlers - select a line, press Add - and **refused**, with the list unchanged and the status
+  reading `RCC-M30 is already in the list - select it and use Update selected to change it`.
+  Updating another line to `rcc-m30` was refused too, and updating a line while keeping its own
+  code still worked. **15 of 15** drive checks pass, the original 12 included.
+
+---
+
+## [v1.26.3] - 2026-09-21
+
+### Added (P11 third slice: the Rate Analysis dialog tab)
+- The build-ups no longer have to be written into the settings file by hand. A **Rate Analysis**
+  tab - eight entry boxes, the list, Add / Update / Remove / Clear, and a live summary - built on
+  the same contract the Site Items tab uses: the list on screen is exactly what is saved and
+  exported.
+- Each line says what it is worth, or what it still needs:
+  `RCC-M30 | M30 concrete | rate 7958.72 / m3` beside
+  `SHUT-BM | Beam shuttering | rate pending - needs machinery, overheads_pct`. The summary counts
+  both, and says plainly that the pending ones export with a blank rate rather than a zero.
+- What is typed is normalized through `normalize_rate_analysis` rather than trusted, so a stray
+  character cannot reach the arithmetic. An item with no code is refused.
+- The build-ups are written back with the rest of the settings on export or close.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **303 checks pass**, up from 298. Five new ones: every control the
+  handlers look for exists in the XAML, all four buttons and the list selection are wired, what is
+  typed is normalized, an item with no code is refused, and the build-ups are saved with the
+  settings.
+
+### Verified (live, Revit 2025)
+- **WPF itself parsed the shipping `ui.xaml`**, because well-formed XML is not the same as loadable
+  XAML - a bad style key or a control nested where WPF will not take it fails only here. The window
+  loaded, the tab list reads
+  `Beam, Column, Structure Wall, Rebar, Slab, Foundation, Assembly Profile, Site Items, Rate
+  Analysis`, all **16 controls resolved with the right types**, and all four buttons accepted a
+  Click handler.
+
+### Verified (owner)
+- The project owner opened the real BOQ dialog and exported normally, confirming the dialog path
+  that every change since `v1.25.7` had reached only through the headless bridge - including the
+  `v1.26.1` change to how selections are saved.
+
+### Verified (live, driven end to end)
+- The tab was then **driven** the way a person uses it, inside Revit 2025: WPF loaded the shipping
+  `ui.xaml`, the tab's constants and handlers were taken verbatim out of `script.py`, and every
+  step was checked against what the real WPF controls then held. **All 12 checks passed:**
+  - opening the tab loaded the two saved build-ups, one priced (`rate 7958.72 / m3`) and one
+    showing `rate pending - needs machinery, overheads_pct`, with the source label and a summary
+    that says the pending one exports blank rather than zero;
+  - a complete item typed in and added priced at `8911.84 / m3` and was selected;
+  - an incomplete item was kept but left unpriced;
+  - `abc` for material and `-5` for labour were refused - the line reads
+    `needs material, labour` rather than pricing either;
+  - an item with no code was refused and the person told why;
+  - selecting a line loaded it into the boxes; setting overheads to 0 and pressing Update re-priced
+    it to `7106.00`; Remove took exactly the selected line; Clear emptied every box;
+  - and what the tab would save exports the same rates it showed:
+    `[7106.0, "", 8911.84, ""]`.
+
+### Verified (owner, 2026-09-21) - P11 closed
+- The one path the drive could not reach - the list being written to settings on Close and read
+  back on the next open - was confirmed by the project owner in the real dialog: an item added to
+  the Rate Analysis tab, the dialog closed and reopened, and the item was still there. With that,
+  **P11 is done**: engine (`v1.26.0`), store and workbook sheet (`v1.26.2`) and dialog tab
+  (`v1.26.3`), each live-verified and the whole owner-confirmed.
+
+---
+
+## [v1.26.2] - 2026-09-21
+
+### Added (P11 second slice: the rate build-ups are stored and exported)
+- `load_rate_analysis` / `save_rate_analysis` persist the build-ups in the settings document.
+  Only the declared fields are written, so an item cannot smuggle unrelated keys into settings, and
+  only the figures actually supplied are stored - a half-costed item stays half-costed rather than
+  being completed with zeros.
+- Both workbook formats gain a **Rate Analysis** sheet, classic and site. It is emitted **only when
+  build-ups exist**, so a project that has costed nothing keeps exactly the workbook it had.
+- The export handler loads the build-ups and hands them to both writers. The load is guarded: a
+  costing sheet is worth having, but never at the price of an export that is otherwise ready.
+- A corrupt or absent store returns an empty list rather than raising, so a damaged settings file
+  cannot stop an export.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **298 checks pass**, up from 290. The six new ones cover the store
+  keeping only declared and only supplied fields, a saved build-up pricing identically when loaded
+  back, a corrupt store being harmless, both writers building the sheet, the empty case leaving the
+  workbook unchanged, and the handler passing the build-ups on.
+
+### Not yet
+- No dialog tab: the build-ups still have to be written into the settings file by hand. That tab is
+  the next slice, and needs a live Revit session the way P7's did.
+- The live export of this slice has not run: the bridge write consent had expired.
+
+---
+
+## [v1.26.1] - 2026-09-21
+
+### Fixed (an export on another project erased the saved parameter selections)
+- **Found live, not by reading code.** An export was run while Revit had switched to the owner's
+  architectural model, which has no structural elements. The dialog discovered no parameters,
+  restored none, and `capture_and_save_settings` then wrote that emptiness over a working BOQ
+  setup - all five categories cleared. The next export on the right model came out with no
+  parameter columns at all.
+- A category the current document has no parameters for could not restore or show anything, so an
+  empty selection there means *this model does not have these fields*, not *the user cleared them*.
+  Saving now keeps the previous list in that case. Where the category **does** have parameters, an
+  empty list is a real choice and is still saved - clearing a selection deliberately still works.
+
+### Verified
+- `python test_xlsx_writer.py`: **292 checks pass**, up from 290.
+- **Reproduced and confirmed live:** with the selections restored, a headless export on the correct
+  model left all five categories intact (8/7/4/6/6), where the same sequence had previously cleared
+  them.
+
+### Verified (live) - the v1.25.10 level fix
+- The export that confirmed the above also confirmed the level change on the real model:
+  **194 of 194 columns and 12 of 12 structural walls** now report a `Level` matching the project's
+  own `LEVEL_V`, where none did before. A plinth-to-first-floor column reads `03 PLINTH LEVEL`
+  instead of `01 FOUNDATION LEVEL`.
+
+---
+
+## [v1.26.0] - 2026-09-21
+
+### Added (P11 rate analysis - first slice, engine only)
+- `lib/costing_engine.py` gains the rate build-up PRD section 12 asks for. Where
+  `build_costing_sheet` takes a rate as given, `compute_analysed_rate` says where a rate comes
+  from: **material, wastage, labour, machinery, overheads**.
+- **The basis is stated once, in the module, rather than assumed in three places:** wastage applies
+  to the material only - labour and machinery are not wasted - and overheads apply to everything
+  under them. `RATE_BASIS` carries that sentence so a reader never has to infer it from the
+  arithmetic.
+- **An incomplete build-up is never priced.** The P6 rule applied to money: if any of the five is
+  absent, blank, negative, boolean or non-numeric, the rate stays blank and the status names the
+  missing figures - `Input required: machinery, overheads_pct`. A build-up that quietly treats a
+  missing labour figure as zero prices work nobody costed. Zero itself is honoured, because zero is
+  a decision.
+- `build_rate_analysis_sheet` keeps the incomplete item in the table with the figures it does have,
+  rather than dropping it: a silently absent item is the one nobody chases.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **290 checks pass**, up from 282. The arithmetic is checked by
+  hand - 5200 + 3% = 5356, + 1400 + 350 = 7106, + 12% = **7958.72** - rather than against the
+  engine's own output, and the incomplete case is checked as hard as the complete one: each of the
+  five components removed in turn, and each of -1 / blank / non-numeric / None / True refused.
+
+### Not yet
+- Nothing supplies the build-ups yet: no settings, no dialog, and no sheet in the workbook. P12
+  (rate database) is where the figures come from. This slice is the arithmetic and its refusals,
+  nothing more.
+
+---
+
+## [v1.25.11] - 2026-09-21
+
+### Added (P9 finishes the checks PRD section 12 asks for)
+- **Missing parameters.** `collect_missing_parameter_findings` reports an element whose selected
+  parameter is blank - but only when that parameter's own category fills it on at least half its
+  elements. Flagging every blank cell would bury the findings that matter, because most models
+  carry parameters nobody maintains: a field blank on one element in five hundred is a gap, the
+  same field blank on nearly all of them is simply not in use. The detail line says which, and how
+  many of the category do carry it.
+- **Missing rebar.** `collect_missing_rebar_findings` names concrete elements no Rebar row is
+  hosted by - and reports **nothing at all** when no Rebar row names a host. A model with no
+  reinforcement modelled is not a model with thousands of faults; in this project rebar lives in
+  separate BBS files. Hosts come from `Rebar: Host Element ID` on rows the export already built.
+- Both are warnings, not errors: the quantities they describe are still right. Both read only the
+  built rows, so they add no Revit work and cannot disagree with the workbook, and both feed the
+  same report the `Unmapped Elements` sheet and the compact summary are built from.
+- With these two, every P9 check PRD section 12 lists is either implemented or, for duplicate
+  marks, measured and deliberately declined (see `v1.25.8`).
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **282 checks pass**, up from 274. The eight new ones cover the
+  fill-rate rule in both directions, the export's own columns never being reported, silence on a
+  model with no rebar, naming the right elements once rebar exists, both severities, and the export
+  handler feeding both into the one report.
+
+---
+
+## [v1.25.10] - 2026-09-21
+
+### Fixed (columns and walls were billed a storey low)
+- A column runs from one floor to the next, and Revit's own Level for it is the **base**, so a
+  plinth-to-first-floor column reported "plinth". An RCC BOQ bills that column with the floor it
+  carries. Every level-wise figure for Columns and Structure Walls was therefore one storey low.
+- **The model itself said so.** On `R25-UMA NIWAS BUILDING-ST-31-08-2026`, all **194 of 194**
+  columns have the project's own `LEVEL_V` equal to Top Level and **none** equal to Base Level; the
+  12 structural walls show the same one-level shift. Beams and slabs sit on a single level and
+  matched already, which is why nothing looked wrong there.
+- `get_element_top_level` reads the top constraint - built-ins first, then the visible `Top Level` /
+  `Top Constraint` names so a family that labels it differently still resolves - and
+  `TOP_LEVEL_CATEGORIES` limits this to Column and Structure Wall. It returns "" rather than
+  guessing, and the caller falls back to the ordinary level, so an element with no top constraint
+  keeps exactly the behaviour it had.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **274 checks pass**, up from 271. The three new ones pin which
+  categories are billed to their top level, that Beam/Slab/Foundation are not, that the reader
+  returns empty rather than guessing, and that the caller falls back.
+
+### Not verified
+- The live export of this change has not run yet: the owner's Revit had switched to another
+  document. The level-wise figures it produces still need one export on the UMA NIWAS model.
+
+---
+
+## [v1.25.9] - 2026-09-21
+
+### Added (BOQ sheets read level by level, then by identity)
+- Element rows came out in whatever order Revit handed the elements over - `B10, B16, B2, B1, ...`
+  on the owner's model. Every category sheet is now ordered by its identity code instead.
+- **Plain text sorting would have been wrong**, which is the whole point of the change: it reads
+  `B10` as smaller than `B2` because `"1" < "2"`, giving `B1, B10, B10A, B11, B2`.
+  `identity_sort_key` in `lib/export_engine.py` compares the number runs as numbers, so the order is
+  `B1, B2, B2A, B3, ... B9, B10, B10A, B11`.
+- `sort_rows_by_identity` picks the column from the rows themselves - `ID_UNMT` where a project uses
+  it, otherwise `Mark`. A project that fills neither keeps the order the model gave rather than
+  being shuffled by a field nobody maintains. Rows with no identity sort last, not first, and the
+  sort is stable so elements sharing a code keep their model order.
+- **Level comes first.** `sort_rows_for_boq` orders by the level, then by the identity code inside
+  it, which is how a BOQ is read. The level names in this project carry their own sequence number
+  (`01 FOUNDATION LEVEL`, `03 PLINTH LEVEL`), so the same numeric key serves both and
+  `12 TERRACE` precedes `13 OHW/LMR` instead of following it. Whichever of the two columns a
+  project does not fill simply drops out of the key.
+- The ordering is applied once, at the end of `build_element_data`, so the element sheets, the
+  Costing rows and the unmapped report all read in the same order. The call is guarded: an ordering
+  problem must never cost somebody their export.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **268 checks pass**, up from 261. The seven new ones pin the
+  numeric ordering (`B2` before `B10`), blanks last, row-level sorting, the `Mark` fallback, the
+  leave-it-alone case, empty categories, and that `build_element_data` actually calls it.
+
+### Verified (live, Revit 2025, real model)
+- A headless export of `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` through the
+  bridge's queued-job path, then every sheet checked against the sort key: **all five in true
+  ascending order**. Beam `B1 B2 B2A B3 ... B9 B10 B10A B11`, Column
+  `C1 C2 C3 C4 C5 C6 FC FC1 LW1 LW2 LW3 SW1`, Foundation `BS CF1 CF2 F1 F2 F3 F4 F5 PCC_FOOTING`.
+  Canonical validator 18,624/18,624 cells across 11 sheets, zero mismatches.
+
+---
+
+## [v1.25.8] - 2026-09-21
+
+### Added (P9 compact validation report)
+- `lib/validation_engine.py` gains the part PRD section 12 actually asks for on top of the P10
+  findings: a **severity** per issue and a **compact summary** - counts plus a few short lines -
+  instead of a wall of rows. `summarize_validation_findings`, `count_validation_findings`,
+  `build_validation_report_lines` and `build_validation_report` are all pure and dependency-free.
+- **What separates an error from a warning**, because the split is the whole value of the feature:
+  an **error** means a number in the BOQ is wrong or missing - `Missing or zero volume` (the element
+  contributes no concrete at all) and `Duplicate routing source` (it can be counted twice). A
+  **warning** means the quantities are right but what the BOQ groups them by is not -
+  `Missing concrete grade`, `Missing structural material`, `Uncertain Slab/Foundation mapping`. So
+  `ok` is about errors only; a warning is worth reading before export, not a reason to stop.
+- An issue the engine has never heard of is reported as a warning rather than dropped or
+  overstated.
+- The export's completion message now carries that summary in place of the bare
+  `Unmapped elements: N finding(s)` line. The report is built from the **same table** the
+  `Unmapped Elements` sheet is written from, so the count a person reads can never disagree with the
+  rows they find afterwards. The build is guarded: a summary is a convenience and must never be the
+  reason an otherwise ready export fails.
+
+### Measured, then deliberately not built (duplicate marks)
+PRD section 12 also lists *duplicate marks* among the P9 checks. Whether that is a useful check
+depends entirely on how a real model uses `Mark`, so it was measured before anything was written:
+a read-only `pyrevit run` pass over a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026` found
+**1,076 structural elements and not one `Mark` filled in** - 545 Beams, 194 Columns, 12 Structure
+Walls, 325 Foundations, every one blank. A duplicate-mark check would have reported nothing on this
+project while adding a check to maintain. This model identifies elements through family/type text
+and `ID_UNMT` / `ITEM DES.` / `CODE_UNIMONT`, which is exactly what the classifier already reads.
+**Not built, and the reason is the measurement, not an opinion.** If duplicate identity ever matters
+here, the field to check is the one the project actually fills.
+
+### Verified (harness only)
+- `python test_xlsx_writer.py`: **261 checks pass**, up from 250. The 11 new ones summarize the very
+  `p10_report` fixture the sheet tests use, and cover the grouping order, the error/warning split,
+  the per-category breakdown, the headline wording, warnings-only staying `ok`, a clean export, an
+  unknown issue, the line cap, the no-Revit-symbol guard, and the export handler using the report.
+
+### Not verified
+- The export dialog was not run. The wiring is a message change at a point the harness pins by
+  source, but a person has not seen the new completion text in Revit.
+
+---
+
+## [v1.25.7] - 2026-09-21
+
+### Changed (P8 split: the routing rules leave the pushbutton)
+- `classify_rcc_element` held two different jobs in one function: reading a Revit element, and
+  deciding which logical BOQ sheet its identity implies. The decision - the whole Slab/Foundation
+  rule chain, PCC before footing before raft before slab - is now
+  `classify_identity_text(text, source_name)` in `lib/rule_engine.py`, which reads no element and
+  returns `logical_group` / `subtype` / `reason`. What stays in `script.py` is only the Revit-bound
+  part: the identity text, the family/type names and the identity parameters that make an audit row
+  traceable.
+- `build_logical_rcc_collections` moves to `lib/rule_engine.py` with the classifier **injected**
+  (`build_logical_rcc_collections(floor_elements, foundation_elements, classify)`). The routing and
+  its audit were already pure; only the call to the Revit-bound reader was not, so passing it in
+  moved the last host dependency out.
+- `classification_audit_detail_results` and `build_compact_classification_findings` move verbatim to
+  `lib/rule_engine.py`; `rule_engine` now imports `safe_text` from `parameter_engine`, the same
+  function `script.py` was already handing them.
+- `emit_classification_audit` deliberately stays in `script.py` - it writes to the pyRevit output
+  window, so it is host-bound by definition.
+- `script.py` 5,903 -> 5,688 lines. The now-unused `code_token_match` import was dropped with it.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **250 checks pass**, up from 247. The existing 18 routing cases, the
+  audit reconciliation, the duplicate-source case and the compact-findings popup all still pass
+  through the moved code.
+- **Equivalence proved against HEAD, not assumed.** The pre-move decision chain was rebuilt from
+  git `HEAD`'s `script.py` and run beside the moved one over 52 identity strings x 6 source
+  categories: **identical `logical_group`, `subtype` and `reason` on all 312 combinations.**
+  `classification_audit_detail_results` and `build_compact_classification_findings` were confirmed
+  byte-for-byte verbatim, and `build_logical_rcc_collections` differs only by its new `classify`
+  parameter and the one line that calls it.
+- Three new checks exercise the rules the way the split makes possible: `classify_identity_text` is
+  **imported** and called on plain text - no element, no fake, no `exec` - across every known
+  identity, the unknown-identity fallback, and foundation-before-slab precedence.
+- The existing guard checks were tightened rather than relaxed: the moved names must now resolve
+  from `lib/rule_engine.py`, and `classify_rcc_element` must call `classify_identity_text` while no
+  longer calling `code_token_match` itself.
+
+### Verified (live, Revit 2025, `pyrevit run`, both engines)
+The owner's working Revit session was never touched: `pyrevit run` starts its own Revit process, and
+the sessions below only ever built a throwaway fixture or opened it read-only.
+
+- **A fixture was authored for this change.** `scripts/revit_authoring.py` built eight elements from
+  one spec into a new document - four Floors (`S1`, `GS1`, `Fold Slab FS1`, `Deck Panel PX1`) and
+  four Structural Foundations (`F1`, `CF1`, `PCC`, `Pedestal PD1`) - covering every branch of the
+  moved rule chain including both `Other` fallbacks. `Pedestal PD1` is pinned to the
+  `M_Cup Foundation` family so the family name itself contributes no routing token.
+- **The production closure ran on the real elements.** A second session pulled 24 functions out of
+  the shipping sources by the same top-level-`def` extraction `test_xlsx_writer.py` uses - engine
+  modules first, `script.py` as the fallback - so production source ran, not a copy. **13 resolved
+  from `lib/rule_engine.py`** (the rules, the routing, the audit and its reporting), 2 from
+  `parameter_engine.py`, 1 (`safe_text`) from `export_engine.py` as it already did, and **8 from
+  `script.py`** - every one of them a Revit-bound read. Nothing resolved from the wrong side.
+- **All eight routed as expected, through the injected classifier:** `S1` -> Slab/Slab,
+  `GS1` -> Slab/Grade Slab, `Fold Slab FS1` -> Slab/Fold Slab, `Deck Panel PX1` -> Slab/Other,
+  `F1` -> Foundation/Footing, `CF1` -> Foundation/Combined Footing, `PCC` -> Foundation/PCC,
+  `Pedestal PD1` -> Foundation/Other. `CF1` and `PCC` sit on the `M_Footing-Rectangular` family,
+  whose name carries "footing", so they also prove on real elements that the combined-footing and
+  PCC rules still fire before the plain footing rule.
+- **The audit balanced:** `Floors=4; Structural Foundations=4; Slab=4; Foundation=4; Duplicates=0;
+  Unclassified=0; Other=2`, `valid=True`, 2 detail rows, and the compact findings named exactly the
+  two `Other` elements and no healthy row.
+- The fixture reproduced one previously recorded finding, unrelated to routing: `M_Cup Foundation`
+  builds 1.2658 m³ against a declared 1.0125 m³, the same difference recorded for the P10-03
+  fixture.
+
+- **Re-run on the production CP3123 engine, with the same result.** `pyrevit run` defaults to
+  IPY2712, so the driver was given a `#! python3` shebang and the run repeated: the session reported
+  CPython **3.12.3**, and every number above came back identical - same eight routes, same
+  `Other=2` audit, same 13/8 split of where the functions resolved from. The split therefore behaves
+  the same under IronPython 2.7 and under the engine the tool actually ships on.
+- Reaching CP3123 needed two things that are worth recording for the next live check: `pyrevit.revit`
+  cannot be imported under a headless CPython run (its output-window stylesheet is stored in an
+  IronPython dict), and `__revit__` is not in the script globals there, so the driver uses
+  `Autodesk.Revit.DB` directly and finds the application object through builtins or `HOST_APP`.
+
+### Verified (live, real project model, HEAD against v1.25.7)
+The strongest check of a behaviour-neutral refactor is the old code and the new code answering the
+same real question side by side, so that is what was run.
+
+- **Model:** a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026`, the owner's own structural
+  project. The copy was opened read-only through `OpenDocumentFile` and closed without saving; the
+  original file was never opened, and the owner's working Revit session was never involved.
+- **Two complete closures, one session.** One was built from the working tree, the other from a git
+  snapshot of `HEAD` (the pre-refactor commit `9635c7e`), each by the same extraction. The origin
+  counts alone show the move: `HEAD` resolved **8** functions from `rule_engine.py` and **11** from
+  `script.py`; v1.25.7 resolves **13** and **8** - the three moved functions plus the two new pure
+  ones.
+- **325 real elements classified by both, row for row over the same element list: 0 mismatches.**
+  Not one differed in `logical_group`, `subtype` or `reason`. The audits were identical
+  (`Floors=0; Structural Foundations=325; Slab=303; Foundation=22; Duplicates=0; Unclassified=0;
+  Other=0`, valid on both), the compact findings string was identical, and both produced 0 detail
+  rows.
+- **The hard case was the bulk of it.** 303 of the 325 elements are collected as *Structural
+  Foundations* and route to the **Slab** sheet on their identity - exactly the cross-routing the
+  classifier exists for, and the same 294/22 split the `v1.22.0` missing-material survey recorded on
+  this model. Distribution: Slab/Slab 294, Foundation/PCC 12, Slab/Grade Slab 9, Foundation/Footing
+  8, Foundation/Combined Footing 2.
+- Run on the production **CP3123** engine (CPython 3.12.3).
+
+### Still not verified
+- The **BOQ dialog itself** was not opened. The routing that feeds the Slab and Foundation tabs is
+  verified on both engines, but the tabs, filters and the export button need the project owner.
+- This model carries **no Floor elements** (`Floors=0`), so the Floor-to-Foundation direction was
+  exercised only on the authored fixture. The Foundation-to-Slab direction was exercised 303 times.
+- **Why an agent cannot open the dialog.** A `pyrevit run` session has no `ActiveUIDocument` - the
+  driver above had to open the fixture with `OpenDocumentFile` - while `script.py` begins with
+  `doc = revit.doc`, and under a headless CPython run `from pyrevit import revit` fails outright.
+  So neither the dialog nor the headless queued-job export can be driven from `pyrevit run`; both
+  need a normally launched Revit UI session, which is the owner's click or the Agent Bridge's
+  Secondary Revit. The routing those tabs display is, however, now verified against HEAD on this
+  model's own elements.
+
+---
+
+## [v1.25.6] - 2026-09-19
+
+### Fixed (two faults found by rendering the tab and looking at it)
+- **The source label went stale.** It was written once while the dialog was being built and never
+  updated, so it kept saying *"No site items saved for this project yet."* while four lines sat in
+  the list below it. It now follows the list: `site_items_source` records where the list came from,
+  `site_items_dirty` records whether it has been edited, and `site_items_refresh` rewrites the label
+  on every change. An edited list reads *"Edited - saved to this project when you export or close."*
+  and saving the document's list clears the flag.
+- **Description and Remarks were as narrow as Unit.** The field block is left-aligned, so its star
+  column collapsed to its content width instead of taking the remainder. The free-text column is now
+  an explicit 620 px, beside 220 px for identity and 150 px for short values.
+
+### Added (an agent can see the dialog now)
+- The dialog is rendered to PNG by WPF itself — `RenderTargetBitmap` over the real window after
+  `Show()` — rather than captured from the screen, so the image is exactly what WPF paints. Both
+  themes are rendered by flipping the theme selector between shots.
+- `ui.xaml` gains `x:Name="MainTabs"` on the TabControl so a specific tab can be selected for
+  rendering. No behaviour change.
+
+### Verified (live)
+- Rendered at 1500x950 with four realistic lines (one awaiting a rate, one with a long description)
+  and a fifth part-typed, in Light and Dark. Both read correctly: the list shows
+  `SI-01 | Binding wire for reinforcement | 250.0 kg x 85.5 = 21375.00`, the unpriced line shows
+  `1.0 LS x - = -`, and the summary reads `4 item(s) | 3 priced, total 52375.00 | 1 awaiting a
+  quantity or rate...`. Dark theme text and borders are consistent with the rest of the dialog.
+- The tab was driven end to end again after the refactor: **all twelve checks still pass**.
+
+### Confirmed (owner, 2026-09-21)
+- The project owner confirmed the Site Items tab layout reads correctly on their own screen and
+  monitor size — the last item P7 was waiting on. With the behaviour (twelve driven checks), the
+  workbook (`Site Items` sheet plus the Costing roll-up) and both themes already verified, **P7 is
+  closed as done** and moves to `done-list.md`. No code changed with this entry.
+
+---
+
+## [v1.25.5] - 2026-09-19
+
+### Fixed (Site Items tab layout, from the owner's screenshot)
+- The six entry boxes shared one three-column grid, so each column had to serve two fields with
+  opposite needs: `Description` (wants width) sat above `Rate` (wants none), and `Unit` above
+  `Remarks`. On a wide monitor `Unit` was given roughly 460 px to hold values like `kg`.
+- The columns are now paired by how much room a field actually needs —
+  identity (`Item Code` / `Quantity`, 220 px), short values (`Unit` / `Rate`, 150 px) and free text
+  (`Description` / `Remarks`, the remainder) — and the block is capped at 1100 px and left-aligned so
+  it stops stretching on a wide screen.
+- The bare item list is now inside a `GroupBox` headed **Items in this project**, matching the
+  Available / Selected group boxes on the category tabs, so the empty box reads as a list rather than
+  a void.
+- The intro paragraph is capped at 900 px so it wraps into readable lines instead of one very long
+  one.
+
+### Verified (live)
+- `ui.xaml` still loads through WPF's own `XamlReader` in Revit 2025 with all **15** controls
+  findable and correctly typed — `SiteItemList` resolves even though it now sits inside a `GroupBox`.
+- The tab was driven again end to end after the change: **all twelve checks passed**, unchanged from
+  `v1.25.4`.
+
+---
+
+## [v1.25.4] - 2026-09-19
+
+### Fixed (a headless export could wipe a project's site items)
+- Settings are saved after **every** list mutation, including the parameter restore that runs while
+  the dialog is still being built, and a headless export never runs the dialog branch at all. Either
+  path could therefore call `capture_and_save_settings` while `site_items_state` was still empty and
+  store `[]` as that document's own list — which `resolve_site_items` then reads as "this project has
+  its own list", so the default would never seed it again and a saved list would be silently lost.
+- `site_items_ready` gates the write: the document's site items are persisted only once
+  `site_items_load_for_document()` has actually loaded them.
+- **Reproduced and fixed under test:** a project list of `KEEP-01` survived a headless Classic
+  export (`286/286` cells, 10 sheets) and the workbook carried the item. Before the guard, the same
+  path left `by_document` holding an empty list.
+
+### Verified (live) — the dialog tab was driven, not just loaded
+- The shipping `script.py` was run in Revit 2025 with **one substitution**: the blocking
+  `window.ShowDialog()` became a driver hook. The window, the wired handlers and the engine were all
+  the real ones, so this exercises the tab as a person clicking would, short of the pixels.
+- All twelve driven checks passed: Add creates a priced line (`SI-01 | Binding wire | 25.0 kg x 85.5
+  = 2137.50`) and clears the boxes; a line with no rate is still added and shown unpriced
+  (`1.0 LS x - = -`); the summary separates `1 priced, total 2137.50` from `1 awaiting a quantity or
+  rate` and shows the finding inline; selecting a row loads it back (`code=SI-01 qty=25.0`); Update
+  reprices it to `3420.00`; Remove deletes only the selected line; a line with neither code nor
+  description is refused; and Save as default stores `['SI-01']` as the template while leaving
+  `by_document` empty.
+- Settings snapshots taken around every click confirm Add / Update / Remove touch nothing on disk —
+  only Save as default writes, and it never creates a per-document entry.
+
+### Note on the earlier report
+- The `v1.25.3` entry said the dialog itself could not be exercised by an agent. That was wrong: it
+  can, by substituting the one blocking call. What still genuinely needs the project owner is how
+  the tab **looks** — layout, spacing, theme and readable text at real dialog width.
+
+---
+
+## [v1.25.3] - 2026-09-19
+
+### Added (P7 site items — dialog tab)
+- `ui.xaml` gains a **Site Items** tab: six entry boxes (Item Code, Description, Unit, Quantity,
+  Rate, Remarks), a list of the current lines, and Add / Update selected / Remove selected /
+  Clear fields / Save as default buttons, plus a live summary line.
+- Selecting a line loads it back into the entry boxes, so a typed item can be corrected rather than
+  deleted and retyped.
+- The summary line reports counts, the priced total and how many lines are still awaiting a quantity
+  or rate, and shows the first few validation findings inline.
+- A source label says which of three states the tab is showing: this project's own saved list, the
+  default list seeding it for the first time, or nothing saved yet.
+- **Save as default** writes the current list as the template for NEW projects only. Projects that
+  already have their own list are never touched, matching the `v1.25.1` store rule.
+- The document's list is persisted with every other setting when the dialog saves, so exporting or
+  closing turns a seeded default into that project's own list.
+- Only controls already proven in this dialog were used — TextBox, Button, ListBox with
+  `DisplayMemberPath="Name"` and the existing Brand styles — because an agent cannot exercise the
+  dialog itself.
+
+### Verified (live, as far as an agent can)
+- **Tested (live):** in a Revit 2025 session the real `ui.xaml` was loaded through
+  `System.Windows.Markup.XamlReader`, which is WPF's own parser rather than an XML check. The window
+  built, all **15** Site Items controls were findable, the five buttons resolved as `Button` and the
+  list as `ListBox`, and a `Click` handler attached successfully — the exact call `script.py` makes.
+- `script.py` compiles in that session and every one of the seven names it imports from
+  `site_items_engine` at module level exists.
+- A headless Classic export still passed `265/265` cells across 9 sheets with zero mismatches, and
+  with no site items saved the workbook correctly omits the sheet.
+
+### Not verified
+- **The dialog itself was not opened by an agent.** Button behaviour, editing, the summary text and
+  saving from the dialog need the project owner, exactly as with P10-03. P7 therefore stays
+  `building` until that run.
+
+---
+
+## [v1.25.2] - 2026-09-19
+
+### Added (P7 site items — workbook sheet and Costing roll-up)
+- Both workbook formats gain a **`Site Items`** sheet: Item Code, Description, Quantity, Unit, Rate,
+  Amount, Remarks and a TOTAL. Classic places it immediately before `Costing` and lists it on the
+  Summary cover; the Site format wraps it in the usual title bands
+  (`RCC - SITE ITEMS` / `SITE / NON-MODEL ITEMS`).
+- `build_costing_sheet(data_result, site_items=None)` appends the typed items as further lines
+  **before** the existing TOTAL, so the sheet's own `SUM` covers model-derived and typed work alike
+  and there is only ever one cost total to read. An unpriced line still appears, with a blank
+  Amount, so the sheet never hides work that is merely awaiting a rate.
+- `site_item_label` is now public: the Costing sheet needs exactly the same answer as a validation
+  finding for what names a line, and a second copy of that rule would be free to drift.
+- `script.py` resolves this document's items from the store before export and passes them to both
+  writers. The lookup is guarded, so a settings problem can never abort an export that is otherwise
+  ready.
+- **`BOQ Summary` is untouched**, as decided: it totals concrete volume in m³, and adding a currency
+  figure to that total would be arithmetically wrong.
+
+### Tests
+- `test_xlsx_writer.py` P7 coverage goes from 18 to 24 checks, adding the Classic sheet placement and
+  cover listing, the sheet's contents, the Costing formulas and TOTAL span, the Site-format banded
+  sheet, and that a project with no site items keeps its familiar workbook unchanged.
+
+### Verified (live)
+- **Tested (live):** headless exports of the P10-03 fixture in Revit 2025 with three seeded items,
+  one deliberately without a rate.
+- **Classic:** 10 sheets (was 9), canonical validator `305/305` cells, zero mismatches. Sheet order
+  puts `Site Items` between `BOQ by Grade` and `Costing`.
+- **Site:** 6 sheets, `228/228` cells, zero mismatches, items inside the site title bands.
+- The live Costing sheet carries `E5=C5*D5`, `E7=C7*D7` and `E8=SUM(E2:E7)` — the TOTAL spans the
+  three model elements and all three site items, while the unpriced `SI-02` row has no formula and
+  is not counted as zero.
+- The `Site Items` TOTAL read `22137.5` (`25 x 85.5` plus `1 x 20000`), with `SI-02` blank.
+
+### Still to come in P7
+- The dialog tab for typing and editing the items. Until it exists, the list can only be set in
+  `.rcc_boq_settings.json` under `site_items`, so P7 stays `building`.
+
+---
+
+## [v1.25.1] - 2026-09-19
+
+### Added (P7 site items — storage shape)
+- **Owner decision (2026-09-19):** site items use a reusable **default list that seeds a project the
+  first time it is opened**, after which the project edits its own list.
+- `lib/site_items_engine.py` gains the store layer: `normalize_site_items_store`,
+  `resolve_site_items`, `save_site_items`, `set_default_site_items` and
+  `forget_document_site_items`. Still pure Python.
+- `resolve_site_items` returns the items **and their source** — `document` (the project's own saved
+  list), `default` (seeded, not yet accepted) or `empty` — so the dialog can tell the user which of
+  the three they are looking at.
+
+### Design decision — the default only ever seeds
+- Editing the default list **never** reaches a document that already has its own list. Otherwise
+  changing the template would silently alter the BOQ of a project that was already priced and
+  issued. Re-seeding an existing project is an explicit act: `forget_document_site_items`.
+- Saving a project's list never edits the default, so one project cannot rewrite the template other
+  projects will be seeded from.
+- A blank document title is never used as a store key, and a corrupt or hand-edited store degrades
+  to empty rather than raising while the dialog is opening.
+
+### Tests
+- `test_xlsx_writer.py` P7 coverage goes from 11 to 18 checks, including that a changed default
+  seeds a new document while leaving a saved one untouched, that forgetting a document re-seeds it,
+  and that junk in the settings file normalizes to an empty store.
+
+### Still to come in P7
+- The workbook sheet and its Costing lines, then the dialog tab. `BOQ Summary` will not be touched:
+  it totals concrete volume in m³, and adding a currency figure to that total would be wrong.
+
+---
+
+## [v1.25.0] - 2026-09-19
+
+### Added (P7 site / non-model items — engine slice)
+- **`Nudge.extension/lib/site_items_engine.py`** — the rules for PRD Phase 7 line items that are not
+  modelled (consumables, temporary works, site items), carried as Item Code, Description, Quantity,
+  Unit, Rate and Remarks. Pure Python; imports no Revit or pyRevit symbol.
+- Public API: `normalize_site_item(s)`, `validate_site_items`, `site_item_amount`,
+  `priceable_site_items`, `summarize_site_items`, `build_site_items_table`, and the
+  `SITE_ITEM_HEADERS` layout contract.
+- **It never invents a number.** A quantity or rate that is absent, non-numeric, zero or negative
+  normalizes to `None`, leaves `Amount` blank and raises a finding naming the field — the same
+  discipline `lib/assembly_engine.py` applies to a missing factor. A silently assumed `0` would
+  price real work at nothing. Booleans are refused as numbers too.
+- `summarize_site_items` reports `priced_count` and `unpriced_count` alongside `amount_total`, so a
+  caller can never read the total as covering every line, and the `TOTAL` row sums only the lines
+  that could be priced.
+- Findings name a line by its Item Code, then its Description, then its row number, so an
+  unidentified row is still reportable.
+
+### Tests
+- `test_xlsx_writer.py` adds 11 checks: the host-free guard, number normalization, refusal of zero /
+  negative / boolean / non-numeric input, amount arithmetic, summary split, per-field validation
+  messages, the row-number fallback, the clean-item case, blank cells with a priced-only total, and
+  the header-only empty table. All checks pass.
+
+### Not yet done (deliberately)
+- Settings persistence, the dialog tab and the workbook sheet are **not** part of this slice. Two
+  product decisions gate them: whether site items are stored per project or per document, and
+  whether their total feeds `BOQ Summary` and `Costing` or stays a standalone sheet.
+
+---
+
+## [v1.24.1] - 2026-09-18
+
+### Added (P8 rule/parameter split — second slice)
+- **`Nudge.extension/lib/parameter_engine.py`** — the host-free parameter readers moved out of
+  `script.py`: `safe_text`, `safe_storage_type`, `safe_is_shared`, `safe_is_read_only`,
+  `safe_definition_info`, `find_parameter_on_element`, `find_parameter_in_context`,
+  `count_parameter_metadata`, `get_parameters`, plus the small `ParameterItem` display shim
+  `get_parameters` returns.
+- **`lib/rule_engine.py`** also takes `normalize_concrete_grade` and its `CONCRETE_GRADE_VALUES`
+  vocabulary, which are host-free rules.
+- `script.py` drops from 5,821 to 5,580 lines and imports every moved name, so behavior is
+  unchanged.
+
+### Changed (how a move is scoped)
+- Scoping is now gated by an **AST free-name check**: a module may move only if every name it reads
+  resolves inside itself. The previous call-graph heuristic looked at function calls alone and
+  missed two real dependencies, both caught by running the export in Revit:
+  - `get_parameters` constructs `ParameterItem`, a **class**, which the heuristic never considered.
+  - `safe_is_project_parameter` reads **`doc.ParameterBindings`** — genuinely host-bound despite
+    naming no Revit type. It stays in `script.py`.
+- Block boundaries are now computed as "up to the next column-0 statement" instead of "up to the
+  next `def`". The older rule swallowed the module-level `from rule_engine import (...)` block that
+  sat between two functions. The `v1.24.0` commit was re-checked and was not affected.
+
+### Tests
+- `test_xlsx_writer.py` registers `parameter_engine.py` (appended last, so `safe_text` keeps
+  resolving from `export_engine.py` exactly as before) and extends the P8 guards to 13 checks,
+  including that `safe_is_project_parameter` did **not** move and that no `safe_text` definition is
+  left in `script.py`. All checks pass.
+
+### Verified (live) — behavior-neutral
+- **Tested (live):** the refactored `script.py` ran the headless Classic export on the P10-03
+  fixture in Revit 2025. Canonical validator `265/265` cells across 9 sheets, zero mismatches.
+- Compared cell-by-cell against the project owner's pre-refactor dialog workbook under the same
+  saved settings: **every sheet and every cell identical**, the sole difference being the `Generated`
+  timestamp on the Summary sheet.
+- The earlier `260`-cell baseline differs only because the owner's dialog run saved `Mark` for Slab
+  and Foundation (1 header + 2 rows, and 1 header + 1 row = the 5 extra cells).
+
+### Known limitations
+- `safe_text` now exists in `lib/parameter_engine.py` and `lib/export_engine.py` with identical
+  behavior, and in `lib/rest_api.py` with a different empty-string default. Consolidation was left
+  out so this slice does not touch the XLSX engine.
+- `get_sample_values` in `script.py` (80 lines) has **no caller anywhere in the repository**. It was
+  left in place rather than removed; deleting it is a project-owner decision.
+
+---
+
+## [v1.24.0] - 2026-09-18
+
+### Added (authoring API — declarative structural model building)
+- **`Nudge.extension/lib/authoring_spec.py`** — a new pure engine that declares a structural model
+  (levels, element kinds, dimensions, placement, identity text) and derives the quantities those
+  declarations imply. It imports no Revit or pyRevit symbol, so the harness exercises every rule
+  outside Revit. Public API: `normalize_model_spec`, `validate_model_spec`,
+  `expected_element_volume_m3`, `summarize_expected_quantities`, `compare_actual_to_expected`,
+  plus the `mm_to_feet` / `feet_to_mm` / `cubic_feet_to_cubic_meters` conversions.
+- **`scripts/revit_authoring.py`** — the Revit-bound builder that consumes a normalized spec and
+  creates real Column / Beam / Slab / Foundation elements. It holds only host calls, mirroring the
+  engine split the BOQ tool already uses. Driven through `pyrevit run`, configured by
+  `RCC_AUTHORING_SPEC` / `RCC_AUTHORING_RESULT` / `RCC_REPO_DIR`, and it never touches an existing
+  document: it always creates a new project from a template and saves to the declared path.
+- Each element's spec name becomes a duplicated **type name**, so authored models carry identity
+  text the BOQ classifier actually reads — the mechanism P10-03 needs to exercise an `Other` route.
+- The builder writes each dimension through a candidate parameter-name list and **reports the name
+  it actually used** (`width_mm->b`, `thickness_mm->Foundation Thickness`), so a family that exposes
+  none of them is a logged miss rather than a silently wrong size.
+
+### Added (P8 rule engine — first slice of the `script.py` split)
+- **`Nudge.extension/lib/rule_engine.py`** — the host-free RCC classification rules moved verbatim
+  out of `script.py`: `normalize_label`, `code_token_match`, `_contains_rcc_identity_signal`,
+  `_element_source_category`, `_element_routing_key`, `_safe_element_id_text`,
+  `validate_classification_audit` and `classification_audit_has_findings`. The module needs no
+  constants and imports no Revit or pyRevit symbol.
+- The move was scoped by computing each candidate's **transitive call closure**: only functions whose
+  whole closure is host-free were taken. The Revit-bound `classify_rcc_element`,
+  `build_logical_rcc_collections` and `get_element_identity_text` deliberately stay in `script.py`,
+  which drops from 5,931 to 5,822 lines and now imports the rules by their existing names, so the
+  classifier's behavior is unchanged.
+
+### Changed (declared-but-invalid dimensions)
+- `normalize_element_spec` now distinguishes an **absent** dimension (takes the kind default) from
+  one **declared with a non-positive value** (kept as `None` so validation reports it). The first
+  implementation silently substituted the default, which would have built an element the caller
+  never asked for.
+
+### Tests
+- `test_xlsx_writer.py` registers `rule_engine.py` as an engine module and adds 4 checks pinning the
+  P8 split: the rule engine imports no host symbol, all eight rules resolve from `rule_engine.py`,
+  and both Revit-bound classifier functions still resolve from `script.py`. The existing v1.8.10
+  routing regression (F2A / CF1A / WF1 cases included) now runs the rules from their new home.
+- `test_xlsx_writer.py` adds 12 checks covering level sorting, per-kind defaults, column/footprint
+  volumes, full-spec acceptance, summary totals, every unbuildable-declaration finding, the
+  no-top-level volume guard, clean and drifted actual-versus-declared comparison, unit round-trips,
+  and an architectural guard that the engine imports no Revit or pyRevit symbol. All checks pass.
+
+### Verified (live)
+- **Tested (live):** a `pyrevit run` session against Revit 2025 (`25.0.2.419`) built all four kinds
+  from one spec into a new document and saved it. Read-back volumes matched the declared spec
+  exactly with `build_findings: []` — Column `C1` 0.4050 m³, Beam `B1` 0.4140 m³, Slab `S1` 1.8000 m³,
+  Foundation `F1` 1.0125 m³, total 3.6315 m³. Families resolved were
+  `M_Concrete-Rectangular-Column`, `M_Concrete-Rectangular Beam`, `M_Footing-Rectangular` and a
+  duplicated floor type.
+- The owner's working Revit session was not touched: `pyrevit run` starts its own Revit process and
+  the builder only ever writes a newly created document.
+- **Tested (live, IronPython engine):** a second `pyrevit run` session compiled the refactored
+  `script.py` (5,822 lines) inside Revit, imported `rule_engine` and `authoring_spec` from the
+  extension lib, and re-ran the F2A / F2AB / WF1 / label-normalization rules from their new module.
+  `pyrevit run` uses the IPY2712 engine, so this proves the split imports and behaves under
+  IronPython; the production CP3123 path and the BOQ dialog itself still need the project owner.
+
+### Verified (live) — P10-03 `Other` route, previously unexercised
+- The authoring API built a fixture whose identities deliberately carry neither a known code nor
+  `slab`/`foundation` wording, including a foundation on the `M_Cup Foundation` family so the family
+  name itself contributes no routing token.
+- A `pyrevit run` session then extracted the **real 21-function classification closure** from
+  `script.py` and `lib/` (the same extraction `test_xlsx_writer.py` uses, so production source ran,
+  not a copy) and classified the real Revit elements:
+  - Floor `423208` `Floor / Deck Panel PX1` → **Slab / Other** ("Unknown identity retained under
+    source Floor as Other")
+  - Structural Foundation `424050` `M_Cup Foundation / Pedestal PD1` → **Foundation / Other**
+  - Control Floor `423217` `Typical Slab ST1` → **Slab / Slab**, confirming the fixture does not
+    simply fail everything
+- The audit balanced (`Floors=2; Structural Foundations=1; Slab=2; Foundation=1; Duplicates=0;
+  Unclassified=0; Other=2`), `collect_routing_findings` produced 2 findings, and
+  `build_unmapped_element_report` emitted 2 data rows, both
+  `Uncertain Slab/Foundation mapping`.
+- 8 of the 21 closure functions resolved from the new `lib/rule_engine.py`, so the P8 split was
+  exercised on real elements in the same run.
+
+### Verified (live) — full BOQ export on the `Other`-route fixture
+- The shipping `script.py` was run **headlessly through its own queued-job path** (the same
+  `agent_export_job` contract the Agent Bridge uses), against the authored fixture in a live
+  Revit 2025 session. No reimplementation: the production script took the headless branch and both
+  workbooks came out of the normal export pipeline with the owner's saved dialog settings.
+- **Classic:** 9 sheets, canonical validator `260/260` cells, `0` mismatches, SHA-256
+  `8363342f302b738e71e82ae494e7c9859cb8a587326a6d37e6386f1c0cc17dad`.
+- **Site:** 5 sheets, canonical validator `194/194` cells, `0` mismatches, SHA-256
+  `8ebd62e578df68f63e86e0bcb0b0931af7276911c7a1bad14bf257d9f33408c6`.
+- Both workbooks carry an `Unmapped Elements` sheet listing exactly two
+  `Uncertain Slab/Foundation mapping` rows, now with real levels resolved by the export:
+  - `Slab | 423208 | Level 2 | Unknown identity retained under source Floor as Other | Family/Type: Floor / Deck Panel PX1`
+  - `Foundation | 424050 | Level 1 | Unknown identity retained under source Foundation as Other | Family/Type: M_Cup Foundation / Pedestal PD1`
+- The control element `423217` (`Typical Slab ST1`) appears only under grade/material issues and
+  **not** under routing, confirming the routing rows are specific to the `Other` route.
+
+### Verified (live, project owner) — P10-03 closed
+- The project owner ran the **real BOQ dialog** on the fixture (Nudge → Generate → RCC BOQ, `Mark`
+  selected on the Slab and Foundation tabs) and exported
+  `20260918-AgentTest-OtherRoute-CONCRETE_FINISHING_BOQ.xlsx`.
+- That dialog workbook and the agent's headless Classic workbook have **identical sheet lists (9)**
+  and **byte-identical `Unmapped Elements` tables (8 rows)**, including both
+  `Uncertain Slab/Foundation mapping` rows with levels resolved.
+- Detail sheets carry the selected `Mark` column with the authored values (`PX1`, `ST1`, `PD1`) and
+  the read-back quantities (Slab `1.8` / `0.75` m³, Foundation `1.2658` m³).
+- P10-03 is therefore **done**: routing, missing-grade and missing-material reporting are all
+  confirmed on a real `Other`-route model through the shipping dialog.
+
+### Known limitations
+- The BOQ pushbutton was **not** opened in a live Revit session by an agent. The P8 move is
+  behavior-preserving by construction (verbatim functions, unchanged names, harness plus in-Revit
+  compile and rule checks), but a full Classic/Site export on a real project remains owner work.
+- The authoring builder has been exercised on the metric structural template only, and it writes
+  identity through duplicated type names plus Mark/Comments - not through shared parameters.
+- `expected_element_volume_m3` models a prism (footprint x thickness). On the `M_Cup Foundation`
+  fixture element it therefore reported a real difference - built 1.2658 m3 against a declared
+  1.0125 m3 - because that family is not a plain box. The comparator behaved correctly; the spec
+  simply cannot describe shaped families, and volume comparison should be read as meaningful only
+  for prismatic ones.
+- **The dialog and the headless job path differ at the export guard.** `script.py` refuses an export
+  with zero selected parameters and no Rebar in the model, but the condition ends with
+  `and _headless_export_job is None`, so a queued job is exempt. An agent-run headless export can
+  therefore succeed where the dialog would stop the user, and it cannot on its own prove the dialog
+  path. This surfaced during P10-03: the agent's export ran with no parameters selected, while the
+  owner's dialog run required one (`Mark`) before it would export.
+
+---
+
+## [v1.23.2] - 2026-09-17
+
+### Fixed (footing code routing)
+- **Owner decision (2026-09-17):** `F<number><letter>` codes such as `F2A` and wall-footing codes
+  such as `WF1`/`WF2` are footings, with no separate Wall Footing subtype.
+- `code_token_match` now accepts one optional variant letter after the number for `F`, `CF` and the
+  new `WF` prefix (`F2A`, `CF1A`, `WF1`). `S<number>` stays strict. Bare `WF` and two-letter
+  suffixes such as `F2AB` are still rejected.
+- The Footing branch matches `F` and `WF` codes, so a `Foundation Slab: F2A` identity routes to
+  Foundation / Footing before the generic `slab` wording is considered. `CF1A` routes to Combined
+  Footing.
+
+### Tests
+- `test_xlsx_writer.py` adds routing cases for `F2A`, `CF1A`, `WF1`, `Foundation Slab: F2A`,
+  `Foundation Slab: WF2`, plus strict-boundary rejection of `WF` and `F2AB`. The five new routing
+  cases fail on the `v1.23.1` classifier and pass after the change; all checks pass.
+
+### Verified (live)
+- **Tested (live):** isolated Secondary Revit 2025 (`25.0.2.419`) opened the owner-saved Revit 2025
+  scratch copy `R25-P10-03-TEST-KINDER-GARTEN-ST`; the owner's Primary Revit was untouched and the
+  model was not saved by the bridge.
+- Classic validated 5,116/5,116 cells across 12 sheets and Site 3,413/3,413 across 8 sheets, both
+  with zero mismatches (Classic SHA-256
+  `edf47f82c84a66bf064cb09d890cca3fdf595d8d4e4e608292aea4e18f711dc6`).
+- Compared with the `v1.23.1` export, exactly four elements moved from Slab to Foundation, confirmed
+  by native reads as `F2A` (`347475`, `347539`), `WF2` (`348393`) and `WF1` (`376917`), all
+  `Structural Foundations` / `Foundation Slab`. Slab went from 73 to 69 and Foundation from 30 to 34;
+  the combined ID set is unchanged with no overlap. `BOQ by Level` lost only its now-empty
+  Foundation Level x Slab row (the 5-cell difference). GRAND TOTAL remains `=SUM(B2:B6)`.
+
+---
+
+## [v1.23.1] - 2026-09-17
+
+### Fixed (Classic BOQ Summary GRAND TOTAL)
+- The Classic `BOQ Summary` GRAND TOTAL formulas ended one row early (`SUM(B2:B5)` with five
+  category rows), so the last exported category - Foundation whenever it was present - was left out
+  of every grand total. The range now ends on the last category row (`SUM(B2:B6)`). The per-category
+  rows, element sheets, Site Summary and `BOQ by Level`/`BOQ by Grade` SUMIF sheets were unaffected.
+- The workbook validator compares cell text/formulas against canonical rows built by the same
+  engine, so it could not detect this wrong-but-consistent formula; the harness now asserts the
+  GRAND TOTAL range explicitly.
+
+### Tests
+- `test_xlsx_writer.py` adds a GRAND TOTAL range check. It fails against the `v1.23.0` engine and
+  passes after the fix; all checks pass.
+- `test_rest_api.py` was stale since `v1.23.0` (it still required exactly two POST routes and failed).
+  It now requires the three bounded write routes, including the structural-material route, and
+  passes. RestCore and RestMcp suites pass unchanged.
+
+### Verified (live) / findings
+- **Tested (live):** isolated Secondary Revit 2025 (`25.0.2.419`, Bridge `v2.5.0` channel
+  `secondary`) opened a scratch copy of `STRUCTURE - KINDER GARTEN.rvt`
+  (`P10-03-TEST-KINDER-GARTEN-ST`) while the owner's Primary Revit was untouched; the shared add-in
+  manifest was restored to Primary right after port `48886` opened. The model was not saved.
+- Before the fix, Classic (5,121/5,121 cells, 12 sheets) and Site (3,413/3,413 cells, 8 sheets)
+  validated with zero mismatches and showed `GRAND TOTAL =SUM(B2:B5)` over 137 Beam, 60 Column,
+  8 Structure Wall, 73 Slab and 30 Foundation rows. The final `v1.23.1` Classic export validated
+  5,121/5,121 cells across 12 sheets with zero mismatches, labels the tool `v1.23.1` and reads
+  `=SUM(B2:B6)` (SHA-256 `b1bf91146ceb64d3a843af186b490ea64f774eae854e2b9b2585adf2bb2a671f`).
+- T-02 sample: 20 exported rows (four each from Beam, Column, Structure Wall, Slab, Foundation)
+  match native Revit Volume/Area **at Revit's displayed precision** (0.01 m3, 1 m2). The bridge
+  returns display strings, so full-precision agreement is not claimed.
+- P10 reported 314 findings (308 missing concrete grade, 6 Column missing structural material) and
+  **zero routing findings**: every Structural Foundation in this model uses the `Foundation Slab`
+  family, so the generic `slab` wording routes any non-exact code to Slab and no element reaches
+  `Other`. P10-03 `Other`-route findings therefore remain unexercised live.
+- **Open classification question (not changed):** `F2A` (2), `WF1` and `WF2` footings at
+  `-02-Foundation Level` (0.5-0.6 m) are routed to the Slab sheet, because `F2A`/`WF1` are not exact
+  `F<number>` codes and the family name contains `Slab`. Whether these codes are footings is an
+  owner decision before any classifier change.
+
+---
+
+## [v1.23.0] - 2026-09-15
+
+### Added (controlled Structural Material assignment)
+- Agent Bridge `v2.5.0` adds a read-only `GET /rcc-boq/materials` catalog, bounded to 1,000
+  materials from the active document, plus matching CLI and `rcc_boq_materials` MCP access.
+- Added a dedicated `POST /rcc-boq/element-types/<element_id>/structural-material` operation and
+  `rcc_boq_set_structural_material` MCP tool. It accepts only an explicit active-document material
+  ID and an ElementType in Structural Foundations, Floors, Structural Framing, Structural Columns
+  or Walls.
+- Structural Material writes default to dry-run, require the temporary Revit write session for
+  apply, support an optimistic `expected_current_material_id` guard (`0` means blank), perform
+  native read-back, and expose a forced-failure rollback probe for isolated QA.
+- Writable family types use the built-in type parameter. System types whose Structural Material is
+  derived/read-only use only an unambiguous compound-structure `Structure` layer; the operation sets
+  that layer's material and designates its structural-material index without adding/deleting layers.
+
+### Safety
+- The general `set_parameter` operation still rejects every `ElementId` parameter. Structural
+  Material is available only through the new narrow type/material endpoint; arbitrary ElementId
+  writes remain unavailable.
+- The bridge still exposes no save, delete, arbitrary path or arbitrary code operation. A successful
+  assignment changes only the open Revit document and reports `document_saved=false`.
+
+### Verified / remaining
+- **Tested (host-free):** Primary and Secondary Revit add-in/Gateway builds pass with zero warnings
+  and errors; Primary and Secondary Core and 11-tool MCP protocol suites pass; Python compilation
+  and the complete 189-check XLSX regression harness pass.
+- **Tested (live):** isolated Secondary Revit 2025 loaded `v2.5.0` on the saved `TEST COPY` of UMA
+  NIWAS while the shared manifest was restored to Primary. Its bounded catalog returned all 631
+  materials. All 13 affected Slab/Foundation types resolved one structural layer at index 0 with
+  the correct existing layer material (`RCC_SLAB`, `RCC_FOOTING` or `PCC_FOOTING`).
+- Consent-disabled apply was rejected without change. A consented F1 forced-failure probe returned
+  `RolledBack`, and fresh read-back confirmed effective Structural Material returned to blank while
+  the layer's existing `RCC_FOOTING` material remained unchanged.
+- With owner-enabled consent, all 13 guarded type transactions committed and independent generic
+  element reads returned the expected Structural Material. The 316 prior missing-material findings
+  dropped to zero. The final Classic workbook contains zero `(No Grade)`, only the independent 20
+  Beam missing/zero-volume findings, and validates 12,165/12,165 cells across 12 sheets with zero
+  mismatches (SHA-256
+  `0d0dbde94cf562825c34b3fb2e0be03c954420702de843e5d226a8b040864e27`).
+- **Persistence verified:** after the owner manually saved `TEST COPY`, the Secondary Revit process
+  was normally closed and the saved RVT reopened with write consent disabled. Fresh reads of all 13
+  types matched their expected `RCC_SLAB`, `RCC_FOOTING` or `PCC_FOOTING` values.
+- **Installed (Primary production):** with Revit 2025 closed, `scripts/install_rest_bridge.ps1`
+  published Primary `v2.5.0` with zero warnings/errors and pointed the Revit manifest at
+  `RestBridge\v2.5.0\RccBoq.RestRevit.dll` (previous `v2.4.0` manifest backed up). Installed
+  binaries carry the Primary pipe/port constants, and the installed STDIO MCP server completed an
+  initialize/tools-list handshake reporting `v2.5.0` with all 11 tools. Codex `rcc-boq-v2` now
+  targets the `v2.5.0` MCP server (previous config backed up).
+- **Tested (live, Primary):** a fresh Revit 2025 (`25.0.2`) launch opened port `48885` within ~35 s.
+  Authenticated REST status and the installed MCP `rcc_boq_status` tool both returned API `2.5.0`,
+  channel `primary`, `revit_connected=true` and write consent disabled; an unauthenticated request
+  returned `401`. With no model open, document and material-catalog reads returned the bounded
+  `No active Revit document` error.
+- **Tested (live, Primary, open model):** Revit 2025 was relaunched on the saved UMA NIWAS
+  `TEST COPY`. The document read returned `TEST COPY`; REST and installed-MCP material catalogs each
+  returned all 631 materials untruncated, including `RCC_SLAB`, `RCC_FOOTING` and `PCC_FOOTING`.
+  A generic read of type `3070326` (`F1 - 600MM`, Structural Foundations) returned Structural
+  Material `RCC_FOOTING`, matching the Secondary-assigned persisted value. Revit closed without a
+  save prompt, and the RVT size, timestamp and SHA-256 were unchanged. **Unverified on Primary:**
+  the Structural Material dry-run/apply path (an agent-side permission policy blocked the dry-run
+  call; it remains verified only on Secondary).
+
+---
+
+## [v1.22.2] - 2026-09-15
+
+### Fixed (authoritative concrete-grade fields)
+- Concrete grade now comes only from the owner-confirmed Text parameters `GRADE OF CONCRETE`
+  and `Grade`, matched case-insensitively. `Grade of Concrete` has deterministic precedence over
+  `Grade`; for each name, a blank or invalid instance value falls through to its type value.
+- Removed grade inference from `Structural Material`, `Material` and element/type identity text.
+  Those fallbacks could hide missing `GRADE OF CONCRETE` model data by inventing a grade from a
+  secondary source. Structural Material remains independently available to the P10 missing-material
+  rule; only grade resolution changed.
+- Grade spellings `M40`, `M-40` and `M 40` still normalize to canonical `M40`. If neither
+  authoritative field contains a recognized M10-M80 token, the export writes `(No Grade)` and P10
+  reports the element as missing concrete grade.
+- Corrected the P10 missing-grade detail so it names only `GRADE OF CONCRETE` and `Grade`; it no
+  longer claims that material or identity-text fallback was attempted.
+
+### Verified
+- `python -m py_compile` passes for `script.py`, `validation_engine.py` and `export_engine.py`.
+- `python test_xlsx_writer.py` passes (189 checks), including uppercase-name matching, field
+  precedence, instance-to-type fallback, invalid-value fallback to the second authoritative field,
+  explicit rejection of material and identity-text inference, and authoritative P10 detail text.
+- **Tested (live):** an isolated Secondary Revit 2025 Classic export of
+  `RVT-25-AMANI_KNOWLEDGE_PARK-ST` ran `v1.22.2` without saving the model. The published workbook
+  validated 93,623 of 93,623 non-empty cells across 12 sheets with zero mismatches. Its element
+  sheets read `M40` for 2,404 Beams, 729 Columns, 271 Structure Walls, 1,089 Slabs and 13
+  Foundations, and `BOQ by Grade` grouped all five categories under `M40`. The final workbook hash
+  after the P10 wording correction is
+  `9513748d6dcbca7e6ab4d29476250f9496ff7355301cc2db214262aa52da0e9d`.
+- The same live export reported 36 Structure Walls as `(No Grade)`. Read-only API inspection of
+  sample instances and their types confirmed the authoritative grade field is blank/absent, so
+  these are genuine model-data findings rather than resolver false positives.
+- **Second-project live verification:** an isolated Secondary Classic export of
+  `R25-UMA NIWAS BUILDING-ST-31-08-2026` validated 13,895/13,895 cells across 12 sheets with zero
+  mismatches and did not save the model. The authoritative fields produced M30/M40/M10 groups,
+  including M40 for 3 Beams, 185 Columns, 12 Structure Walls, 2 Slabs and 10 Foundations.
+  The remaining `(No Grade)` set is 3 Beams plus 9 Columns. Read-only inspection of all 12
+  instances and their three unique types (`B43(a)`, `B55(h)` and `FC1`) confirmed blank/absent
+  `GRADE OF CONCRETE`/`Grade` data. Final workbook SHA-256:
+  `2a59e0d5ef056ac41f8314c1892a41eca4d1e366ea8b3ed2c8085347388e71ba`.
+- With the owner's explicit grade confirmation, the Secondary Agent Bridge set M30 on the three
+  Beam instances and M40 on the nine FC1 Column instances. All 12 writes passed blank-current-value
+  guards and fresh native read-back; the document remained unsaved. The post-fill Classic export
+  contains zero `(No Grade)` elements and validates 13,745/13,745 cells across 12 sheets with zero
+  mismatches (SHA-256
+  `844f64a89aec50a7ba8d61cd5ebf9b43095b4993da08916415e86e109e42572f`).
+- The post-fill workbook still correctly reports independent model-quality issues: 20 Beams with
+  missing/zero computed Volume and 316 Slab/Foundation elements with missing Structural Material.
+  Six zero-volume Beam IDs from the earlier workbook were already unresolvable through the active
+  document API before the grade writes and are absent from the later snapshot; the bridge exposes
+  no delete operation.
+
+---
+
+## [v1.22.1] - 2026-09-15
+
+### Fixed (P10-03 concrete grade from structural material)
+- `resolve_concrete_grade` step 2 now reads `Structural Material` (instance, then type) before
+  `Material`. Before, it looked up only a parameter named `Material`, which the surveyed Revit 2025
+  models do not have, so a grade carried in a structural material name (for example
+  `Concrete - M25`) was never used and such elements fell through to identity text or `(No Grade)`.
+- A new `structural_material_candidates` helper yields every non-empty material name in priority
+  order. The grade resolver tries each one, so a mix-free `Structural Material` such as `RCC_BEAM`
+  never hides a graded `Material`. `resolve_structural_material` (P10-02) now returns the first
+  candidate, so the missing-material check is unchanged.
+- Grade precedence is unchanged: grade parameter, then material, then identity text. Where a model
+  carries different grades in its material name and its identity text, the material grade now wins,
+  as the documented order always intended.
+
+### Verified
+- Before and after on the real function source: with an instance `Structural Material` of
+  `Concrete - M25` or a type value of `M35 RCC`, the `v1.22.0` resolver returns `(No Grade)`;
+  `v1.22.1` returns `M25` and `M35`.
+- `python test_xlsx_writer.py` passes (188 checks), including a new P10-03 check covering
+  grade-parameter precedence, instance and type Structural Material, a `Material` fallback behind a
+  mix-free Structural Material, an invalid grade parameter falling through, identity text and
+  `(No Grade)`. The P10-02 material checks still pass after the helper refactor.
+- **Unverified (live):** the two surveyed models name materials without a grade token (`RCC_BEAM`,
+  `RCC_COLUMN`, `RCC_WALL`, `Concrete, Cast-in-Place gray`), so a live export there cannot show a
+  changed grade. No live export has been run for this release.
+
+---
+
+## [v1.22.0] - 2026-09-15
+
+### Added (P10-02 missing structural material)
+- The Unmapped Element Report also flags `Missing structural material` for exported concrete
+  elements whose structural material resolves to blank or `<By Category>`.
+- `resolve_structural_material` in `script.py` reads the per-element parameter index the export
+  already builds: instance `Structural Material`, then type `Structural Material`, then `Material`.
+  An instance value that is blank falls through to the type. No extra ParameterSet iteration is
+  added.
+- Materials reach the report through a separate Element ID map, so no workbook column is added.
+  Material is judged only for elements whose parameters were indexed.
+- Live survey that shaped the rule, on a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026`:
+  Beams (56) and Columns (16) carry an instance value (`RCC_BEAM`, `RCC_COLUMN`); Walls and
+  Foundation Slabs expose it on the type, and 32 of 34 sampled Foundation Slab types were blank.
+  No sampled element had a parameter literally named `Material`.
+
+### Observed, not changed
+- `resolve_concrete_grade` step 2 looks up a parameter named `Material`, which the surveyed models
+  do not have; their material lives in `Structural Material`, so grade-from-material never fires
+  there. It has no effect on these models because their material names carry no M-grade token.
+  Left for a separate owner decision.
+
+### Docs
+- `README.md` Secondary-channel QA now restores the Primary manifest by copying a saved backup.
+  Re-running the installer for Primary fails while the Primary Revit is running, because its
+  add-in and Gateway files are locked, and would leave the shared manifest on Secondary.
+
+### Verified
+- `python test_xlsx_writer.py` passes (187 checks), including 3 new P10-02 checks: the report rule
+  for blank, `<By Category>`, present and unresolved materials; the resolver scope order and
+  fallbacks; and export-handler wiring that only records indexed elements.
+- The survey ran in an isolated second Revit 2025 window on the Secondary bridge (port 48886) against
+  a scratch copy of the model. The owner's working Revit and the Primary bridge were never called,
+  and the shared add-in manifest was restored to Primary (hash verified) as soon as the test Revit
+  had loaded.
+- Live pyRevit Site export of the scratch copy in the isolated test Revit, with write consent
+  granted by the owner in that window only; the model was not saved. 8,245 of 8,245 cells
+  validated across 8 sheets with zero mismatches. `Unmapped Elements` lists 354 findings: 294 on
+  the Slab sheet and 22 on the Foundation sheet for missing structural material, 3 Beam and
+  9 Column for missing concrete grade, and 26 Beam for missing or zero volume.
+- No Beam, Column or Structure Wall reported missing material, matching the survey (`RCC_BEAM`,
+  `RCC_COLUMN`, `RCC_WALL`). Spot check through the Secondary bridge: Foundation Slab elements
+  `3141335` and `3178190` (`BS_300MM`) and `3313456` and `3313469` (`RCC_SLAB_125MM`) have no
+  instance Structural Material and a blank type Structural Material, so they are true findings.
+
+---
+
+## [v1.21.1] - 2026-09-15
+
+### Fixed (export popup sheet listing order)
+- The completion popup "Workbook sheets" line now lists sheets in the same order as the workbook.
+  It joins the keys of the mapping returned by the workbook writers, and both writers returned a
+  plain `dict`: IP27 keeps no key order (the owner saw a scrambled list in the `v1.21.0` popup), and
+  even on CPython `Summary` was stored last although it is the first workbook sheet.
+- `write_basic_xlsx` and `write_site_xlsx` now return an `OrderedDict` built from `sheet_names`,
+  the same list that writes `workbook.xml`. The export popup code in `script.py` is unchanged; only
+  the version moves to `1.21.1`. The workbook contents and sheet order were already correct and do
+  not change.
+
+### Verified
+- Reproduced before the fix on CPython: both writers returned keys ending in `Summary` while the
+  workbook began with it. After the fix both key orders match `workbook.xml` exactly.
+- `python test_xlsx_writer.py` passes (184 checks), including 2 new checks that compare each
+  writer's returned key order with the sheet order read back from `workbook.xml`.
+- Owner-confirmed in the interactive dialog on `20260225-BBS_BEAM_RBM_SALES-P1` (2026-09-15): the
+  `1.21.1` popup lists `Summary, Beam, Column, Structure Wall, Slab, Foundation, Rebar, Rebar
+  Summary, Rebar BBS, BOQ Summary, Structural Assembly, BOQ by Level, BOQ by Grade, Costing,
+  Unmapped Elements`, matching the workbook, with validation PASS on 166,835 cells and the same
+  8,696 unmapped findings.
+
+---
+
+## [v1.21.0] - 2026-09-15
+
+### Added (P10 Unmapped Element Report - first slice)
+- New dependency-free `lib/validation_engine.py`, the planned P9 landing point
+  (`PROJECT_STRUCTURE.md` section 9), now carrying the P10 first slice.
+  `build_unmapped_element_report(data_result, routing_findings)` lists exported Beam, Column,
+  Structure Wall, Slab and Foundation elements with a missing concrete grade (blank or
+  `(No Grade)`), a missing, zero or non-numeric `Qty: Volume (m3)`, or an uncertain Slab/Foundation
+  route. `collect_routing_findings` flattens the existing v1.8.10 classifier audit (`Other` routes
+  and duplicate routing sources) into plain rows, so the engine never touches Revit objects.
+- Only elements present in the export are reported, so Slab/Foundation subtype filters and
+  "Export selected only" never list elements missing from the workbook. Grade and volume are judged
+  only when the row carries those columns; Rebar is excluded.
+- Both workbook writers accept `unmapped_report`. When it holds findings, an `Unmapped Elements`
+  sheet (Category, Element ID, Level, Issue, Detail) is appended: after Costing in the Classic
+  workbook, where the Summary cover lists it, and after Structural Assembly in the Site workbook,
+  inside the site title bands under `RCC - MODEL VALIDATION`. A header-only report adds no tab, so a
+  clean model keeps its familiar workbook.
+- The completion popup adds one line with the finding count. The existing routing note is kept.
+
+### Changed
+- Site export now resolves concrete grade as well (`build_element_data(include_grade=True)`) so the
+  P10 grade check runs in the default Site format. Site detail sheets still hide the Grade column,
+  and costing, assembly and the site summary ignore the key. The harness contract that asserted
+  "Site skips grade work" now asserts that Site keeps P10 grade resolution.
+- `build_site_tabular_sheet` gains an optional `band_title` (default unchanged,
+  `RCC - REINFORCEMENT BBS`) and column widths for the Issue and Detail headers.
+
+### Roadmap order
+- P10 was taken before P7, P8 and P9 by owner decision on 2026-09-15. A live agent read of
+  `20260225-BBS_BEAM_RBM_SALES-P1` found `GRADE OF CONCRETE` present but empty on 400 of 400
+  sampled structural elements, which today exports a BOQ by Grade collapsed into `(No Grade)` with no
+  warning. `todo-list.md` allows code- and data-driven reordering.
+
+### Verified
+- `python test_xlsx_writer.py` passes (182 checks), including 10 new P10 checks: engine rules fed by
+  the real classifier audit output, Classic and Site workbooks re-read by the canonical validator,
+  no empty tab for a clean report, no Grade column on Site detail sheets, and export-handler wiring.
+- Live pyRevit export of `20260225-BBS_BEAM_RBM_SALES-P1` on Revit 2025 build `25.0.2.419`, run
+  through the Agent Bridge headless export with owner-granted write consent. The model was not saved.
+  - Site: 118,821 of 118,821 cells validated across 11 sheets with zero mismatches. `Unmapped
+    Elements` is the last sheet, under `RCC - MODEL VALIDATION`, with 8,696 findings: 8,667 missing
+    concrete grade and 29 missing or zero volume (28 Beam, 1 Slab). The Beam site sheet carries no
+    Grade column. Job time 124 s.
+  - Classic: 166,835 of 166,835 cells validated across 15 sheets with zero mismatches. `Unmapped
+    Elements` follows Costing, the Summary cover lists it, and it holds the same 8,696 findings.
+    Job time 149 s.
+  - Cross-check: missing-grade findings equal the `(No Grade)` rows on every element sheet (Beam
+    4,031, Column 1,311, Structure Wall 849, Slab 2,318, Foundation 158), and BOQ by Grade holds only
+    `(No Grade)`, the silent collapse this phase exists to surface.
+  - Spot check: Beams `2970078`, `2970079` and `2970080` read back through the bridge with an empty
+    Revit Volume despite lengths of 3141, 2697 and 775 mm, and Slab `3026042` reads `0.00 m3`. These
+    are real model issues, not false positives. No uncertain routing occurred on this model.
+- Owner-confirmed in the interactive dialog on the same model: a Classic export (validation PASS,
+  166,835 cells) ended with `Unmapped elements: 8696 finding(s) - see the 'Unmapped Elements' sheet
+  and use Manage > Select by ID to fix them in the model.` Processing time 57.2 s (Revit data
+  36.4 s, workbook 20.8 s).
+- **Unverified:** routing findings on a model with `Other` routes, and Site export time against a
+  v1.20.0 baseline.
+- **Observed, pre-existing:** the popup "Workbook sheets" listing prints in scrambled order under
+  IP27 because it joins the keys of a plain `dict`. The workbook itself keeps the correct order.
+  Not introduced by this release.
+
+---
+
+## [v1.20.0] - 2026-09-12
+
+### Changed (Agent Bridge write-session window)
+- The Agent Bridge consent window is now **1 hour** instead of 15 minutes. `AgentBridgeCommand`
+  holds the single `WriteDuration` constant (`TimeSpan.FromHours(1)`); the TaskDialog strings are
+  derived from it through `FormatWriteDuration`, so the dialog text can no longer drift from the
+  duration actually granted. `WriteSessionConsent` was untouched and still applies no clamp of its
+  own.
+- The consent model is otherwise unchanged: write access stays opt-in from Revit's Agent Bridge
+  button, "Disable write access now" still revokes immediately, and the longer window only widens
+  the period during which an already-consented agent may write.
+- Bridge installs as **v2.4.0** (`RccBoq.RestRevit`, Gateway and MCP). The `v2.3.0` install tree is
+  left in place, so the `.addin` manifest can be pointed back at it to roll back.
+- `BridgeConstants.Version` and `BridgeConstants.ApiVersion` were bumped to `2.4.0` alongside
+  `Directory.Build.props`. The bridge version lives in those two places and they are not derived
+  from each other: a live `status` probe after the first `v2.4.0` install still reported
+  `api_version 2.3.0` because only the props file had been bumped. Both constants have moved
+  together on every bump since `v2.0.0`, so both were moved here too.
+
+### Verified (native Revit 2025)
+- Live read path confirmed against the running bridge before the change: `status` returned
+  `api_version 2.3.0`, `revit_connected true` and an active 15-minute write session; `document`
+  returned `20260225-BBS_BEAM_RBM_SALES-P1` on Revit build `25.0.2.419`.
+- `dotnet build RccBoq.RestRevit -c Release` and the full install script pass with 0 warnings and
+  0 errors. Binary string inspection confirms the installed `v2.4.0` assembly carries `1 hour` and
+  no longer carries `Enable write access for 15 minutes`, while the retained `v2.3.0` assembly
+  still carries the old strings.
+- Confirmed in a live Revit 2025 session. The project owner restarted Revit and reported the
+  consent dialog reading "Enable write access for 1 hour"; an agent `status` probe against that
+  session returned `RemainingSeconds: 3574`.
+- After the version-constant correction was installed, an agent started Revit 2025 and polled the
+  bridge: it came up in 19s reporting `api_version 2.4.0`, `extension_version 2.4.0` and
+  `revit_connected true`, with `write_session.Enabled false` on a fresh start — the consent gate
+  holding as designed. With no document open, `document` and `selection` returned a clean
+  `No active Revit document` error and `last-validation` served its cached record while correctly
+  flagging `matches_active_document false`.
+- **Not agent-verifiable:** enabling write consent requires clicking the Agent Bridge TaskDialog in
+  Revit, so the 1-hour grant itself rests on the project owner's confirmation above. The dialog
+  code is byte-identical between that build and the reinstalled one; only the version constants
+  changed.
+
+---
+
+## [v1.19.1] - 2026-09-11
+
+### Fixed (IP27 selected-column order)
+- Revit's active IP27 engine no longer builds export rows with an unordered Python 2 `dict`.
+  `OrderedDict` now preserves `Element ID`, grouping fields, the exact Selected-list order, then
+  remaining automatic quantity fields through Classic workbook generation.
+- A regression asserts the IP27-specific ordered-row contract. The defect was found by a fresh
+  native persistence/export test: the JSON settings restored the requested Rebar order correctly,
+  but the `v1.19.0` Classic workbook interleaved automatic fields between those selections.
+
+### Verified (native Revit 2025)
+- Compilation and the full XLSX harness pass. After a fresh test-Revit restart, the saved Rebar
+  selection restored as `Element ID → Diameter → Total Weight`; a `v1.19.0` control export exposed
+  the unordered IP27 header, then the `v1.19.1` export placed those fields consecutively at columns
+  3-5 after `Element ID, Level`.
+- The corrected Classic workbook passed canonical validation across 118,101/118,101 cells and
+  14/14 sheets with zero mismatches. It matched the active BBS test document and Revit did not save
+  the model.
+
+---
+
+## [v1.19.0] - 2026-09-11
+
+### Added (isolated multi-Revit rollback QA)
+- Upgraded Agent Bridge to `v2.3.0`. Builds now support an explicit `Primary` channel on port
+  `48885` and an isolated `Secondary` channel on port `48886`, each with its own mutex and Named
+  Pipe. This lets native QA target a dedicated Revit process without taking bridge ownership from
+  the user's working Revit session.
+- Added consent-gated `force_rollback` to the existing bounded parameter-write operation. The probe
+  sets one allow-listed parameter inside a normal Revit transaction, deliberately raises a
+  controlled exception before commit, rolls back, and verifies the original value by fresh native
+  read-back. The document is never saved automatically.
+- `install_rest_bridge.ps1` accepts `-BridgeChannel Primary|Secondary`; Secondary installation uses
+  a versioned `-secondary` folder and warns that the normal Primary manifest must be restored after
+  the target test process starts.
+
+### Verified
+- Primary and Secondary Core/Revit/Gateway builds pass with zero warnings. Pipe serialization,
+  MCP forwarding/schema, REST security checks and CLI compilation cover the rollback flag and both
+  fixed loopback channels.
+- Native Revit 2025 QA connected the dedicated BBS test document through Secondary `48886` while
+  the working document remained connected through Primary `48885`. Rebar `3411763` `Comments` was
+  temporarily set inside the controlled probe, the forced failure returned transaction status
+  `RolledBack`, and fresh read-back restored the original blank value. The audit log recorded
+  `verified=True`; the Revit document was not saved.
+- A read-only P4/P5 audit compared the validated Classic and Site workbooks with the dedicated
+  Revit process. All 4,031 Site Beam L/W/H rows matched native element/type dimensions within the
+  formats' 1 mm rounding boundary. Classic/Site Rebar, BBS and diameter summaries independently
+  reconciled at 11,903 bars, 25,439.37 m and 30,130.966 kg.
+- Native reads matched one single bar plus fixed stirrup, straight, L-shape, C-shape and both U-ring
+  samples. Variable Rebar `3411763` retained blank Cutting Length, its native average-only status
+  and unchanged quantity/length. The full XLSX harness also passed. Live dialog selection-order
+  persistence remains a separate UI-bound P5 check.
+
+---
+
+## [v1.18.2] - 2026-09-09
+
+### Fixed (live headless export)
+- Assembly-profile normalization now treats CPython/.NET null-coercion `SystemError` as a missing
+  optional factor instead of aborting export.
+- Canonical validation explicitly releases its ZIP wrapper before atomic publication, and workbook
+  publication retries transient Windows file locks. Headless failures retain the innermost bounded
+  traceback so native failures remain actionable without exposing an arbitrary file path.
+
+### Verified (native Revit 2025)
+- Agent Bridge `v2.2.1` queued the existing pyRevit BOQ command against
+  `20260225-BBS_BEAM_RBM_SALES-P1` without opening the BOQ or Save dialogs.
+- Site output passed `70,085 / 70,085` canonical cells across `10 / 10` sheets with zero mismatches.
+  Classic output independently passed `118,101 / 118,101` cells across `14 / 14` sheets with zero
+  mismatches. Each validation SHA-256 matched the published workbook on disk.
+- The consent-off apply guard passed before testing; the 15-minute write session later expired back
+  to disabled automatically. Neither export saved the Revit document.
+
+---
+
+## [v1.18.1] - 2026-09-09
+
+### Fixed (live Revit command discovery)
+- Upgraded Agent Bridge to `v2.2.1`. Live Revit dry-run showed that pyRevit registers the BOQ
+  button with the fully-qualified identifier
+  `CustomCtrl_%CustomCtrl_%Nudge%Generate%BOQ`; command discovery now tries that journal-confirmed
+  identifier first while retaining the earlier compatibility candidates.
+
+### Verified
+- Revit 2025 loaded Agent Bridge `v2.2.0`, connected to the intended BBS test document, and safely
+  rejected command discovery before any job or workbook was created. The exact BOQ identifier was
+  then recovered from the same native Revit journal and added to the REST regression contract.
+
+---
+
+## [v1.18.0] - 2026-09-09
+
+### Added (headless Agent export; host-free verified)
+- Upgraded Agent Bridge to `v2.2.0` with a consent-gated, dry-run-first BOQ export job. The bridge
+  posts the existing Nudge RCC BOQ pyRevit command, so classification, quantities and workbook
+  generation are not duplicated in native code.
+- Added a hidden one-shot mode to the existing BOQ command. It consumes only a schema-checked job
+  for the exact active document, bypasses WPF and Save dialogs, preserves saved user preferences,
+  forces quantities on, prevents Excel auto-open, and publishes the existing canonical validation.
+- Exports use unique names only inside `%LOCALAPPDATA%\RCC_BOQ\AgentExports`; arbitrary output paths,
+  overwrite requests and Revit document save remain unavailable.
+- Added REST `POST /rcc-boq/boq/export`, `GET /rcc-boq/boq/export-status`, MCP tools
+  `rcc_boq_start_export` / `rcc_boq_export_status`, and CLI commands `start-export` /
+  `export-status`. Job status returns only bounded metadata and the output basename, never the
+  internal filesystem path.
+
+### Verified (host-free)
+- Python compilation, the complete Classic/Site XLSX harness, Core/MCP/REST regressions and all
+  Revit/Gateway/MCP builds pass with zero warnings. Tests cover queued/running/completed jobs,
+  external-path rejection, dry-run defaults and the nine-tool closed MCP catalog.
+
+### Verification boundary
+- A fresh Revit restart must confirm pyRevit command discovery, native `PostCommand`, headless
+  completion and retrieval of the generated validation report before this export operation is
+  marked live-tested.
+
+---
+
+## [v1.17.0] - 2026-09-09
+
+### Added (canonical BOQ validation; host-free verified)
+- Added a dependency-free XLSX validator that reopens each temporary Classic or Site workbook and
+  compares every persisted non-empty string, number and formula cell with the canonical in-memory
+  rows derived from the active Revit document.
+- Invalid workbooks are rejected before replacing the destination file. Successful validation
+  publishes a bounded report at `%LOCALAPPDATA%\RCC_BOQ\last_boq_validation.json` containing only
+  the workbook basename, SHA-256 digest, counts and capped mismatch diagnostics; no workbook path
+  or Revit document path is exposed.
+- Upgraded Agent Bridge to `v2.1.0` with read-only REST endpoint
+  `GET /rcc-boq/boq/last-validation`, MCP tool `rcc_boq_last_export_validation`, and matching CLI
+  command `last-validation`. The bridge reports whether the validation belongs to the active
+  document.
+
+### Verified (host-free)
+- Python compilation and the complete XLSX harness pass for Classic and Site output. The harness
+  confirms a clean cell-for-cell validation report and proves that a deliberately changed Beam
+  element ID is detected as a mismatch.
+- Revit add-in, Gateway and MCP builds pass with zero warnings; Core, MCP protocol and REST client
+  regressions pass with seven closed-world MCP tools.
+
+### Verification boundary
+- Install/restart and one fresh live Revit export are required before claiming native report
+  retrieval or active-document matching. This slice validates exporter input against persisted
+  XLSX cells; unattended triggering of the pyRevit export dialog is not exposed.
+
+---
+
+## [v1.16.0] - 2026-09-09
+
+### Added (Agent Bridge v2 foundation; host-free verified)
+- Upgraded the local bridge protocol to `v2.0.0` and added a native Revit **Agent Bridge**
+  pushbutton under Add-Ins.
+- Assigned v2 its own current-user mutex, named pipe and localhost port `48885`, allowing migration
+  testing beside a still-running v1 bridge without taking over the user's active Revit session.
+- Added a user-controlled 15-minute write session; writes remain disabled by default and are
+  disabled again during Revit shutdown.
+- Added `rcc_boq_set_parameter` to MCP and REST with dry-run default, expected-current-value guard,
+  explicit apply mode, Revit transaction rollback, bounded inputs and local audit logging.
+- Kept the MCP surface closed-world: no arbitrary Revit method names, code evaluation, delete,
+  document save or document-close operation is exposed.
+
+### Verified (live Revit 2025 + automated tests)
+- Revit add-in, Gateway and MCP builds pass with zero warnings; Core and MCP protocol regressions
+  pass. The installed v2 bridge started beside the still-running v1 bridge without taking over the
+  user's working Revit process.
+- Authenticated status/document/element/Rebar reads passed against Revit `25.0.2.419`. A native
+  `Comments` parameter dry-run produced the expected preview; apply with write consent disabled was
+  rejected and a follow-up read confirmed that the model value remained unchanged.
+- During an explicitly enabled write session, `Comments` was changed from blank to `Agent QA`,
+  confirmed by read-back, restored to blank and confirmed again. The bridge reported
+  `document_saved=false`; an expected-current-value mismatch was rejected without mutation, and
+  manual consent revocation returned the bridge to read-only mode.
+- The installed MCP executable passed a raw initialize/list/status exchange with all six tools and
+  is registered in Codex as `rcc-boq-v2`.
+
+### Verification boundary
+- Automatic consent expiry and a forced-failure transaction rollback still require controlled
+  native Revit QA.
+- Background BOQ snapshot/export comparison is the next Agent Bridge slice and is not claimed here.
+
+---
+
+## [v1.15.1] - 2026-09-09
+
+### Fixed (host-free verified; native Revit QA pending)
+- Replaced the BOQ footer `DockPanel` with a responsive three-column grid so long status messages
+  truncate with an ellipsis instead of squeezing the export-option controls off-screen.
+- Preserved the complete status text in a tooltip and kept the options plus Close button at their
+  natural widths.
+
+---
+
+## [v1.15.0] - 2026-09-08
+
+### Added (P6; host-free and Revit 2025 verified)
+- Added a pure Structural BOQ Assembly engine with measured Concrete, hosted Reinforcement and
+  Formwork components plus configurable Binding Wire, Cover Blocks and Labour allowances.
+- Added a safe Global / Custom profile: absent or invalid local factors stay blank and are labelled
+  `Input required` instead of silently fabricating quantities.
+- Added Profile and Source audit columns and persisted normalized assembly settings.
+- Added `Structural Assembly` sheets to Classic and Site-format workbooks.
+- Added regressions for hosted Rebar routing, safe blank allowances, sheet structure and ordering.
+
+### Verification boundary
+- Python compilation and the full XLSX regression harness pass.
+- Revit 2025 live QA verified Assembly Profile entry and restore, plus generated Site and Classic
+  workbooks containing `Structural Assembly` with the saved profile and source metadata.
+
 ## [v1.14.1] - 2026-09-08
 
 ### Fixed (installed STDIO smoke-test follow-up)

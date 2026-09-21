@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.13.3'
+__version__ = '1.26.4'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -30,6 +30,7 @@ import os
 import traceback
 import re
 import time
+from collections import OrderedDict
 from System import Environment
 from System.Windows.Forms import SaveFileDialog, DialogResult
 
@@ -38,13 +39,23 @@ from System.Windows.Forms import SaveFileDialog, DialogResult
 # PARAMETER ITEM
 # ============================================================
 
-class ParameterItem(object):
+# P8 parameter engine: the host-free readers moved to
+# lib/parameter_engine.py. Revit-bound readers below still call them by
+# the same names, so behavior is unchanged. safe_is_project_parameter
+# stays here because it reads doc.ParameterBindings.
+from parameter_engine import (
+    ParameterItem,
+    safe_text,
+    safe_storage_type,
+    safe_is_shared,
+    safe_is_read_only,
+    safe_definition_info,
+    find_parameter_on_element,
+    find_parameter_in_context,
+    count_parameter_metadata,
+    get_parameters,
+)
 
-    def __init__(self, name):
-        self.Name = name
-
-    def __str__(self):
-        return self.Name
 
 
 # ============================================================
@@ -55,7 +66,7 @@ class ParameterItem(object):
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.13.3'
+SCRIPT_VERSION = '1.26.4'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -163,6 +174,10 @@ active_selection_ids = set()
 # BOQ Summary sheet with live SUM formulas.
 quantities_flag = True
 
+# A queued Agent Bridge export is consumed only by the matching active
+# document. Normal interactive runs leave this as None.
+_headless_export_job = None
+
 # ============================================================
 # FORMWORK ENGINE (P3) - moved to lib/formwork_engine.py
 # ============================================================
@@ -250,6 +265,49 @@ from settings_engine import (
     load_app_settings,
     save_app_settings,
 )
+from assembly_engine import normalize_assembly_profile
+
+# P7 site items: the dialog tab edits this list, the export reads it.
+from site_items_engine import (
+    normalize_site_item,
+    site_item_amount,
+    summarize_site_items,
+    validate_site_items,
+    resolve_site_items,
+    save_site_items,
+    set_default_site_items,
+)
+
+# The live list for the active document, rebuilt when the dialog opens.
+site_items_state = []
+
+# P11: the rate build-ups shown in the Rate Analysis tab. Same shape as
+# site_items_state - the list on screen is exactly what gets saved and
+# exported.
+rate_analysis_state = []
+
+# False until site_items_load_for_document() has run. Settings are saved
+# after every list mutation, including the parameter restore that happens
+# while the dialog is still being built - and a save that fired then would
+# store an empty list for this document, which resolve_site_items would
+# read as "this project has its own list" and never seed the default again.
+site_items_ready = [False]
+
+# Where the list on screen came from, and whether it has been edited
+# since. The label under the heading reports both, so it can never keep
+# saying "nothing saved yet" while lines are sitting in the list.
+site_items_source = [""]
+site_items_dirty = [False]
+
+assembly_profile = {
+    "id": "global-custom",
+    "name": "Global / Custom",
+    "edition": "1.0.0",
+    "source": "Project specification / applicable local SOR",
+    "binding_wire_factor": None,
+    "cover_block_factor": None,
+    "labour_factor": None,
+}
 
 
 # ============================================================
@@ -266,11 +324,6 @@ parameter_metadata = {
     "Rebar": []
 }
 
-
-# safe_text moved to lib/export_engine.py - shared pure-Python
-# safe-string helper used by the XLSX metadata-sheet builders there
-# and by the Revit-bound readers here.
-from export_engine import safe_text
 
 
 def safe_element_id(parameter):
@@ -292,34 +345,10 @@ def safe_element_id(parameter):
         return "N/A"
 
 
-def safe_storage_type(parameter):
-    """
-    Return the Revit StorageType name safely.
-    """
-    try:
-        storage_type = parameter.StorageType
-
-        if storage_type is None:
-            return "Unknown"
-
-        return safe_text(storage_type, "Unknown")
-
-    except:
-        return "Unknown"
 
 
-def safe_is_shared(parameter):
-    try:
-        return bool(parameter.IsShared)
-    except:
-        return False
 
 
-def safe_is_read_only(parameter):
-    try:
-        return bool(parameter.IsReadOnly)
-    except:
-        return False
 
 
 def safe_is_built_in(parameter):
@@ -403,119 +432,8 @@ def safe_is_project_parameter(parameter_definition):
         return False
 
 
-def safe_definition_info(definition):
-    """
-    Capture Definition-level information available in Revit 2025.
-    Missing/unsupported values are returned as Unknown or N/A.
-    """
-    info = {
-        "Definition Type": "Unknown",
-        "Definition Name": "Unknown",
-        "Data Type": "Unknown",
-        "Data Type TypeId": "N/A",
-        "Group Type": "Unknown",
-        "Group TypeId": "N/A"
-    }
-
-    if definition is None:
-        return info
-
-    try:
-        info["Definition Type"] = safe_text(
-            definition.GetType().__name__,
-            "Unknown"
-        )
-    except:
-        pass
-
-    try:
-        info["Definition Name"] = safe_text(
-            definition.Name,
-            "Unknown"
-        )
-    except:
-        pass
-
-    try:
-        data_type = definition.GetDataType()
-
-        if data_type is not None:
-            info["Data Type"] = safe_text(
-                data_type,
-                "Unknown"
-            )
-
-            try:
-                info["Data Type TypeId"] = safe_text(
-                    data_type.TypeId,
-                    "N/A"
-                )
-            except:
-                pass
-
-    except:
-        pass
-
-    try:
-        group_type = definition.GetGroupTypeId()
-
-        if group_type is not None:
-            info["Group Type"] = safe_text(
-                group_type,
-                "Unknown"
-            )
-
-            try:
-                info["Group TypeId"] = safe_text(
-                    group_type.TypeId,
-                    "N/A"
-                )
-            except:
-                pass
-
-    except:
-        pass
-
-    return info
 
 
-def find_parameter_on_element(element, parameter_name, case_sensitive=True):
-    """
-    Find the first matching parameter on an element by Definition.Name.
-    Returns the Parameter object or None.
-    """
-    if element is None:
-        return None
-
-    try:
-        for parameter in element.Parameters:
-
-            try:
-                definition = parameter.Definition
-
-                if not definition:
-                    continue
-
-                name = definition.Name
-
-                if case_sensitive:
-                    is_match = name == parameter_name
-                else:
-                    try:
-                        is_match = name.lower() == parameter_name.lower()
-                    except:
-                        is_match = False
-
-                if is_match:
-                    return parameter
-
-            except:
-                continue
-
-    except:
-        return None
-
-    return None
 
 
 def find_parameter_with_scope(element, parameter_name):
@@ -652,27 +570,6 @@ def build_element_parameter_context(element, type_cache=None):
     return context
 
 
-def find_parameter_in_context(parameter_context, parameter_name):
-    """Return an indexed parameter with Instance-before-Type precedence."""
-    try:
-        key = str(parameter_name or "").lower()
-    except:
-        key = ""
-    if not key or not isinstance(parameter_context, dict):
-        return None, "Unknown"
-    try:
-        parameter = parameter_context.get("instance", {}).get(key)
-    except:
-        parameter = None
-    if parameter is not None:
-        return parameter, "Instance"
-    try:
-        parameter = parameter_context.get("type", {}).get(key)
-    except:
-        parameter = None
-    if parameter is not None:
-        return parameter, "Type"
-    return None, "Unknown"
 
 
 def build_parameter_metadata():
@@ -929,18 +826,6 @@ def build_parameter_metadata():
     return metadata_result
 
 
-def count_parameter_metadata(metadata):
-    total = 0
-
-    try:
-        for element_name in metadata.keys():
-            total += len(
-                metadata[element_name]
-            )
-    except:
-        pass
-
-    return total
 
 
 # ============================================================
@@ -1877,73 +1762,138 @@ def get_element_level(element, level_cache=None):
     return remember("")
 
 
+# Categories billed to the level they support rather than the level they
+# start from. A column runs from one floor to the next, and Revit's own
+# Level for it is the base - so a plinth-to-first-floor column reports
+# "plinth". An RCC BOQ bills that column with the floor it carries, which
+# is its top level, and this project's own LEVEL_V field says the same:
+# on the owner's model all 194 columns have LEVEL_V equal to Top Level and
+# none equal to Base Level. Beams and slabs already sit on one level, so
+# they are not listed here.
+TOP_LEVEL_CATEGORIES = ("Column", "Structure Wall")
+
+# Tried in order. Built-ins first, then the visible parameter names, so a
+# family that names its constraint differently still resolves.
+TOP_LEVEL_BUILT_IN_NAMES = (
+    "SCHEDULE_TOP_LEVEL_PARAM",
+    "FAMILY_TOP_LEVEL_PARAM",
+    "WALL_HEIGHT_TYPE",
+)
+TOP_LEVEL_PARAMETER_NAMES = ("Top Level", "Top Constraint")
+
+
+def get_element_top_level(element, level_cache=None):
+    """Return the level an element reaches, or "" when it has none.
+
+    Returns "" rather than guessing: the caller falls back to the ordinary
+    level, so an element with no top constraint keeps the behaviour it
+    always had instead of losing its level entirely.
+    """
+    cache = level_cache if isinstance(level_cache, dict) else {}
+
+    def level_name_from_id(level_id):
+        try:
+            if level_id is None or level_id.IntegerValue == -1:
+                return ""
+            cache_key = ("level", int(level_id.IntegerValue))
+        except:
+            return ""
+        if cache_key in cache:
+            return cache[cache_key]
+        try:
+            level_element = doc.GetElement(level_id)
+            value = (
+                str(level_element.Name)
+                if level_element is not None and level_element.Name
+                else ""
+            )
+        except:
+            value = ""
+        cache[cache_key] = value
+        return value
+
+    candidates = []
+
+    for built_in_name in TOP_LEVEL_BUILT_IN_NAMES:
+        try:
+            built_in = getattr(DB.BuiltInParameter, built_in_name)
+        except:
+            continue
+        try:
+            candidates.append(element.get_Parameter(built_in))
+        except:
+            continue
+
+    for parameter_name in TOP_LEVEL_PARAMETER_NAMES:
+        try:
+            candidates.append(element.LookupParameter(parameter_name))
+        except:
+            continue
+
+    for parameter in candidates:
+        if parameter is None:
+            continue
+        try:
+            if not parameter.HasValue:
+                continue
+            if parameter.StorageType != DB.StorageType.ElementId:
+                continue
+            level_name = level_name_from_id(parameter.AsElementId())
+        except:
+            continue
+        if level_name:
+            return level_name
+
+    return ""
+
+
 # ============================================================
 # P2: CONCRETE GRADE RESOLUTION
 # ============================================================
 
 # Recognized characteristic compressive-strength grades (IS 456 series).
 # Kept on one line so the regression harness can lift the constant.
-CONCRETE_GRADE_VALUES = ("M10", "M15", "M20", "M25", "M30", "M35", "M40", "M45", "M50", "M55", "M60", "M65", "M70", "M75", "M80")
+# P8 rule engine: concrete-grade normalization and its vocabulary are
+# host-free rules.
+from rule_engine import CONCRETE_GRADE_VALUES, normalize_concrete_grade
 
-# Parameter names commonly carrying the mix in Indian structural
-# models. Matched by exact name (case-insensitive) on the element
-# first, then its type, via the existing scope resolver.
+
+# Owner-confirmed authoritative concrete-grade fields. Matched by exact
+# name (case-insensitive); Grade of Concrete takes precedence over Grade.
+# Material and identity text are deliberately not grade sources.
 CONCRETE_GRADE_PARAMETER_HINTS = (
-    "Concrete Grade",
     "Grade of Concrete",
-    "Concrete Grade (fck)",
-    "Grade",
-    "Concrete Type",
-    "Concrete Mix",
-    "Mix",
-    "Mix Design"
+    "Grade"
 )
 
 
-def normalize_concrete_grade(text):
+
+
+def concrete_grade_parameter_candidates(element, parameter_context=None):
     """
-    P2: normalize a free-text fragment to a canonical concrete grade
-    token ("M25"). Accepts M25 / m-25 / M 25 spellings. Returns ""
-    when no recognizable grade token is present, so callers can fall
-    through to the next resolution source.
+    Yield authoritative grade parameters in deterministic precedence order.
+
+    Field precedence is Grade of Concrete, then Grade. Within each field,
+    the instance value is tried before the type value. Blank or invalid
+    instance text therefore falls through to the matching type parameter.
+    Names are matched case-insensitively so the Properties-palette label
+    "GRADE OF CONCRETE" matches the authoritative field.
     """
-    try:
-        candidate = str(text or "")
-    except:
-        return ""
+    if isinstance(parameter_context, dict):
+        for hint in CONCRETE_GRADE_PARAMETER_HINTS:
+            key = hint.lower()
+            for scope in ("instance", "type"):
+                try:
+                    parameter = parameter_context.get(scope, {}).get(key)
+                except:
+                    parameter = None
+                if parameter is not None:
+                    yield parameter
+        return
 
-    match = re.search(
-        r"\bM\s*-?\s*(\d{2})\b",
-        candidate,
-        re.IGNORECASE
-    )
-
-    if not match:
-        return ""
-
-    normalized = "M" + match.group(1)
-
-    if normalized in CONCRETE_GRADE_VALUES:
-        return normalized
-
-    return ""
-
-
-def find_grade_parameter(element, hint):
-    """
-    P2: case-insensitive grade parameter lookup.
-
-    Project parameter names arrive in any casing ("GRADE OF CONCRETE",
-    "Grade of Concrete", ...), while the regular UI-selected parameter
-    path matches exact names. Checks the element first, then its type
-    and symbol, mirroring find_parameter_with_scope's scope order.
-    """
-    if element is None:
-        return None
-
-    lowered = str(hint or "").lower()
-
-    candidates = [element]
+    candidates = []
+    if element is not None:
+        candidates.append(element)
 
     try:
         if element.Symbol is not None:
@@ -1953,112 +1903,106 @@ def find_grade_parameter(element, hint):
 
     try:
         type_id = element.GetTypeId()
-
         if (
             type_id is not None
             and not type_id.Equals(DB.ElementId.InvalidElementId)
         ):
             type_element = doc.GetElement(type_id)
-
-            if type_element is not None:
+            if type_element is not None and type_element not in candidates:
                 candidates.append(type_element)
     except:
         pass
 
-    for candidate in candidates:
-
-        try:
-            for parameter in candidate.Parameters:
-
+    for hint in CONCRETE_GRADE_PARAMETER_HINTS:
+        lowered = hint.lower()
+        for candidate in candidates:
+            try:
+                parameters = candidate.Parameters
+            except:
+                parameters = []
+            for parameter in parameters:
                 try:
                     definition = parameter.Definition
-
-                    if not definition:
-                        continue
-
-                    if str(definition.Name).lower() == lowered:
-                        return parameter
-
+                    if definition and str(definition.Name).lower() == lowered:
+                        yield parameter
+                        break
                 except:
                     continue
-
-        except:
-            pass
-
-    return None
 
 
 def resolve_concrete_grade(element, parameter_context=None):
     """
     P2: resolve one element's concrete grade for grade-wise grouping.
 
-    Tries, in order:
-      1. A recognized grade parameter (see CONCRETE_GRADE_PARAMETER_HINTS)
-         on the element or its type, read with the existing scope helpers.
-      2. The Material parameter's target material name (Revit material
-         names often carry the mix, e.g. "Concrete - M25").
-      3. A grade token inside the element's identity text
-         (element name | type | family | common labels).
+    Only the owner-confirmed Grade of Concrete and Grade Text parameters
+    are authoritative. Material names and element/type identity text are
+    never used to infer a grade because doing so can hide missing model data.
 
     Returns the canonical token ("M25") or "(No Grade)" so every row
     still groups deterministically. Never raises.
     """
-    for hint in CONCRETE_GRADE_PARAMETER_HINTS:
-
-        if parameter_context is not None:
-            parameter, _scope = find_parameter_in_context(
-                parameter_context,
-                hint
-            )
-        else:
-            parameter = find_grade_parameter(element, hint)
-
-        if parameter is None:
-            continue
-
+    for parameter in concrete_grade_parameter_candidates(
+        element,
+        parameter_context
+    ):
         grade = normalize_concrete_grade(
             safe_parameter_value(parameter)
         )
-
         if grade:
             return grade
-
-    try:
-        if parameter_context is not None:
-            material_parameter, _scope = find_parameter_in_context(
-                parameter_context,
-                "Material"
-            )
-        else:
-            material_parameter = element.LookupParameter("Material")
-
-        material_id = material_parameter.AsElementId()
-
-        if material_id is not None:
-            material = doc.GetElement(material_id)
-
-            if material is not None:
-                grade = normalize_concrete_grade(material.Name)
-
-                if grade:
-                    return grade
-    except:
-        pass
-
-    try:
-        grade = normalize_concrete_grade(
-            get_element_identity_text(element, parameter_context)
-        )
-
-        if grade:
-            return grade
-    except:
-        pass
 
     return "(No Grade)"
 
 
-def build_element_data(include_grade=True):
+# P10-02: material parameter names read from the per-element parameter
+# index, instance before type. Kept on one line for the regression harness.
+STRUCTURAL_MATERIAL_PARAMETER_NAMES = ("Structural Material", "Material")
+
+
+def structural_material_candidates(parameter_context):
+    """
+    P10-02/P10-03: yield every non-empty material name from the export's
+    parameter index in priority order - "Structural Material" before
+    "Material", instance before type. "<By Category>" is skipped.
+
+    Beams and Columns carry an instance "Structural Material"; Walls and
+    Foundation Slabs expose it on their type (observed on live Revit 2025
+    models). The export has already indexed both scopes for this element,
+    so each candidate is a dictionary lookup plus one value read.
+    """
+    if not isinstance(parameter_context, dict):
+        return
+
+    for parameter_name in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
+        key = parameter_name.lower()
+
+        for scope in ("instance", "type"):
+            try:
+                parameter = parameter_context.get(scope, {}).get(key)
+            except:
+                parameter = None
+
+            if parameter is None:
+                continue
+
+            try:
+                value = str(safe_parameter_value(parameter) or "").strip()
+            except:
+                value = ""
+
+            if value and value not in ("<By Category>", "<None>"):
+                yield value
+
+
+def resolve_structural_material(parameter_context):
+    """P10-02: return the highest-priority structural material name, or ""."""
+    for material_name in structural_material_candidates(parameter_context):
+        return material_name
+
+    return ""
+
+
+def build_element_data(include_grade=True, material_sink=None):
     """
     Read actual values from the parameters currently selected in the UI.
     The current Selected / Export order is preserved.
@@ -2158,19 +2102,28 @@ def build_element_data(include_grade=True):
                 }
 
             try:
-                row = {
-                    "Element ID": str(
-                        element.Id.IntegerValue
+                row = OrderedDict([
+                    (
+                        "Element ID",
+                        str(element.Id.IntegerValue)
                     )
-                }
+                ])
             except:
-                row = {
-                    "Element ID": "N/A"
-                }
+                row = OrderedDict([
+                    ("Element ID", "N/A")
+                ])
 
             # P2: level grouping column, written directly after Element ID so
             # it sits in a deterministic column (B) on every element sheet.
-            row["Level"] = get_element_level(element, level_cache)
+            # A column or structural wall is billed with the floor it
+            # carries, not the floor it starts from; anything else lands
+            # a storey low in the level-wise BOQ.
+            row_level = ""
+            if element_name in TOP_LEVEL_CATEGORIES:
+                row_level = get_element_top_level(element, level_cache)
+            if not row_level:
+                row_level = get_element_level(element, level_cache)
+            row["Level"] = row_level
 
             # Concrete grade does not apply to reinforcement. Rebar keeps
             # Element ID + Level followed by its selected/P4 quantity fields.
@@ -2178,6 +2131,18 @@ def build_element_data(include_grade=True):
                 row["Grade"] = resolve_concrete_grade(
                     element,
                     parameter_context
+                )
+
+            # P10-02: remember the structural material for the unmapped
+            # report without adding a visible workbook column. Only an
+            # indexed element can be judged; an empty context is skipped.
+            if (
+                material_sink is not None
+                and needs_parameter_context
+                and element_name != "Rebar"
+            ):
+                material_sink[row["Element ID"]] = (
+                    resolve_structural_material(parameter_context)
                 )
 
             quantity_values = []
@@ -2259,6 +2224,22 @@ def build_element_data(include_grade=True):
             ].append(row)
 
             total_rows += 1
+
+    # Order every sheet the way a BOQ is read: level by level, and
+    # within a level by identity code - B1, B2, B2A, B10 - rather than by
+    # the order Revit happened to hand the elements over. Done here,
+    # once, so the element sheets, the Costing rows and the unmapped
+    # report all read in the same order. Guarded: an ordering problem
+    # must never cost somebody their export.
+    try:
+        from export_engine import sort_rows_for_boq
+
+        for category_name in list(data_result.keys()):
+            data_result[category_name] = sort_rows_for_boq(
+                data_result[category_name]
+            )
+    except:
+        pass
 
     return (
         data_result,
@@ -2347,12 +2328,6 @@ def get_sample_values(data_result, max_rows=3):
 # lib/costing_engine.py and build_shuttering_formula to
 # lib/formwork_engine.py. Only the names the remaining Revit-bound
 # code actually calls are imported back here.
-from export_engine import (
-    write_basic_xlsx,
-    write_site_xlsx,
-    build_default_output_name,
-)
-
 def choose_excel_output_path():
     """Show a standard Windows Save dialog for the XLSX output path."""
     desktop = Environment.GetFolderPath(
@@ -2363,6 +2338,12 @@ def choose_excel_output_path():
     saved = load_app_settings()
     last_dir = saved.get("last_dir", "")
 
+    if _headless_export_job is not None:
+        try:
+            return _headless_export_job.get("output_path", "")
+        except:
+            return ""
+
     dialog = SaveFileDialog()
     dialog.Title = "Save RCC BOQ Excel Report"
     dialog.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
@@ -2372,6 +2353,7 @@ def choose_excel_output_path():
     # Professional naming convention:
     # YYYYMMDD-<Project>-CONCRETE_FINISHING_BOQ.xlsx (user can still edit it).
     try:
+        from export_engine import build_default_output_name
         dialog.FileName = build_default_output_name(doc.Title)
     except:
         dialog.FileName = "RCC_BOQ_Report.xlsx"
@@ -2403,6 +2385,18 @@ def choose_excel_output_path():
 # ============================================================
 
 doc = revit.doc
+
+from agent_export_job import (
+    complete_export_job,
+    fail_export_job,
+    load_queued_export_job,
+    mark_export_job_running,
+)
+
+try:
+    _headless_export_job = load_queued_export_job(doc.Title)
+except:
+    _headless_export_job = None
 
 
 # ============================================================
@@ -2479,99 +2473,29 @@ def is_structural_wall(element):
 # GET ALL PARAMETERS
 # ============================================================
 
-def get_parameters(elements, derived_names=None):
-
-    parameter_names = set()
-
-    for element in elements:
-
-        try:
-
-            parameters = element.Parameters
-
-            for parameter in parameters:
-
-                try:
-
-                    definition = parameter.Definition
-
-                    if definition:
-
-                        name = definition.Name
-
-                        if name:
-
-                            parameter_names.add(
-                                name
-                            )
-
-                except:
-
-                    continue
-
-        except:
-
-            continue
-
-    for derived_name in (derived_names or ()):
-        if derived_name:
-            parameter_names.add(derived_name)
-
-    result = []
-
-    for name in parameter_names:
-
-        result.append(
-            ParameterItem(name)
-        )
-
-    result.sort(
-        key=lambda x: x.Name.lower()
-    )
-
-    return result
 
 
 # ============================================================
 # RCC ELEMENT CLASSIFICATION / FILTER ENGINE
 # ============================================================
 
-def normalize_label(value):
-    try:
-        text = str(value or '').lower()
-    except:
-        text = ''
-
-    # Keep codes such as S1 / GS / CF intact while normalizing
-    # spaces, underscores, hyphens, and punctuation.
-    try:
-        text = re.sub(r'[_\-]+', ' ', text)
-        text = re.sub(r'[^a-z0-9]+', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-    except:
-        pass
-
-    return text
-
-
-def _contains_rcc_identity_signal(value):
-    """True only for construction words or complete RCC identity codes."""
-    text = normalize_label(value)
-    if not text:
-        return False
-    if any(
-        phrase in text
-        for phrase in (
-            'pcc', 'footing', 'raft', 'grade slab', 'gradeslab',
-            'fold slab', 'foldslab', 'slab', 'chajja'
-        )
-    ):
-        return True
-    return (
-        code_token_match(text, ('f', 'cf', 's'))
-        or code_token_match(text, ('gs',))
-    )
-
+# P8 rule engine: the host-free classification rules moved to
+# lib/rule_engine.py. The Revit-bound readers below still call them by
+# the same names, so this import keeps the classifier's behavior
+# identical while the rules become independently testable.
+from rule_engine import (
+    normalize_label,
+    _contains_rcc_identity_signal,
+    _element_source_category,
+    _element_routing_key,
+    _safe_element_id_text,
+    classify_identity_text,
+    build_logical_rcc_collections,
+    validate_classification_audit,
+    classification_audit_has_findings,
+    classification_audit_detail_results,
+    build_compact_classification_findings,
+)
 
 def _built_in_parameter_text(element, enum_names):
     """Read the first available built-in parameter as display text."""
@@ -2742,25 +2666,6 @@ def get_element_identity_text(element, parameter_context=None):
     return normalize_label(' | '.join(parts))
 
 
-def code_token_match(text, prefixes):
-    """Match complete RCC codes without accepting unsafe bare prefixes."""
-    try:
-        normalized = normalize_label(text)
-        alternatives = []
-        for prefix in prefixes:
-            prefix_text = str(prefix or '').lower()
-            if prefix_text in ('f', 'cf', 's'):
-                alternatives.append(re.escape(prefix_text) + r'[0-9]+')
-            elif prefix_text:
-                alternatives.append(re.escape(prefix_text) + r'[0-9]*')
-        if not alternatives:
-            return False
-        pattern = r'(?<![a-z0-9])(?:' + '|'.join(alternatives) + r')(?![a-z0-9])'
-        return re.search(pattern, normalized) is not None
-    except:
-        return False
-
-
 def _read_identity_parameter(element, parameter_name):
     """Read an instance/type identity value for audit diagnostics."""
     try:
@@ -2772,16 +2677,6 @@ def _read_identity_parameter(element, parameter_name):
         return safe_parameter_value(parameter) if parameter is not None else ''
     except:
         return ''
-
-
-def _element_source_category(element, fallback=''):
-    try:
-        category = element.Category
-        if category is not None and category.Name:
-            return str(category.Name)
-    except:
-        pass
-    return str(fallback or 'Unknown')
 
 
 def _element_family_type_names(element):
@@ -2835,82 +2730,19 @@ def _element_family_type_names(element):
     return family_name, type_name
 
 
-def _element_routing_key(element, fallback_index=None):
-    try:
-        return ('id', int(element.Id.IntegerValue))
-    except:
-        try:
-            return ('id', int(element.Id.Value))
-        except:
-            return (
-                'object',
-                id(element) if fallback_index is None else fallback_index
-            )
-
-
-def _safe_element_id_text(element):
-    key = _element_routing_key(element)
-    return str(key[1]) if key[0] == 'id' else 'N/A'
-
-
 def classify_rcc_element(element, source_category=''):
-    """Return the one authoritative logical RCC classification result."""
+    """Read one element and return its authoritative logical RCC result.
+
+    The route itself is decided by classify_identity_text in
+    lib/rule_engine.py. Everything this function adds is Revit-bound:
+    the identity text, the family/type names and the identity
+    parameters that make a routing audit row traceable back to the
+    model.
+    """
     text = get_element_identity_text(element)
     source_name = _element_source_category(element, source_category)
-    normalized_source = normalize_label(source_name)
 
-    logical_group = ''
-    subtype = 'Other'
-    reason = ''
-
-    # Foundation identities deliberately precede generic slab wording.
-    if re.search(r'(?<![a-z0-9])pcc(?![a-z0-9])', text):
-        logical_group, subtype = 'Foundation', 'PCC'
-        reason = 'Explicit PCC identity'
-    elif (
-        'combined footing' in text
-        or 'combine footing' in text
-        or code_token_match(text, ('cf',))
-    ):
-        logical_group, subtype = 'Foundation', 'Combined Footing'
-        reason = 'Combined footing name or exact CF<number> code'
-    elif 'footing' in text or code_token_match(text, ('f',)):
-        logical_group, subtype = 'Foundation', 'Footing'
-        reason = 'Footing name or exact F<number> code'
-    elif 'combined raft' in text or 'combine raft' in text:
-        logical_group, subtype = 'Foundation', 'Combined Raft'
-        reason = 'Combined raft identity'
-    elif re.search(r'(?<![a-z0-9])raft(?![a-z0-9])', text):
-        logical_group, subtype = 'Foundation', 'Raft'
-        reason = 'Explicit raft identity'
-    elif (
-        'grade slab' in text
-        or 'gradeslab' in text
-        or code_token_match(text, ('gs',))
-    ):
-        logical_group, subtype = 'Slab', 'Grade Slab'
-        reason = 'Grade Slab name or exact GS code'
-    elif 'fold slab' in text or 'foldslab' in text:
-        logical_group, subtype = 'Slab', 'Fold Slab'
-        reason = 'Explicit Fold Slab identity'
-    elif 'slab' in text or code_token_match(text, ('s',)):
-        logical_group, subtype = 'Slab', 'Slab'
-        reason = 'Slab name or exact S<number> code'
-    elif re.search(
-        r'(?<![a-z0-9])chajja(?:[0-9]+)?(?![a-z0-9])', text
-    ):
-        logical_group, subtype = 'Slab', 'Slab'
-        reason = 'Chajja is a logical slab'
-    elif re.search(r'(?<![a-z0-9])(?:lobby|ramp)(?![a-z0-9])', text):
-        logical_group, subtype = 'Slab', 'Slab'
-        reason = 'Lobby/Ramp floor type is a logical slab'
-    elif 'foundation' in normalized_source:
-        logical_group, subtype = 'Foundation', 'Other'
-        reason = 'Unknown identity retained under source Foundation as Other'
-    else:
-        logical_group, subtype = 'Slab', 'Other'
-        reason = 'Unknown identity retained under source Floor as Other'
-
+    route = classify_identity_text(text, source_name)
     family_name, type_name = _element_family_type_names(element)
 
     return {
@@ -2924,220 +2756,10 @@ def classify_rcc_element(element, source_category=''):
         'item_description': _read_identity_parameter(element, 'ITEM DES.'),
         'code_unimont': _read_identity_parameter(element, 'CODE_UNIMONT'),
         'normalized_identity': text,
-        'logical_group': logical_group,
-        'subtype': subtype,
-        'reason': reason,
+        'logical_group': route['logical_group'],
+        'subtype': route['subtype'],
+        'reason': route['reason'],
     }
-
-
-def build_logical_rcc_collections(floor_elements, foundation_elements):
-    """Classify raw collections once and return mutually exclusive lists."""
-    slab_elements = []
-    foundation_output = []
-    results = []
-    seen = {}
-    source_duplicate_ids = []
-    source_pairs = (
-        ('Floors', list(floor_elements or [])),
-        ('Structural Foundations', list(foundation_elements or [])),
-    )
-
-    sequence = 0
-    for source_name, source_elements in source_pairs:
-        for element in source_elements:
-            sequence += 1
-            key = _element_routing_key(element, sequence)
-            if key in seen:
-                source_duplicate_ids.append(_safe_element_id_text(element))
-                continue
-            seen[key] = True
-            result = classify_rcc_element(element, source_name)
-            result['routing_key'] = key
-            results.append(result)
-            if result['logical_group'] == 'Foundation':
-                foundation_output.append(element)
-            else:
-                slab_elements.append(element)
-
-    slab_keys = set(_element_routing_key(e) for e in slab_elements)
-    foundation_keys = set(
-        _element_routing_key(e) for e in foundation_output
-    )
-    destination_duplicates = sorted(
-        str(key[1]) for key in slab_keys.intersection(foundation_keys)
-    )
-    unclassified = [
-        result for result in results
-        if result.get('logical_group') not in ('Slab', 'Foundation')
-    ]
-    other_results = [
-        result for result in results if result.get('subtype') == 'Other'
-    ]
-    unique_total = len(results)
-    audit = {
-        'total_floor_source': len(source_pairs[0][1]),
-        'total_foundation_source': len(source_pairs[1][1]),
-        'eligible_unique': unique_total,
-        'logical_slab': len(slab_elements),
-        'logical_foundation': len(foundation_output),
-        'source_duplicate_ids': source_duplicate_ids,
-        'destination_duplicate_ids': destination_duplicates,
-        'unclassified': unclassified,
-        'other': other_results,
-        'results': results,
-        'balanced': (
-            len(slab_elements) + len(foundation_output) == unique_total
-            and not destination_duplicates
-            and not unclassified
-        ),
-    }
-    return {
-        'Slab': slab_elements,
-        'Foundation': foundation_output,
-        'results': results,
-        'audit': audit,
-    }
-
-
-def validate_classification_audit(audit):
-    """Return (valid, summary); export must not ignore a discrepancy."""
-    valid = bool(audit and audit.get('balanced'))
-    summary = (
-        'Floors={0}; Structural Foundations={1}; Slab={2}; '
-        'Foundation={3}; Duplicates={4}; Unclassified={5}; Other={6}'
-    ).format(
-        audit.get('total_floor_source', 0) if audit else 0,
-        audit.get('total_foundation_source', 0) if audit else 0,
-        audit.get('logical_slab', 0) if audit else 0,
-        audit.get('logical_foundation', 0) if audit else 0,
-        (
-            len(audit.get('source_duplicate_ids', []))
-            + len(audit.get('destination_duplicate_ids', []))
-        ) if audit else 0,
-        len(audit.get('unclassified', [])) if audit else 0,
-        len(audit.get('other', [])) if audit else 0,
-    )
-    return valid, summary
-
-
-def classification_audit_has_findings(audit):
-    """True only when the routing audit needs user/developer attention."""
-    valid, _summary = validate_classification_audit(audit)
-    if not valid:
-        return True
-    if not audit:
-        return True
-    return bool(
-        audit.get('source_duplicate_ids', [])
-        or audit.get('destination_duplicate_ids', [])
-        or audit.get('unclassified', [])
-        or audit.get('other', [])
-    )
-
-
-def classification_audit_detail_results(audit):
-    """Return only routing rows that explain an audit finding.
-
-    A project may contain thousands of correctly classified elements and only
-    one controlled ``Other`` route. Emitting every healthy row in that case
-    makes pyRevit's output window expensive enough to stall the export. Keep
-    the diagnostic trace focused on unclassified, Other, and duplicate rows.
-    """
-    if not audit:
-        return []
-
-    duplicate_ids = set(
-        safe_text(value, '') for value in (
-            list(audit.get('source_duplicate_ids', []))
-            + list(audit.get('destination_duplicate_ids', []))
-        )
-    )
-    finding_keys = set()
-
-    for result in (
-        list(audit.get('unclassified', []))
-        + list(audit.get('other', []))
-    ):
-        finding_keys.add(result.get('routing_key'))
-
-    details = []
-    seen = set()
-    for result in audit.get('results', []):
-        routing_key = result.get('routing_key')
-        element_id = safe_text(result.get('element_id', ''), '')
-        if routing_key not in finding_keys and element_id not in duplicate_ids:
-            continue
-        unique_key = routing_key or ('ElementId', element_id)
-        if unique_key in seen:
-            continue
-        seen.add(unique_key)
-        details.append(result)
-
-    return details
-
-
-def build_compact_classification_findings(audit, max_items=10):
-    """Build a small user-facing list of only problematic routing rows."""
-    def compact(value, fallback="-"):
-        text = safe_text(value, fallback).strip()
-        if not text:
-            text = fallback
-        if len(text) > 60:
-            text = text[:57] + "..."
-        return text
-
-    details = classification_audit_detail_results(audit)
-    try:
-        limit = max(1, int(max_items))
-    except:
-        limit = 10
-
-    lines = []
-    for result in details[:limit]:
-        family_type = "{} / {}".format(
-            compact(result.get("family")),
-            compact(result.get("type_name"))
-        )
-        identity_parts = []
-        for label, key in (
-            ("Mark", "mark"),
-            ("ID_UNMT", "id_unmt"),
-            ("ITEM DES.", "item_description"),
-            ("CODE_UNIMONT", "code_unimont")
-        ):
-            value = compact(result.get(key), "")
-            if value:
-                identity_parts.append("{}={}".format(label, value))
-        if not identity_parts:
-            identity_parts.append("Identity=-")
-
-        lines.append(
-            "ID {} | {} | {} | {} | {}".format(
-                compact(result.get("element_id"), "N/A"),
-                compact(result.get("source_category")),
-                family_type,
-                "; ".join(identity_parts),
-                compact(result.get("reason"))
-            )
-        )
-
-    if len(details) > limit:
-        lines.append("...and {} more finding(s)".format(len(details) - limit))
-
-    duplicate_ids = list(audit.get("source_duplicate_ids", [])) if audit else []
-    duplicate_ids.extend(
-        list(audit.get("destination_duplicate_ids", [])) if audit else []
-    )
-    represented_ids = set(
-        compact(result.get("element_id"), "N/A")
-        for result in details[:limit]
-    )
-    for duplicate_id in duplicate_ids:
-        duplicate_text = compact(duplicate_id, "N/A")
-        if duplicate_text not in represented_ids:
-            lines.append("ID {} | Duplicate routing source".format(duplicate_text))
-
-    return "\n".join(lines)
 
 
 def emit_classification_audit(audit, include_details=True):
@@ -3298,7 +2920,8 @@ all_rebar_elements = get_elements(CATEGORY_INFO['Rebar'])
 
 rcc_logical_collections = build_logical_rcc_collections(
     all_floor_elements,
-    all_foundation_elements
+    all_foundation_elements,
+    classify_rcc_element
 )
 logical_slab_elements = list(rcc_logical_collections['Slab'])
 logical_foundation_elements = list(rcc_logical_collections['Foundation'])
@@ -4215,6 +3838,25 @@ try:
         except:
             pass
 
+        try:
+            assembly_profile.clear()
+            assembly_profile.update(normalize_assembly_profile(
+                saved_settings.get("assembly_profile", {})
+            ))
+            field_values = (
+                ("AssemblyProfileName", assembly_profile.get("name", "")),
+                ("AssemblyProfileSource", assembly_profile.get("source", "")),
+                ("AssemblyBindingWireFactor", assembly_profile.get("binding_wire_factor")),
+                ("AssemblyCoverBlockFactor", assembly_profile.get("cover_block_factor")),
+                ("AssemblyLabourFactor", assembly_profile.get("labour_factor")),
+            )
+            for field_name, field_value in field_values:
+                field = window.FindName(field_name)
+                if field:
+                    field.Text = "" if field_value is None else str(field_value)
+        except:
+            pass
+
         # Restore the previously selected parameters in saved order.
         saved_selected = {}
 
@@ -4346,6 +3988,523 @@ try:
         # CAPTURE & SAVE SETTINGS
         # ====================================================
 
+        # ------------------------------------------------------------
+        # P7 - Site / Non-Model Items tab
+        #
+        # The list lives in site_items_state. Every handler rewrites it
+        # and then redraws, so what is on screen is always exactly what
+        # gets exported and saved.
+        # ------------------------------------------------------------
+
+        def site_items_display_text(item):
+            """One readable line for the list box."""
+            amount = site_item_amount(item)
+            quantity = item.get("quantity")
+            rate = item.get("rate")
+            return u"{0}  |  {1}  |  {2} {3} x {4} = {5}".format(
+                item.get("code") or "(no code)",
+                item.get("description") or "(no description)",
+                "-" if quantity is None else quantity,
+                item.get("unit") or "-",
+                "-" if rate is None else rate,
+                "-" if amount is None else "{0:.2f}".format(amount)
+            )
+
+        def site_items_source_text():
+            """Say where the list came from and whether it is saved."""
+            if site_items_dirty[0]:
+                return ("Edited - saved to this project when you export or "
+                        "close.")
+            if site_items_source[0] == "document":
+                return "Showing this project's own saved list."
+            if site_items_source[0] == "default":
+                return ("Started from the default list. It becomes this "
+                        "project's own list when you export or close.")
+            return "No site items saved for this project yet."
+
+        def site_items_refresh(select_index=-1):
+            """Redraw the list, the source label and the summary line."""
+            try:
+                source_box = window.FindName("SiteItemSource")
+
+                if source_box is not None:
+                    source_box.Text = site_items_source_text()
+            except:
+                pass
+
+            try:
+                list_box = window.FindName("SiteItemList")
+
+                if list_box is not None:
+                    list_box.Items.Clear()
+                    for item in site_items_state:
+                        list_box.Items.Add(
+                            ParameterItem(site_items_display_text(item))
+                        )
+                    if 0 <= select_index < len(site_items_state):
+                        list_box.SelectedIndex = select_index
+
+                summary_box = window.FindName("SiteItemSummary")
+
+                if summary_box is not None:
+                    if not site_items_state:
+                        summary_box.Text = (
+                            "No site items. Add one above, or leave this tab "
+                            "empty - the workbook simply omits the sheet."
+                        )
+                    else:
+                        totals = summarize_site_items(site_items_state)
+                        findings = validate_site_items(site_items_state)
+                        text = "{0} item(s) | {1} priced, total {2:.2f}".format(
+                            totals["count"],
+                            totals["priced_count"],
+                            totals["amount_total"]
+                        )
+                        if totals["unpriced_count"]:
+                            text += (
+                                " | {0} awaiting a quantity or rate, exported "
+                                "with a blank Amount".format(
+                                    totals["unpriced_count"]
+                                )
+                            )
+                        if findings:
+                            text += " || " + " / ".join(findings[:3])
+                            if len(findings) > 3:
+                                text += " / +{0} more".format(len(findings) - 3)
+                        summary_box.Text = text
+            except:
+                pass
+
+        def site_items_fill_fields(item):
+            """Load one item back into the six text boxes."""
+            try:
+                for field_name, value in (
+                    ("SiteItemCode", item.get("code", "")),
+                    ("SiteItemDescription", item.get("description", "")),
+                    ("SiteItemUnit", item.get("unit", "")),
+                    ("SiteItemQuantity", item.get("quantity")),
+                    ("SiteItemRate", item.get("rate")),
+                    ("SiteItemRemarks", item.get("remarks", "")),
+                ):
+                    field = window.FindName(field_name)
+                    if field is not None:
+                        field.Text = (
+                            "" if value is None else u"{0}".format(value)
+                        )
+            except:
+                pass
+
+        def site_items_read_fields():
+            """Return one normalized item built from the text boxes."""
+            values = {}
+            for key, field_name in (
+                ("code", "SiteItemCode"),
+                ("description", "SiteItemDescription"),
+                ("unit", "SiteItemUnit"),
+                ("quantity", "SiteItemQuantity"),
+                ("rate", "SiteItemRate"),
+                ("remarks", "SiteItemRemarks"),
+            ):
+                try:
+                    field = window.FindName(field_name)
+                    values[key] = field.Text if field is not None else ""
+                except:
+                    values[key] = ""
+            return normalize_site_item(values, len(site_items_state))
+
+        def site_items_clear_fields():
+            """Empty the entry boxes and drop the list selection."""
+            site_items_fill_fields({})
+            try:
+                list_box = window.FindName("SiteItemList")
+                if list_box is not None:
+                    list_box.SelectedIndex = -1
+            except:
+                pass
+
+        def site_items_selected_index():
+            """Return the selected row index, or -1."""
+            try:
+                list_box = window.FindName("SiteItemList")
+                if list_box is None:
+                    return -1
+                return list_box.SelectedIndex
+            except:
+                return -1
+
+        def site_items_add(sender=None, args=None):
+            """Append what is typed as a new line."""
+            item = site_items_read_fields()
+
+            if not item.get("code") and not item.get("description"):
+                set_status(
+                    "Site items | Enter at least an item code or a description",
+                    "warning"
+                )
+                return
+
+            site_items_state.append(item)
+            site_items_dirty[0] = True
+            site_items_refresh(len(site_items_state) - 1)
+            site_items_clear_fields()
+            set_status("Site items | Added", "success")
+
+        def site_items_update(sender=None, args=None):
+            """Replace the selected line with what is typed."""
+            index = site_items_selected_index()
+
+            if not (0 <= index < len(site_items_state)):
+                set_status("Site items | Select a line to update", "warning")
+                return
+
+            site_items_state[index] = site_items_read_fields()
+            site_items_dirty[0] = True
+            site_items_refresh(index)
+            set_status("Site items | Updated", "success")
+
+        def site_items_remove(sender=None, args=None):
+            """Delete the selected line."""
+            index = site_items_selected_index()
+
+            if not (0 <= index < len(site_items_state)):
+                set_status("Site items | Select a line to remove", "warning")
+                return
+
+            del site_items_state[index]
+            site_items_dirty[0] = True
+            site_items_refresh()
+            site_items_clear_fields()
+            set_status("Site items | Removed", "success")
+
+        def site_items_clear(sender=None, args=None):
+            """Clear the entry boxes without touching the list."""
+            site_items_clear_fields()
+            set_status("Site items | Fields cleared", "info")
+
+        def site_items_selection_changed(sender, args):
+            """Load the clicked line into the entry boxes for editing."""
+            index = site_items_selected_index()
+            if 0 <= index < len(site_items_state):
+                site_items_fill_fields(site_items_state[index])
+
+        def site_items_save_default(sender=None, args=None):
+            """Make this list the starting point for NEW projects only."""
+            try:
+                settings = load_app_settings()
+                if not isinstance(settings, dict):
+                    settings = {}
+                settings["site_items"] = set_default_site_items(
+                    settings.get("site_items"),
+                    site_items_state
+                )
+                save_app_settings(settings)
+                set_status(
+                    "Site items | Saved as the default for new projects; "
+                    "projects with their own list are unchanged",
+                    "success"
+                )
+            except:
+                set_status("Site items | Could not save the default", "warning")
+
+        def site_items_load_for_document():
+            """Fill the tab from the store for the active document."""
+            try:
+                resolved = resolve_site_items(
+                    load_app_settings().get("site_items"),
+                    safe_text(doc.Title, "")
+                )
+                del site_items_state[:]
+                site_items_state.extend(resolved.get("items", []))
+
+                site_items_source[0] = resolved.get("source", "")
+                site_items_dirty[0] = False
+
+                site_items_ready[0] = True
+                site_items_refresh()
+            except:
+                pass
+
+        def site_items_wire_controls():
+            """Attach the tab's handlers once the window exists."""
+            try:
+                for control_name, handler in (
+                    ("SiteItemAdd", site_items_add),
+                    ("SiteItemUpdate", site_items_update),
+                    ("SiteItemRemove", site_items_remove),
+                    ("SiteItemClear", site_items_clear),
+                    ("SiteItemSaveDefault", site_items_save_default),
+                ):
+                    control = window.FindName(control_name)
+                    if control is not None:
+                        control.Click += handler
+
+                list_box = window.FindName("SiteItemList")
+
+                if list_box is not None:
+                    list_box.SelectionChanged += site_items_selection_changed
+            except:
+                pass
+
+        # ------------------------------------------------------------
+        # P11: RATE ANALYSIS TAB
+        #
+        # The build-ups live in rate_analysis_state. Every handler
+        # rewrites it and redraws, so the list on screen is exactly what
+        # is saved and exported - the same contract the Site Items tab
+        # uses.
+        # ------------------------------------------------------------
+
+        RATE_FIELD_CONTROLS = (
+            ("item_code", "RateItemCode"),
+            ("description", "RateDescription"),
+            ("unit", "RateUnit"),
+            ("material", "RateMaterial"),
+            ("wastage_pct", "RateWastagePct"),
+            ("labour", "RateLabour"),
+            ("machinery", "RateMachinery"),
+            ("overheads_pct", "RateOverheadsPct"),
+        )
+
+        def rate_display_text(analysis):
+            """One readable line: the item, and its rate or what is missing."""
+            from costing_engine import compute_analysed_rate
+
+            rate, missing = compute_analysed_rate(analysis)
+            if rate is None:
+                tail = "rate pending - needs {0}".format(", ".join(missing))
+            else:
+                tail = "rate {0:.2f} / {1}".format(
+                    rate, analysis.get("unit") or "unit")
+
+            return u"{0}  |  {1}  |  {2}".format(
+                analysis.get("item_code") or "(no code)",
+                analysis.get("description") or "(no description)",
+                tail
+            )
+
+        def rate_refresh(select_index=-1):
+            """Redraw the list and the summary line."""
+            from costing_engine import compute_analysed_rate
+
+            try:
+                list_box = window.FindName("RateList")
+                if list_box is not None:
+                    list_box.Items.Clear()
+                    for analysis in rate_analysis_state:
+                        list_box.Items.Add(
+                            ParameterItem(rate_display_text(analysis))
+                        )
+                    if 0 <= select_index < len(rate_analysis_state):
+                        list_box.SelectedIndex = select_index
+            except:
+                pass
+
+            try:
+                summary_box = window.FindName("RateSummary")
+                if summary_box is None:
+                    return
+
+                if not rate_analysis_state:
+                    summary_box.Text = (
+                        "No rate build-ups. Items added here export to their "
+                        "own Rate Analysis sheet."
+                    )
+                    return
+
+                priced = 0
+                pending = 0
+                for analysis in rate_analysis_state:
+                    if compute_analysed_rate(analysis)[0] is None:
+                        pending += 1
+                    else:
+                        priced += 1
+
+                text = "{0} item(s) | {1} priced".format(
+                    len(rate_analysis_state), priced)
+                if pending:
+                    text += (
+                        " | {0} awaiting a figure - those export with a "
+                        "blank rate rather than a zero".format(pending)
+                    )
+                summary_box.Text = text
+            except:
+                pass
+
+        def rate_fill_fields(analysis):
+            """Load one build-up into the entry boxes for editing."""
+            for key, control_name in RATE_FIELD_CONTROLS:
+                try:
+                    control = window.FindName(control_name)
+                    if control is None:
+                        continue
+                    value = analysis.get(key)
+                    control.Text = "" if value is None else str(value)
+                except:
+                    pass
+
+        def rate_read_fields():
+            """Read the entry boxes into a normalized build-up."""
+            from costing_engine import normalize_rate_analysis
+
+            values = {}
+            for key, control_name in RATE_FIELD_CONTROLS:
+                try:
+                    control = window.FindName(control_name)
+                    values[key] = control.Text if control is not None else ""
+                except:
+                    values[key] = ""
+            return normalize_rate_analysis(values)
+
+        def rate_clear_fields(sender=None, args=None):
+            for _key, control_name in RATE_FIELD_CONTROLS:
+                try:
+                    control = window.FindName(control_name)
+                    if control is not None:
+                        control.Text = ""
+                except:
+                    pass
+            set_status("Rate analysis | Fields cleared", "info")
+
+        def rate_selected_index():
+            try:
+                list_box = window.FindName("RateList")
+                if list_box is None:
+                    return -1
+                return int(list_box.SelectedIndex)
+            except:
+                return -1
+
+        def rate_add(sender=None, args=None):
+            """Add the typed build-up. An item needs at least a code."""
+            analysis = rate_read_fields()
+
+            if not analysis.get("item_code"):
+                set_status(
+                    "Rate analysis | Give the item a code before adding it",
+                    "warning"
+                )
+                return
+
+            # Selecting a line fills the boxes, so pressing Add instead of
+            # Update made a silent second copy. One code, one rate.
+            from costing_engine import find_rate_code_conflict
+
+            if find_rate_code_conflict(
+                    rate_analysis_state, analysis["item_code"]) >= 0:
+                set_status(
+                    "Rate analysis | {0} is already in the list - select it "
+                    "and use Update selected to change it".format(
+                        analysis["item_code"]),
+                    "warning"
+                )
+                return
+
+            rate_analysis_state.append(analysis)
+            rate_refresh(len(rate_analysis_state) - 1)
+            set_status(
+                "Rate analysis | Added {0}".format(analysis["item_code"]),
+                "success"
+            )
+
+        def rate_update(sender=None, args=None):
+            index = rate_selected_index()
+            if not (0 <= index < len(rate_analysis_state)):
+                set_status(
+                    "Rate analysis | Select an item to update", "warning")
+                return
+
+            analysis = rate_read_fields()
+            if not analysis.get("item_code"):
+                set_status(
+                    "Rate analysis | Give the item a code before updating it",
+                    "warning"
+                )
+                return
+
+            # The line may keep its own code; it may not take another's.
+            from costing_engine import find_rate_code_conflict
+
+            if find_rate_code_conflict(
+                    rate_analysis_state, analysis["item_code"], index) >= 0:
+                set_status(
+                    "Rate analysis | Another line already uses {0}".format(
+                        analysis["item_code"]),
+                    "warning"
+                )
+                return
+
+            rate_analysis_state[index] = analysis
+            rate_refresh(index)
+            set_status(
+                "Rate analysis | Updated {0}".format(analysis["item_code"]),
+                "success"
+            )
+
+        def rate_remove(sender=None, args=None):
+            index = rate_selected_index()
+            if not (0 <= index < len(rate_analysis_state)):
+                set_status(
+                    "Rate analysis | Select an item to remove", "warning")
+                return
+
+            removed = rate_analysis_state.pop(index)
+            rate_refresh()
+            set_status(
+                "Rate analysis | Removed {0}".format(
+                    removed.get("item_code") or "item"),
+                "info"
+            )
+
+        def rate_selection_changed(sender=None, args=None):
+            index = rate_selected_index()
+            if 0 <= index < len(rate_analysis_state):
+                rate_fill_fields(rate_analysis_state[index])
+
+        def rate_load_saved():
+            """Load the saved build-ups into the tab."""
+            try:
+                from costing_engine import load_rate_analysis
+
+                del rate_analysis_state[:]
+                rate_analysis_state.extend(
+                    load_rate_analysis(load_app_settings())
+                )
+            except:
+                del rate_analysis_state[:]
+
+            try:
+                source_box = window.FindName("RateSource")
+                if source_box is not None:
+                    source_box.Text = (
+                        "Showing the saved build-ups; they are written back "
+                        "when you export or close."
+                        if rate_analysis_state
+                        else "No rate build-ups saved yet."
+                    )
+            except:
+                pass
+
+            rate_refresh()
+
+        def rate_wire_controls():
+            """Attach the tab's handlers once the window exists."""
+            try:
+                for control_name, handler in (
+                    ("RateAdd", rate_add),
+                    ("RateUpdate", rate_update),
+                    ("RateRemove", rate_remove),
+                    ("RateClear", rate_clear_fields),
+                ):
+                    control = window.FindName(control_name)
+                    if control is not None:
+                        control.Click += handler
+
+                list_box = window.FindName("RateList")
+                if list_box is not None:
+                    list_box.SelectionChanged += rate_selection_changed
+            except:
+                pass
+
         def capture_and_save_settings():
             """
             Persist the current selections, subtype filters and the
@@ -4365,12 +4524,39 @@ try:
                 except:
                     pass
 
+            # A category the current document has no parameters for could
+            # not restore or show anything, so an empty selection there
+            # means "this model does not have these fields", not "the user
+            # cleared them". Overwriting the saved list in that case wipes
+            # a BOQ setup simply because somebody exported a different
+            # project - which is exactly what happened on an architectural
+            # model with no structural elements. Where the category does
+            # have parameters, an empty list is a real choice and is saved.
+            previous_selected = {}
+            try:
+                raw_previous = settings.get("selected")
+                if isinstance(raw_previous, dict):
+                    previous_selected = raw_previous
+            except:
+                previous_selected = {}
+
             settings["selected"] = {}
 
             for element_name in selected_parameters.keys():
-                settings["selected"][element_name] = list(
-                    selected_parameters.get(element_name, [])
-                )
+                current = list(selected_parameters.get(element_name, []))
+
+                if not current:
+                    try:
+                        discovered = category_parameters.get(element_name, [])
+                    except:
+                        discovered = []
+                    if not discovered:
+                        kept = previous_selected.get(element_name)
+                        if isinstance(kept, list) and kept:
+                            settings["selected"][element_name] = list(kept)
+                            continue
+
+                settings["selected"][element_name] = current
 
             settings["filters"] = dict(
                 active_filters
@@ -4465,6 +4651,44 @@ try:
                         formwork_rules.get("deduction_pct", {})
                     )
                 }
+            except:
+                pass
+
+            try:
+                raw_assembly = {
+                    "id": assembly_profile.get("id", "global-custom"),
+                    "edition": assembly_profile.get("edition", "1.0.0"),
+                    "name": window.FindName("AssemblyProfileName").Text,
+                    "source": window.FindName("AssemblyProfileSource").Text,
+                    "binding_wire_factor": window.FindName("AssemblyBindingWireFactor").Text,
+                    "cover_block_factor": window.FindName("AssemblyCoverBlockFactor").Text,
+                    "labour_factor": window.FindName("AssemblyLabourFactor").Text,
+                }
+                assembly_profile.clear()
+                assembly_profile.update(normalize_assembly_profile(raw_assembly))
+            except:
+                pass
+            settings["assembly_profile"] = dict(assembly_profile)
+
+            # P7: this document's own site items. The default list is
+            # untouched here - it only ever seeds a new project, and is
+            # changed explicitly through Save as default.
+            try:
+                if site_items_ready[0]:
+                    site_items_source[0] = "document"
+                    site_items_dirty[0] = False
+                    settings["site_items"] = save_site_items(
+                        settings.get("site_items"),
+                        safe_text(doc.Title, ""),
+                        site_items_state
+                    )
+            except:
+                pass
+
+            # P11: the rate build-ups shown in the tab.
+            try:
+                from costing_engine import save_rate_analysis
+                settings = save_rate_analysis(settings, rate_analysis_state)
             except:
                 pass
 
@@ -5094,10 +5318,11 @@ try:
                 args
             ):
 
-                try:
-                    capture_and_save_settings()
-                except:
-                    pass
+                if _headless_export_job is None:
+                    try:
+                        capture_and_save_settings()
+                    except:
+                        pass
 
                 total = 0
 
@@ -5267,7 +5492,11 @@ try:
 
                 # P4 Rebar quantities are automatic, so a Rebar-only model
                 # can export without choosing an additional raw parameter.
-                if total == 0 and not category_elements.get("Rebar", []):
+                if (
+                    total == 0
+                    and not category_elements.get("Rebar", [])
+                    and _headless_export_job is None
+                ):
 
                     if status:
                         set_status(
@@ -5394,12 +5623,16 @@ try:
                     metadata_seconds = time.time() - metadata_started
 
                     data_started = time.time()
+                    element_materials = {}
                     (
                         element_data,
                         total_rows,
                         missing_values
                     ) = build_element_data(
-                        include_grade=not use_site_format
+                        # P10 reports missing concrete grade in both
+                        # formats; the Site writer still hides the column.
+                        include_grade=True,
+                        material_sink=element_materials
                     )
                     data_seconds = time.time() - data_started
 
@@ -5416,6 +5649,12 @@ try:
                             "element rows were found to export.",
                             title="RCC BOQ - Excel Export"
                         )
+
+                        if _headless_export_job is not None:
+                            fail_export_job(
+                                _headless_export_job,
+                                "No structural element rows were found to export"
+                            )
 
                         return
 
@@ -5435,6 +5674,106 @@ try:
                     if not output_path.lower().endswith(".xlsx"):
                         output_path += ".xlsx"
 
+                    from export_engine import write_basic_xlsx, write_site_xlsx
+                    from export_validation import (
+                        default_validation_report_path,
+                        read_validation_report
+                    )
+
+                    validation_report_path = default_validation_report_path()
+
+                    # P10: list exported elements the BOQ cannot fully count
+                    # (missing grade, missing/zero volume, uncertain
+                    # Slab/Foundation routing) from the rows just built.
+                    from validation_engine import (
+                        UNMAPPED_SHEET_NAME,
+                        build_unmapped_element_report,
+                        collect_routing_findings,
+                        collect_missing_parameter_findings,
+                        collect_missing_rebar_findings
+                    )
+
+                    routing_audit = classification_audit or {}
+
+                    # P9: the two remaining checks PRD section 12 asks
+                    # for. Both read only the rows already built, so they
+                    # add no Revit work, and both refuse to report what
+                    # this project simply does not use - a parameter its
+                    # own category leaves blank everywhere, or rebar in a
+                    # model that models none.
+                    extra_findings = list(
+                        collect_routing_findings(
+                            classification_audit_detail_results(
+                                routing_audit
+                            ),
+                            list(routing_audit.get(
+                                "source_duplicate_ids", []
+                            ))
+                            + list(routing_audit.get(
+                                "destination_duplicate_ids", []
+                            ))
+                        )
+                    )
+                    try:
+                        extra_findings.extend(
+                            collect_missing_parameter_findings(element_data)
+                        )
+                        extra_findings.extend(
+                            collect_missing_rebar_findings(element_data)
+                        )
+                    except:
+                        pass
+
+                    unmapped_report = build_unmapped_element_report(
+                        element_data,
+                        extra_findings,
+                        element_materials
+                    )
+
+                    # P11: the saved rate build-ups. Guarded - a costing
+                    # sheet is worth having, but never at the price of an
+                    # export that is otherwise ready to write.
+                    rate_analysis = []
+                    try:
+                        from costing_engine import load_rate_analysis
+                        rate_analysis = load_rate_analysis(
+                            load_app_settings()
+                        )
+                    except:
+                        rate_analysis = []
+                    unmapped_count = len(unmapped_report) - 1
+
+                    # P9: severity and a compact summary of exactly those
+                    # rows. Guarded - a summary is a convenience and must
+                    # never be the reason an otherwise ready export fails.
+                    try:
+                        from validation_engine import build_validation_report
+                        p9_report = build_validation_report(unmapped_report)
+                    except Exception:
+                        p9_report = {
+                            "headline": "{} finding(s)".format(unmapped_count),
+                            "lines": [],
+                            "errors": 0,
+                            "warnings": 0,
+                            "total": unmapped_count,
+                            "ok": True,
+                        }
+
+                    # P7: typed non-model items for THIS document. A
+                    # default list seeds a project the first time it is
+                    # opened; the project's own saved list wins after
+                    # that. Guarded so a settings problem can never
+                    # abort an export that is otherwise ready.
+                    site_items = []
+                    try:
+                        from site_items_engine import resolve_site_items
+                        site_items = resolve_site_items(
+                            load_app_settings().get("site_items"),
+                            safe_text(doc.Title, "")
+                        )["items"]
+                    except:
+                        site_items = []
+
                     workbook_started = time.time()
                     if use_site_format:
 
@@ -5451,7 +5790,12 @@ try:
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
                             include_formwork=is_formwork_enabled(),
-                            selected_parameters=selected_parameters
+                            selected_parameters=selected_parameters,
+                            assembly_profile=assembly_profile,
+                            validation_report_path=validation_report_path,
+                            unmapped_report=unmapped_report,
+                            rate_analysis=rate_analysis,
+                            site_items=site_items
                         )
 
                     else:
@@ -5468,10 +5812,22 @@ try:
                                     SCRIPT_VERSION
                                 )
                             ),
-                            generated_stamp=time.strftime("%Y-%m-%d %H:%M")
+                            generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
+                            assembly_profile=assembly_profile,
+                            validation_report_path=validation_report_path,
+                            unmapped_report=unmapped_report,
+                            rate_analysis=rate_analysis,
+                            site_items=site_items
                         )
 
                     workbook_seconds = time.time() - workbook_started
+                    validation_report = read_validation_report(
+                        validation_report_path
+                    )
+                    if not validation_report.get("ok"):
+                        raise ValueError(
+                            "Canonical XLSX validation did not pass"
+                        )
 
                     non_empty_sheets = 0
 
@@ -5565,6 +5921,7 @@ try:
                         "Element data rows: {}\n"
                         "Sheets with element data: {}\n"
                         "Quantity columns: {}\n\n"
+                        "Workbook validation: PASS ({} cells, SHA-256 {}...)\n\n"
                         "Processing time: {:.1f} sec "
                         "(metadata {:.1f} + Revit data {:.1f} + workbook {:.1f})\n\n"
                         "Workbook sheets: {}".format(
@@ -5574,6 +5931,8 @@ try:
                             total_rows,
                             non_empty_sheets,
                             quantity_columns,
+                            validation_report.get("actual_cell_count", 0),
+                            validation_report.get("workbook_sha256", "")[:12],
                             metadata_seconds + data_seconds + workbook_seconds,
                             metadata_seconds,
                             data_seconds,
@@ -5597,12 +5956,48 @@ try:
                                 )
                             )
 
+                    if unmapped_count > 0:
+                        # P9: the same findings the sheet lists, now
+                        # summarized by issue and severity. A bare count
+                        # said how many rows to expect but nothing about
+                        # what they are, or which of them change a total.
+                        completion_message += (
+                            "\n\nValidation: {}\n{}".format(
+                                p9_report["headline"],
+                                "\n".join(p9_report["lines"])
+                            )
+                        )
+                        completion_message += (
+                            "\n\nAll {} finding(s) are listed on the "
+                            "'{}' sheet; use Manage > Select by ID to "
+                            "fix them in the model.".format(
+                                unmapped_count,
+                                UNMAPPED_SHEET_NAME
+                            )
+                        )
+
+                    if _headless_export_job is not None:
+                        complete_export_job(
+                            _headless_export_job,
+                            validation_report
+                        )
+
                     forms.alert(
                         completion_message,
                         title="RCC BOQ - Excel Export"
                     )
 
                 except Exception as export_error:
+
+                    if _headless_export_job is not None:
+                        try:
+                            import traceback as _headless_traceback
+                            fail_export_job(
+                                _headless_export_job,
+                                _headless_traceback.format_exc()
+                            )
+                        except:
+                            pass
 
                     if status:
 
@@ -5685,20 +6080,86 @@ try:
         # SHOW WINDOW
         # ====================================================
 
-        window.ShowDialog()
+        if _headless_export_job is not None:
+            # The bridge owns this one-shot run. Keep the WPF window hidden,
+            # force non-interactive options, and never alter the user's saved
+            # dialog preferences.
+            try:
+                for control_name, value in (
+                    ("ExportOnlyCheck", False),
+                    ("AutoOpenCheck", False),
+                    ("QuantitiesCheck", True),
+                    (
+                        "SiteFormatCheck",
+                        _headless_export_job.get("export_format") == "site"
+                    ),
+                    (
+                        "IncludeFormworkCheck",
+                        bool(_headless_export_job.get("include_formwork", True))
+                    ),
+                ):
+                    control = window.FindName(control_name)
+                    if control:
+                        control.IsChecked = value
+
+                mark_export_job_running(_headless_export_job)
+                original_alert = forms.alert
+                forms.alert = lambda *args, **kwargs: None
+                try:
+                    export_to_excel(None, None)
+                finally:
+                    forms.alert = original_alert
+
+                if _headless_export_job.get("status") == "running":
+                    fail_export_job(
+                        _headless_export_job,
+                        "Headless BOQ export ended without a result"
+                    )
+            except Exception as headless_error:
+                try:
+                    fail_export_job(_headless_export_job, headless_error)
+                except:
+                    pass
+        else:
+            # P7: attach the Site Items handlers and load this document's
+            # list before the dialog becomes visible.
+            try:
+                site_items_wire_controls()
+                site_items_load_for_document()
+            except:
+                pass
+
+            # P11: the Rate Analysis tab, loaded from the saved build-ups.
+            try:
+                rate_wire_controls()
+                rate_load_saved()
+            except:
+                pass
+
+            window.ShowDialog()
 
 
 except Exception as ex:
-
-    forms.alert(
-
-        "RCC BOQ STARTUP ERROR\n\n"
-        "{}\n\n"
-        "DETAILS:\n{}".format(
-
-            str(ex),
-            traceback.format_exc()
-        ),
-
-        title="RCC BOQ ERROR"
+    startup_details = (
+        "RCC BOQ STARTUP ERROR\n\n{}\n\nDETAILS:\n{}".format(
+            str(ex), traceback.format_exc()
+        )
     )
+
+    try:
+        print(startup_details)
+    except:
+        pass
+
+    if _headless_export_job is not None:
+        try:
+            fail_export_job(_headless_export_job, startup_details)
+        except:
+            pass
+    else:
+        forms.alert(
+
+            startup_details,
+
+            title="RCC BOQ ERROR"
+        )

@@ -62,6 +62,7 @@
         <!-- ================================================= -->
 
         <TabControl
+            x:Name="MainTabs"
             Grid.Row="1"
             Background="{DynamicResource SurfaceBrush}"
             BorderThickness="0">
@@ -811,6 +812,209 @@
             </TabItem>
 
 
+            <TabItem Header="Assembly Profile">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="18" MaxWidth="720" HorizontalAlignment="Left">
+                        <TextBlock Text="Structural Assembly Profile" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock Text="Measured concrete, Rebar and formwork stay model-derived. Optional factors below are multiplied by hosted Rebar weight in kg; leave blank when the applicable local SOR does not define a defensible coefficient." TextWrapping="Wrap" Margin="0,0,0,16"/>
+                        <TextBlock Text="Profile name" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyProfileName" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Authority / source reference" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyProfileSource" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Binding wire factor (kg per kg Rebar)" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyBindingWireFactor" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10" ToolTip="Example: 0.01 means 1 kg binding wire per 100 kg hosted Rebar."/>
+                        <TextBlock Text="Cover block factor (each per kg Rebar)" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyCoverBlockFactor" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Labour factor (worker-day per kg Rebar)" Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="AssemblyLabourFactor" Style="{DynamicResource BrandTextBox}" Margin="0,4,0,10"/>
+                        <TextBlock Text="Blank or invalid/negative factors export as Input required. Values and source are saved automatically and printed in the workbook." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Site Items">
+                <Grid Margin="18">
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Site / Non-Model Items" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="SiteItemIntro" TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
+                                   Style="{DynamicResource BrandBodyText}"
+                                   Text="Work that is not modelled - consumables, temporary works, site items. These export to their own Site Items sheet and are added to the Costing total. A line without a positive Quantity and Rate still appears, but its Amount stays blank rather than counting as zero."/>
+                        <TextBlock x:Name="SiteItemSource" Margin="0,6,0,0" Style="{DynamicResource BrandLabelText}" Text=""/>
+                    </StackPanel>
+
+                    <!-- Columns are paired by how much room each field needs:
+                         identity, then unit/rate, then the long free text. -->
+                    <Grid Grid.Row="1" Margin="0,0,0,10" MaxWidth="1100" HorizontalAlignment="Left">
+
+                        <!-- Explicit widths: the block is left-aligned, so a
+                             star column would collapse to its content and the
+                             free-text fields would end up as narrow as Unit. -->
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="620"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Item Code" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Unit" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Description" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="SiteItemCode" Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemUnit" Grid.Row="1" Grid.Column="1" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="For example kg, LS, nos, m2."/>
+                        <TextBox x:Name="SiteItemDescription" Grid.Row="1" Grid.Column="2" Margin="0,0,0,10" Style="{DynamicResource BrandTextBox}"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Quantity" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Rate" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Remarks" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="SiteItemQuantity" Grid.Row="3" Grid.Column="0" Margin="0,0,10,0" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="SiteItemRate" Grid.Row="3" Grid.Column="1" Margin="0,0,10,0" Style="{DynamicResource BrandTextBox}" ToolTip="Leave blank while a rate is still awaited. The line exports with a blank Amount."/>
+                        <TextBox x:Name="SiteItemRemarks" Grid.Row="3" Grid.Column="2" Margin="0,0,0,0" Style="{DynamicResource BrandTextBox}"/>
+
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox Grid.Column="0" Header="Items in this project" Margin="0,0,8,0">
+                            <ListBox
+                                x:Name="SiteItemList"
+                                Margin="5"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+                        </GroupBox>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="150">
+                            <Button x:Name="SiteItemAdd" Content="Add item" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemUpdate" Content="Update selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemRemove" Content="Remove selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemClear" Content="Clear fields" Height="34" Margin="0,0,0,14" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="SiteItemSaveDefault" Content="Save as default" Height="34" Margin="0,0,0,0" Style="{DynamicResource BrandSecondaryButton}"
+                                    ToolTip="Use this list to start any NEW project. Projects that already have their own list are never changed."/>
+                        </StackPanel>
+
+                    </Grid>
+
+                    <TextBlock x:Name="SiteItemSummary" Grid.Row="3" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandBodyText}" Text="No site items."/>
+
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Rate Analysis">
+                <Grid Margin="18">
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Rate Analysis" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="RateIntro" TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
+                                   Style="{DynamicResource BrandBodyText}"
+                                   Text="Where a rate comes from. Wastage applies to the material only - labour and machinery are not wasted - and overheads apply to everything under them. An item missing any of the five is kept, but its rate stays blank rather than being priced at zero."/>
+                        <TextBlock x:Name="RateSource" Margin="0,6,0,0" Style="{DynamicResource BrandLabelText}" Text=""/>
+                    </StackPanel>
+
+                    <!-- Same column pairing as Site Items: identity, then the
+                         short numbers, then the long free text. -->
+                    <Grid Grid.Row="1" Margin="0,0,0,10" MaxWidth="1100" HorizontalAlignment="Left">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="620"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Item Code" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Unit" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Description" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="RateItemCode" Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="RateUnit" Grid.Row="1" Grid.Column="1" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="For example m3, m2, kg."/>
+                        <TextBox x:Name="RateDescription" Grid.Row="1" Grid.Column="2" Margin="0,0,0,10" Style="{DynamicResource BrandTextBox}"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Material (per unit)" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Wastage %" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Labour (per unit)" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="RateMaterial" Grid.Row="3" Grid.Column="0" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="RateWastagePct" Grid.Row="3" Grid.Column="1" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="Applied to the material only."/>
+                        <TextBox x:Name="RateLabour" Grid.Row="3" Grid.Column="2" Margin="0,0,0,10" Style="{DynamicResource BrandTextBox}"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Machinery (per unit)" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="Overheads %" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+
+                        <TextBox x:Name="RateMachinery" Grid.Row="5" Grid.Column="0" Margin="0,0,10,0" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="RateOverheadsPct" Grid.Row="5" Grid.Column="1" Margin="0,0,10,0" Style="{DynamicResource BrandTextBox}" ToolTip="Applied to material + wastage + labour + machinery."/>
+
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox Grid.Column="0" Header="Rate build-ups" Margin="0,0,8,0">
+                            <ListBox
+                                x:Name="RateList"
+                                Margin="5"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+                        </GroupBox>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="150">
+                            <Button x:Name="RateAdd" Content="Add item" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RateUpdate" Content="Update selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RateRemove" Content="Remove selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RateClear" Content="Clear fields" Height="34" Margin="0,0,0,0" Style="{DynamicResource BrandSecondaryButton}"/>
+                        </StackPanel>
+
+                    </Grid>
+
+                    <TextBlock x:Name="RateSummary" Grid.Row="3" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandBodyText}" Text="No rate build-ups."/>
+
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
 
@@ -826,27 +1030,26 @@
             BorderBrush="{DynamicResource BorderBrush2}"
             Background="{DynamicResource SurfaceAltBrush}">
 
-            <DockPanel>
+            <Grid>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
                 <TextBlock
                     x:Name="StatusText"
+                    Grid.Column="0"
                     VerticalAlignment="Center"
                     Style="{DynamicResource BrandBodyText}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
                     Text="Ready"/>
 
-
-                <Button
-                    x:Name="CloseButton"
-                    DockPanel.Dock="Right"
-                    Content="Close"
-                    Width="100"
-                    Height="34"
-                    Margin="0,0,8,0"
-                    Style="{DynamicResource BrandSecondaryButton}"/>
-
                 <StackPanel
+                    Grid.Column="1"
                     Orientation="Horizontal"
-                    DockPanel.Dock="Right"
                     VerticalAlignment="Center"
                     Margin="0,0,20,0">
 
@@ -914,7 +1117,16 @@
 
                 </StackPanel>
 
-            </DockPanel>
+                <Button
+                    x:Name="CloseButton"
+                    Grid.Column="2"
+                    Content="Close"
+                    Width="100"
+                    Height="34"
+                    Margin="0,0,8,0"
+                    Style="{DynamicResource BrandSecondaryButton}"/>
+
+            </Grid>
 
         </Border>
 

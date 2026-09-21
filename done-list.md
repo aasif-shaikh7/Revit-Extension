@@ -276,6 +276,39 @@ fallback). Same engine reality as BOQ-9: the installed pyRevit (master `6.5.3`) 
 
 ---
 
+## P10-03 — `Other`-route unmapped reporting — **done** (`v1.24.0`)
+
+**Asked for:** close the last P10-03 gap — routing findings had never been exercised on a model
+whose Slab/Foundation identities carry neither a known code nor `slab`/`foundation` wording. No
+production model had ever produced one.
+
+**Built:** the fixture was authored rather than waited for. `lib/authoring_spec.py` declares the
+model and `scripts/revit_authoring.py` builds it in Revit, with `family_path` added so the fixture
+could pin `M_Cup Foundation` — `M_Footing-Rectangular` would have contributed a `footing` routing
+token through its family name alone.
+
+**How it is known to work — Tested (live), owner-confirmed:**
+- Agent run, headless job path: Classic validated `260/260` cells across 9 sheets and Site
+  `194/194` across 5, both with zero mismatches.
+- **Project owner ran the real dialog** (Nudge → Generate → RCC BOQ, `Mark` selected on Slab and
+  Foundation) and exported `20260918-AgentTest-OtherRoute-CONCRETE_FINISHING_BOQ.xlsx`.
+- The owner's dialog workbook and the agent's headless workbook have **identical sheet lists (9)
+  and byte-identical Unmapped Elements tables (8 rows)**.
+- Exactly two `Uncertain Slab/Foundation mapping` rows appear, with levels resolved:
+  `Slab / 423208 / Level 2 / Floor / Deck Panel PX1` and
+  `Foundation / 424050 / Level 1 / M_Cup Foundation / Pedestal PD1`.
+- Control element `423217` (`Typical Slab ST1`) is listed only under grade/material issues and
+  never under routing, so the routing rows are specific to the `Other` route rather than blanket
+  output.
+
+**What it cost / what was learned:** the dialog and the headless job path do **not** behave alike at
+the export guard. `script.py` blocks an export with zero selected parameters and no Rebar, but
+exempts the headless job (`and _headless_export_job is None`). An agent-run export therefore cannot
+by itself prove the dialog path — which is exactly why the owner's run was required, and why the
+guard difference is now recorded as a known limitation.
+
+---
+
 ## BOQ Parameter Manager — Level Sync-style header/footer composition (v1.4.3)
 
 **What.** The BOQ dialog's header and footer are restyled to match the Level Sync Studio dialog's
@@ -349,7 +382,7 @@ where installed (Segoe UI fallback). Same engine reality as v1.4.2 — the insta
 
 ---
 
-## P2-02 — Concrete-grade BOQ grouping — code complete (`v1.6.0`)
+## P2-02 — Concrete-grade BOQ grouping — **done** (`v1.6.0`)
 
 **Asked for.** P2's remaining half: "grade of concrete" grouping (owner folded material-wise
 into grade-wise).
@@ -411,7 +444,7 @@ confirmed both workbooks export correctly; everything else in v1.6.0 is also liv
 
 ---
 
-## Grade fix (case-insensitive) + classic column cleanup — code complete (`v1.6.2`)
+## Grade fix (case-insensitive) + classic column cleanup — **done** (`v1.6.2`)
 
 **Asked for.** Owner's live export showed the engine `Grade` column as `(No Grade)` even though
 the project's shared parameter `GRADE OF CONCRETE` (all-caps) carried `M40` — and asked how to
@@ -736,7 +769,7 @@ future work once the owner confirms the detail figures.
 
 ---
 
-## Formwork flag order fix + Summary honours Include formwork — code complete (`v1.8.2`)
+## Formwork flag order fix + Summary honours Include formwork — **done** (`v1.8.2`)
 
 **Asked for (owner live test of `v1.8.1`).** Two defects:
 1. Site format + Include formwork **checked** → the SHUTTERING (SQM) column appeared on the detail
@@ -1048,6 +1081,213 @@ reads. Rebar `3411763` retained Quantity `3`, blank Bar Length, Total Bar Length
 `Varies` and `has_variable_length_bars=true`. A separate fresh ephemeral Codex session discovered
 and invoked the registered `rcc-boq/rcc_boq_status` tool without shell, executable or HTTP fallback.
 INT-02 is closed.
+
+---
+
+## P4-01 — Rebar Quantity Engine — **done** (`v1.19.0` QA)
+
+**Built.** The Rebar category exports auditable native quantity, host and weight fields in Classic
+and Site workbooks. Total Length prefers Revit `TotalLength`, unit weight uses d²/162 kg/m, and
+automatic fields participate in the same Available → Selected → export contract.
+
+**How it is known.** The full XLSX harness passes. Read-only native Revit 2025 QA on
+`20260225-BBS_BEAM_RBM_SALES-P1` matched a Quantity-1 bar and fixed sets against their workbook
+rows. All 965 Rebar rows, BBS groups and diameter summaries reconcile at 11,903 bars, 25,439.37 m
+and 30,130.966 kg. Site Rebar omits standalone L/W/H and SHUTTERING columns. The working Revit
+document remained untouched throughout the isolated Secondary-channel audit.
+
+**Cost / limits.** Shape-aware BBS and live dialog selection-order persistence remain tracked under
+P5. Fabric reinforcement is not included in the `OST_Rebar` scope.
+
+---
+
+## INT-03b — Agent Bridge 1-hour write window — **done** (`v1.20.0`, Bridge `v2.4.0`)
+
+**Asked for:** "15min limit ko 1 hour kardena" — after a live agent connection to Revit through the
+bridge was demonstrated.
+
+**Built:** `AgentBridgeCommand.WriteDuration` is now `TimeSpan.FromHours(1)`, and the three
+TaskDialog strings that used to hard-code "15 minutes" are derived from that constant through a new
+`FormatWriteDuration` helper, so the dialog can no longer promise a different window than the one
+granted. `WriteSessionConsent` was not touched — it never clamped the duration, so the constant
+remains the single source. Installed as Bridge `v2.4.0`; the `v2.3.0` install tree was deliberately
+left in place as the rollback target.
+
+**How it is known to work:** Reported for the live read path — before the change, `status` returned
+`revit_connected true` with an active write session and `document` returned
+`20260225-BBS_BEAM_RBM_SALES-P1` on Revit build `25.0.2.419`. Tested for the build — zero-warning
+Release build and a clean full install of add-in, Gateway and MCP. Binary inspection confirms the
+installed `v2.4.0` assembly carries `1 hour` and no longer carries the 15-minute strings, which the
+retained `v2.3.0` assembly still has. `test_xlsx_writer.py` passes after the version bump.
+
+**Confirmed live by the project owner:** after a Revit 2025 restart the consent dialog reads
+"Enable write access for 1 hour", and a `status` probe against the running bridge returned
+`RemainingSeconds: 3574` with `revit_connected true`.
+
+**Caught by that same probe:** `status` still reported `api_version`/`extension_version` `2.3.0`,
+because the bridge version is held in two independent places — `Directory.Build.props` and the
+`BridgeConstants.Version`/`ApiVersion` literals — and only the first had been bumped. Both
+constants were moved to `2.4.0`, matching how they have moved together on every bump since
+`v2.0.0`, then rebuilt and reinstalled. Binary inspection of all four installed assemblies
+(`RccBoq.RestRevit.dll` and the `RccBoq.RestCore.dll` copies under the install root, `Mcp\` and
+`Gateway\`) shows `2.4.0` present and `2.3.0` absent in every one.
+
+**What it cost:** the write-access exposure window is four times longer. The mitigations are
+unchanged and deliberate — localhost/current-user only, opt-in per session, immediate manual
+revoke, and no delete/save/code-execution surface.
+
+---
+
+## P5-01 — Shape-aware BBS + diameter summary — **done** (`v1.19.1`)
+
+**Built.** Rebar BBS and diameter summaries preserve shape A-H, bends, hooks, authoritative Revit
+Cutting Length, host/Level traceability, fixed grouping and variable-set average-only safety.
+
+**How it is known.** Native Revit reads matched stirrup, straight, L, C and both U-ring samples;
+all Classic/Site Rebar totals reconcile. All 4,031 Site Beam L/W/H rows also match native
+element/type dimensions. A non-empty Rebar Selected-list order survived dialog close plus a fresh
+test-Revit restart. The live test exposed unordered IP27 rows; `v1.19.1` changed them to
+`OrderedDict`, and the corrected Classic export placed the selected fields consecutively at
+columns 3-5. Canonical validation passed 118,101/118,101 cells across 14/14 sheets.
+
+**Cost / limits.** Variable sets intentionally keep Cutting Length blank and expose only their
+average. Fabric reinforcement remains outside the `OST_Rebar` scope.
+
+---
+
+## P10-01 — Unmapped Element Report first slice — **done** (`v1.21.0`)
+
+**Asked for:** P10 started ahead of P7/P8/P9 on 2026-09-15, after a live read showed the BBS beam
+model exporting a BOQ by Grade silently collapsed into `(No Grade)`. Owner choices: the report is a
+workbook sheet that appears only when findings exist, and it runs in the Site format too.
+
+**Built:** a new pure `lib/validation_engine.py` (`build_unmapped_element_report`,
+`collect_routing_findings`) reporting missing concrete grade, missing/zero volume, uncertain
+Slab/Foundation routing and duplicate routing sources, limited to elements present in the export.
+The `Unmapped Elements` sheet follows Costing in Classic (listed on the Summary cover) and follows
+Structural Assembly in Site (under the `RCC - MODEL VALIDATION` band). A header-only report adds no
+tab. The completion popup gains a finding-count line. Site export now resolves grade, while Site
+detail sheets still hide the column.
+
+**How it is known to work:** Tested (harness) - 10 P10 checks inside the 182-check suite. Tested
+(live, headless) on `20260225-BBS_BEAM_RBM_SALES-P1`: Site 118,821 and Classic 166,835 cells
+validated with zero mismatches and the same 8,696 findings in both; missing-grade counts equal the
+`(No Grade)` element rows in every category; volume findings confirmed against Revit (Beams
+`2970078`-`2970080` with an empty Volume, Slab `3026042` at `0.00 m3`). **Confirmed live by the
+project owner (2026-09-15):** the interactive Classic export popup ended with the
+`Unmapped elements: 8696 finding(s)` line.
+
+**Unverified:** routing findings on a model with `Other` routes; Site export time against v1.20.0.
+
+**What it cost:** Site export now resolves grade for every concrete element, not measured against a
+baseline. On a model with no grades the sheet lists every element (8,696 rows here) instead of
+summarising. Missing material is deferred to P10-02 because it needs a new per-element Revit read.
+
+---
+
+## P10-02 — Unmapped Element Report: missing structural material — **done** (`v1.22.0`)
+
+**Asked for:** the P10 follow-up slice that reports elements with no structural material.
+
+**Built:** `resolve_structural_material` reads the export's per-element parameter index (instance
+`Structural Material`, then type, then `Material`; blank and `<By Category>` count as missing).
+Results travel in an Element ID map into `build_unmapped_element_report`, which adds
+`Missing structural material` rows without adding any workbook column.
+
+**How it is known to work:** Tested (harness) - 3 P10-02 checks inside the 187-check suite. A live
+survey of a scratch copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026` shaped the scope rule: Beam and
+Column material on the instance, Wall and Foundation Slab material on the type. Tested (live,
+headless) in an isolated second Revit 2025 window on the Secondary bridge: Site export validated
+8,245 cells with zero mismatches and reported 316 missing-material findings (294 Slab sheet,
+22 Foundation), none on Beam, Column or Structure Wall. Four spot-checked Foundation Slab elements
+had a blank type Structural Material. The owner's working Revit was never called.
+
+**Unverified:** the Classic format on this model, and routing findings on a model with `Other`
+routes.
+
+**What it cost:** one parameter value read per concrete element from an index the export already
+built. The QA also showed that the documented Secondary restore step fails while the Primary Revit
+is running, so the README now restores the manifest from a saved copy.
+
+---
+
+## INT-04 — Controlled Structural Material assignment — **done** (`v1.23.0`, Bridge `v2.5.0`)
+
+**Asked for:** diagnose and fix the 316 Slab/Foundation `Missing structural material` findings in
+the UMA NIWAS workbook through the isolated second Revit window.
+
+**Built:** a bounded 1,000-item active-document material catalog and a dedicated type/material write
+operation across REST, CLI and the 11-tool MCP server. Writes are dry-run-first, consent-gated and
+expected-current guarded (`0` means blank), with native read-back and forced rollback. Family types
+use the built-in Structural Material parameter. Read-only system types accept only one unambiguous
+compound-structure `Structure` layer; no layer is added, removed or reordered. Generic ElementId
+writes, document save, delete, arbitrary paths and arbitrary code remain unavailable.
+
+**How it is known to work:** Primary/Secondary zero-warning builds, Core/MCP tests, Python compile
+and all 189 XLSX checks pass. In isolated Secondary Revit 2025, the saved UMA NIWAS `TEST COPY`
+returned 631 materials. Thirteen affected types resolved layer 0 with their already-correct layer
+material. Consent-off rejection and a consented F1 forced rollback passed; all 13 guarded writes and
+independent reads then returned `RCC_SLAB`, `RCC_FOOTING` or `PCC_FOOTING`. A Classic export
+validated 12,165/12,165 cells across 12 sheets with zero mismatch and SHA-256
+`0d0dbde94cf562825c34b3fb2e0be03c954420702de843e5d226a8b040864e27`: zero `(No Grade)`, zero
+missing Structural Material, and only 20 independent Beam missing/zero-volume findings. After the
+owner saved, a normal close/reopen with write consent disabled preserved all 13 values.
+
+**Cost / limits:** actual writes affect the open document but the bridge never saves it; the owner
+must save manually. Ambiguous or absent structural layers are rejected instead of guessed.
+
+---
+
+## P7 — Site / Manual Structural Items — **done** (`v1.25.6`, owner-confirmed 2026-09-21)
+
+**Asked for:** Roadmap Phase 7 — a way to price site work that has no model element behind it
+(binding wire, curing, dewatering, lump-sum items) inside the same BOQ, without corrupting the
+model-derived figures.
+
+**Built, in six slices:**
+- `v1.25.0` — `lib/site_items_engine.py`, dependency-free: normalize what was typed, report every
+  unusable field by name, price only complete lines, build the export table. Absent, non-numeric,
+  zero, negative and boolean quantities/rates all normalize to `None` and leave `Amount` blank
+  rather than pricing work at zero.
+- `v1.25.1` — storage. A reusable default list **seeds** a project the first time it is opened;
+  after that the project edits its own list. Changing the default never rewrites a project that
+  already has one, because that would silently alter an already-priced BOQ.
+- `v1.25.2` — a `Site Items` sheet in both workbook formats, and the typed items feed the existing
+  `Costing` TOTAL so one cost figure covers model-derived and typed work. `BOQ Summary` is left
+  alone: it totals concrete volume in m³, so a currency figure in that total would be arithmetically
+  wrong.
+- `v1.25.3` — the dialog tab: six entry boxes, the line list, Add / Update / Remove / Clear / Save
+  as default, a live summary, and a label saying whether the list is this project's own, a seeded
+  default, or empty.
+- `v1.25.4` — a headless export (or the startup parameter restore) could persist an **empty** list
+  as the document's own, losing a saved list and disabling seeding. `site_items_ready` now gates
+  that write.
+- `v1.25.5` / `v1.25.6` — layout and label fixes; see below.
+
+**How it is known to work:**
+- **Tested (harness):** the engine's 11 checks plus the workbook checks (`Site Items` sheet, the
+  Costing formulas, the blanked unpriced line, the TOTAL spanning the site rows, and a project with
+  no site items keeping its familiar workbook) inside the full passing suite.
+- **Tested (live, driven):** the shipping `script.py` ran in Revit 2025 with only
+  `window.ShowDialog()` replaced by a driver hook, so the real window, handlers and engine were
+  exercised. **All twelve checks passed** — Add, the unpriced line, the summary split,
+  select-to-edit, Update, Remove, the refusal of an empty line, and Save as default writing the
+  template without creating a per-document entry. A `KEEP-01` list survived a headless export after
+  the `v1.25.4` fix.
+- **Tested (live, export):** the P10-03 fixture validated Classic `305/305` cells across 10 sheets
+  and Site `228/228` across 6, both zero mismatches, with `E8=SUM(E2:E7)` spanning the site rows.
+- **Seen (live, rendered):** the dialog is rendered to PNG by WPF itself (`RenderTargetBitmap` over
+  the real shown window), so an agent can inspect the layout. That found two faults, both fixed in
+  `v1.25.6`: a source label that kept saying *"nothing saved yet"* while four lines were listed, and
+  free-text fields collapsing to the width of `Unit`. Light and Dark both render correctly.
+- **Owner-confirmed (2026-09-21):** the layout reads correctly on the owner's own screen and monitor
+  size. This was the last item P7 was waiting on, after the owner's `v1.25.5` screenshot had shown
+  the entry boxes stretching on a wide monitor.
+
+**What it cost:** site items are typed, so nothing validates them against the model — a wrong
+quantity is priced exactly as typed. The engine's only defence is to refuse to price an incomplete
+line rather than price it at zero. The default list is a convenience seed, not a shared library:
+once a project has its own list, the default can no longer reach it.
 
 ---
 
