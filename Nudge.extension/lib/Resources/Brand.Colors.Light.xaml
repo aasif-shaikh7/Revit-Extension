@@ -2,15 +2,18 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-        Steel & Rebar palette - LIGHT (v1.33.0)
+        Plum & Peach palette - LIGHT (v1.33.0, the owner's choice)
 
         Tier 1 primitives, then Tier 2 semantic brushes. Controls reference
         the semantic brushes only, so a palette change never touches a
         control template.
 
-        Primary  Steel Blue    #1D4E89  white on it 8.4:1  - actions, focus, selection
-        Accent   Rebar Orange  #D9731A  3.3:1 on white     - thin rules and the active-tab
-                                                             underline only; never text
+        Primary  Plum          #6B2D5C  white on it 9.7:1  - actions, focus, checkboxes
+        Peach    selection     #FDE9DE  plum text on it 11.5:1 - selected list items
+        Accent   Deep Peach    #D9744A  3.2:1 on white     - the active-tab underline and
+                                                             thin rules only; never text
+                 (true peach #F4A582 is 2.0:1 on white - too faint for a line here;
+                  the Dark theme uses it, where it reaches 7.1:1)
         Graphite               #1E2329  15.8:1 on white    - headings, header band
         Concrete               #5B6470  6.0:1 on white     - secondary text
 
@@ -19,12 +22,12 @@
     -->
 
     <!-- ===== Tier 1: brand primitives ===== -->
-    <Color x:Key="Primary500Color">#1D4E89</Color>
-    <Color x:Key="Primary600Color">#173F70</Color>
-    <Color x:Key="Primary700Color">#123257</Color>
-    <Color x:Key="Primary100Color">#E3ECF7</Color>
-    <Color x:Key="Primary900Color">#0E2745</Color>
-    <Color x:Key="AccentColor">#D9731A</Color>
+    <Color x:Key="Primary500Color">#6B2D5C</Color>
+    <Color x:Key="Primary600Color">#5A2550</Color>
+    <Color x:Key="Primary700Color">#4A1F40</Color>
+    <Color x:Key="Primary100Color">#F3E6EF</Color>
+    <Color x:Key="Primary900Color">#4A1F40</Color>
+    <Color x:Key="AccentColor">#D9744A</Color>
     <Color x:Key="GraphiteColor">#1E2329</Color>
 
     <!-- ===== Tier 2: brand brushes ===== -->
@@ -55,8 +58,8 @@
     <Color x:Key="HoverColor">#E9EDF2</Color>
     <Color x:Key="PressedColor">#DCE2EA</Color>
     <Color x:Key="ItemHoverColor">#F0F3F7</Color>
-    <Color x:Key="SelectedColor">#E3ECF7</Color>
-    <Color x:Key="FocusColor">#1D4E89</Color>
+    <Color x:Key="SelectedColor">#FDE9DE</Color>
+    <Color x:Key="FocusColor">#6B2D5C</Color>
     <Color x:Key="DisabledColor">#F1F3F5</Color>
     <Color x:Key="ControlColor">#FFFFFF</Color>
 

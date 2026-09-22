@@ -3096,21 +3096,21 @@ try:
 
             # v1.33.0: the colours come from the merged theme's own Color
             # keys, so this box can never drift from the palette. The
-            # fallbacks are the same Steel & Rebar values, used only if a
+            # fallbacks are the same Plum & Peach values, used only if a
             # key cannot be found.
             if theme_name == "Dark":
                 fallback_hex = {
                     "TextPrimaryColor": "EDEDED",
                     "SurfaceColor": "2B2B2B",
                     "BorderColor": "40454C",
-                    "Primary500Color": "1D4E89",
+                    "Primary500Color": "6B2D5C",
                 }
             else:
                 fallback_hex = {
                     "TextPrimaryColor": "1E2329",
                     "SurfaceColor": "FFFFFF",
                     "BorderColor": "D5DAE1",
-                    "Primary500Color": "1D4E89",
+                    "Primary500Color": "6B2D5C",
                 }
 
             def theme_brush(color_key):

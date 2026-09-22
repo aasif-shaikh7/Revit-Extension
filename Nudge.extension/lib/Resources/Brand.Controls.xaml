@@ -14,7 +14,7 @@
         <Setter Property="Padding" Value="8"/>
     </Style>
 
-    <!-- ===== Primary Button (steel fill) - one per window ===== -->
+    <!-- ===== Primary Button (plum fill) - one per window ===== -->
     <Style x:Key="BrandPrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
@@ -282,7 +282,7 @@
     <!-- consuming XAML declarations.                       -->
     <!-- ================================================== -->
 
-    <!-- ===== TabItem (implicit: folder tab, rebar-orange accent underline) ===== -->
+    <!-- ===== TabItem (implicit: folder tab, peach accent underline) ===== -->
     <Style TargetType="TabItem">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>

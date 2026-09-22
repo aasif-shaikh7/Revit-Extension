@@ -24,19 +24,24 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ## [v1.33.0] - 2026-09-22
 
-### Changed (theme step 1 of 3: the Steel & Rebar palette)
-- **New palette**, chosen for this extension after reviewing the owner's `AnonGee_BIM_Tools_Brand_Guidelines.md`.
-  The guide's system and rules were adopted: tiered tokens, full state matrices, contrast measured,
-  one primary action. Its brand name and red identity were not: in a BOQ tool red must mean an error,
-  and the guide's brand red (`#E02020`) sits next to its error red (`#DC2626`).
-  - **Primary: Steel Blue `#1D4E89`**, for actions, focus and selection. White on it is **8.4:1**.
-  - **Accent: Rebar Orange `#D9731A`**, only as the active-tab underline and thin rules, never text.
+### Changed (theme step 1 of 3: the Plum & Peach palette)
+- **New palette, chosen by the owner:** Plum & Peach. The owner first saw Steel & Rebar and six
+  rendered alternatives.
+- **The owner's design guide:** the system and rules of `AnonGee_BIM_Tools_Brand_Guidelines.md`
+  were adopted: tiered tokens, full state matrices, contrast measured, one primary action. Its
+  brand name and red identity were not.
+  - **Primary: Plum `#6B2D5C`**, for actions, focus and checkboxes. White on it is **9.7:1**.
+  - **Peach for selection:** `#FDE9DE` is the selected-item background, and plum text on it is
+    **11.5:1**.
+  - **Accent: deep peach `#D9744A`**, for the active-tab underline and thin rules only, never
+    text (3.2:1). True peach `#F4A582` is only 2.0:1 on white, too faint for a line; the Dark theme
+    uses it, where it reaches 7.1:1.
   - **Graphite `#1E2329`** for headings, and **Concrete `#5B6470`** for secondary text (6.0:1).
-  - Error, warning, success and info are kept apart from both brand colours.
+  - Error, warning, success and info stay apart from both brand colours.
 - **Why the change:** the old Ember orange `#F2994A` carried white text at **2.23:1**, below the WCAG
   AA 4.5:1 needed for text. Every text pair in both themes now passes.
-- **Dark theme:** the same keys as Light. The neutrals stay on Revit's own dark greys, so the dialog
-  still reads as part of Revit.
+- **Dark theme:** the same keys as Light. The neutrals stay on Revit's own dark greys; plum
+  selection is `#43243C`, and focus is `#C07AB0` (4.5:1).
 - **Token names:** the `Ember*` keys became `Primary*` / `Accent*`. New keys are
   `PrimaryForegroundBrush`, `HeaderBandBrush` and `HeaderBandTextBrush` (the band is for step 2).
 - **Controls:** disabled Primary and Secondary buttons now show a real disabled colour instead of
@@ -55,7 +60,8 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   - both themes meet 4.5:1 for text and 3:1 for focus and accent.
   Re-inserting the old orange makes the contrast check fail at 2.23:1.
 - **WPF render:** `ui.xaml` was loaded with the real WPF `XamlReader` and the dictionaries merged,
-  in Light and in Dark. All 13 resource keys it uses resolved, and the window rendered.
+  in Light and in Dark, with sample list items selected. All 13 resource keys it uses resolved, and
+  the window rendered.
 - **Not yet verified in Revit:** the dialog has not been opened in Revit with the new theme.
 
 ---

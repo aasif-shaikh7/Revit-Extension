@@ -2,21 +2,21 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-        Steel & Rebar palette - DARK (v1.33.0)
+        Plum & Peach palette - DARK (v1.33.0, the owner's choice)
 
         Same keys as Brand.Colors.Light.xaml. The neutrals stay close to
         Revit's own dark greys so the dialog reads as part of Revit; only
         the brand colours change. Measured on the #2B2B2B surface:
-        text 12.9:1, secondary text 5.4:1, focus border 4.2:1, accent 5.4:1.
+        text 12.9:1, secondary text 5.4:1, focus border 4.5:1, peach 7.1:1.
     -->
 
     <!-- ===== Tier 1: brand primitives ===== -->
-    <Color x:Key="Primary500Color">#1D4E89</Color>
-    <Color x:Key="Primary600Color">#24599B</Color>
-    <Color x:Key="Primary700Color">#173F70</Color>
-    <Color x:Key="Primary100Color">#1E3350</Color>
-    <Color x:Key="Primary900Color">#CFE0F5</Color>
-    <Color x:Key="AccentColor">#E8893A</Color>
+    <Color x:Key="Primary500Color">#6B2D5C</Color>
+    <Color x:Key="Primary600Color">#7D3A6D</Color>
+    <Color x:Key="Primary700Color">#5A2550</Color>
+    <Color x:Key="Primary100Color">#43243C</Color>
+    <Color x:Key="Primary900Color">#F5D6EC</Color>
+    <Color x:Key="AccentColor">#F4A582</Color>
     <Color x:Key="GraphiteColor">#1B1E22</Color>
 
     <!-- ===== Tier 2: brand brushes ===== -->
@@ -47,8 +47,8 @@
     <Color x:Key="HoverColor">#363A40</Color>
     <Color x:Key="PressedColor">#3F444B</Color>
     <Color x:Key="ItemHoverColor">#33373C</Color>
-    <Color x:Key="SelectedColor">#1E3350</Color>
-    <Color x:Key="FocusColor">#5B8FD1</Color>
+    <Color x:Key="SelectedColor">#43243C</Color>
+    <Color x:Key="FocusColor">#C07AB0</Color>
     <Color x:Key="DisabledColor">#2F3135</Color>
     <Color x:Key="ControlColor">#33363A</Color>
 
