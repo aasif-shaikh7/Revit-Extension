@@ -3698,6 +3698,19 @@ def main():
         "P11 tab refuses an item with no code"
     )
 
+    # Found live on a second Revit window: a headless export never loads
+    # the tab, so its empty list must not be saved over the build-ups.
+    rate_ready_capture = nested_handler_source("capture_and_save_settings")
+    rate_ready_load = nested_handler_source("rate_load_saved")
+    check(
+        "if rate_analysis_ready[0]:" in rate_ready_capture
+        and rate_ready_capture.index("if rate_analysis_ready[0]:")
+        < rate_ready_capture.index("save_rate_analysis(settings")
+        and "rate_analysis_ready[0] = True" in rate_ready_load
+        and "rate_analysis_ready = [False]" in script_text,
+        "P11 a headless export cannot erase the saved rate build-ups"
+    )
+
     capture_rate_block = nested_handler_source("capture_and_save_settings")
     check(
         "save_rate_analysis(settings, rate_analysis_state)" in capture_rate_block,
