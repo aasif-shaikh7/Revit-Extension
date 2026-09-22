@@ -1654,6 +1654,149 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None):
     return table
 
 
+# ------------------------------------------------------------------
+# P13: Concrete Summary and Formwork Summary
+# ------------------------------------------------------------------
+
+CONCRETE_SUMMARY_SHEET_NAME = "Concrete Summary"
+FORMWORK_SUMMARY_SHEET_NAME = "Formwork Summary"
+
+
+def _present_categories(data):
+    """The categories that actually have rows, in BOQ order."""
+    return [(sheet_name, label) for sheet_name, label in DETAILED_BOQ_CATEGORIES
+            if data.get(sheet_name)]
+
+
+def _matrix_with_totals(first_header, categories, total_header, keyed_rows):
+    """Lay out a key x category matrix with row totals and a TOTAL row.
+
+    keyed_rows is [(key, [cell per category])]; row and column totals are
+    live SUM formulas over the cells, so a figure typed over in Excel
+    carries through.
+    """
+    headers = [first_header] + [sheet for sheet, _label in categories]
+    headers.append(total_header)
+    table = [headers]
+    last_col = xlsx_column_name(len(categories) + 1)
+
+    for key, cells in keyed_rows:
+        row_number = len(table) + 1
+        table.append([key] + list(cells) + [(
+            "FORMULA", "SUM(B{0}:{1}{0})".format(row_number, last_col))])
+
+    first_data, last_data = 2, len(table)
+    totals = ["TOTAL"]
+    for index in range(len(categories) + 1):
+        column = xlsx_column_name(index + 2)
+        totals.append(("FORMULA", "SUM({0}{1}:{0}{2})".format(
+            column, first_data, last_data)))
+    table.append(totals)
+    return table
+
+
+def build_concrete_summary_table(data_result, summary_info):
+    """Concrete by grade across categories: what to order, grade by grade.
+
+    One row per grade (M10, M30, M40 ... in number order, an unrecorded
+    grade last), one column per category, a Total (m3) per grade and a
+    TOTAL row. Each cell is the same live SUMIF against the category sheet
+    that BOQ by Grade and the Detailed BOQ use, so all three always agree.
+    A header-only table means there was no concrete to summarize.
+    """
+    data = data_result if isinstance(data_result, dict) else {}
+    info_by_sheet = summary_info if isinstance(summary_info, dict) else {}
+
+    categories = []
+    grades = []
+    for sheet_name, label in _present_categories(data):
+        info = info_by_sheet.get(sheet_name) or {}
+        if not ((info.get("columns") or {}).get("Volume (m3)")
+                and info.get("grade_col") and (info.get("data_end") or 0) > 1):
+            continue
+        categories.append((sheet_name, label))
+        for row in data.get(sheet_name) or []:
+            try:
+                grade = str(row.get("Grade", "") or "").strip() or NO_GRADE_LABEL
+            except AttributeError:
+                continue
+            if grade not in grades:
+                grades.append(grade)
+
+    if not categories:
+        return [["Grade", "Total (m3)"]]
+
+    grades.sort(key=lambda grade: (grade == NO_GRADE_LABEL,
+                                   identity_sort_key(grade)))
+
+    keyed_rows = []
+    for grade in grades:
+        cells = []
+        for sheet_name, _label in categories:
+            present = any(
+                (str(row.get("Grade", "") or "").strip() or NO_GRADE_LABEL) == grade
+                for row in data.get(sheet_name) or [])
+            if not present:
+                cells.append("")
+                continue
+            info = info_by_sheet[sheet_name]
+            cells.append(("FORMULA", (
+                "SUMIF({0}!${1}$2:${1}${4},\"{2}\",{0}!${3}$2:${3}${4})"
+            ).format(xlsx_sheet_reference(sheet_name), info["grade_col"],
+                     grade, info["columns"]["Volume (m3)"], info["data_end"])))
+        keyed_rows.append((grade, cells))
+
+    return _matrix_with_totals("Grade", categories, "Total (m3)", keyed_rows)
+
+
+def build_formwork_summary_table(data_result):
+    """Centering and shuttering by level across categories.
+
+    One row per level in level order, one column per category, a
+    Total (m2) per level and a TOTAL row - the floor-by-floor formwork a
+    site plans against. The classic element sheets carry no shuttering
+    column (the area lives on the rows, where Structural Assembly and the
+    Detailed BOQ read it), so the level figures are summed from the rows;
+    the row and column totals are live. A header-only table means no
+    shuttering was computed.
+    """
+    data = data_result if isinstance(data_result, dict) else {}
+    categories = _present_categories(data)
+
+    sums = {}
+    levels = []
+    used = []
+    for sheet_name, _label in categories:
+        for row in data.get(sheet_name) or []:
+            try:
+                area = float(row.get("Qty: Shuttering (m2)", ""))
+                level = str(row.get("Level", "") or "").strip() or "(No Level)"
+            except (TypeError, ValueError, AttributeError):
+                continue
+            key = (level, sheet_name)
+            sums[key] = sums.get(key, 0.0) + area
+            if level not in levels:
+                levels.append(level)
+            if sheet_name not in used:
+                used.append(sheet_name)
+
+    categories = [(sheet, label) for sheet, label in categories if sheet in used]
+    if not categories:
+        return [["Level", "Total (m2)"]]
+
+    levels.sort(key=lambda level: (level == "(No Level)",
+                                   identity_sort_key(level)))
+    keyed_rows = []
+    for level in levels:
+        cells = []
+        for sheet_name, _label in categories:
+            value = sums.get((level, sheet_name))
+            cells.append("" if value is None else round(value, 2))
+        keyed_rows.append((level, cells))
+
+    return _matrix_with_totals("Level", categories, "Total (m2)", keyed_rows)
+
+
 def sanitize_file_name(value):
     """
     Return a filesystem-safe name fragment for output files.
@@ -2233,9 +2376,30 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     # build_costing_sheet, so the regression harness - which runs this
     # writer from its extracted source - reaches the real builder.
     from export_engine import (
+        CONCRETE_SUMMARY_SHEET_NAME,
         DETAILED_BOQ_SHEET_NAME,
+        FORMWORK_SUMMARY_SHEET_NAME,
+        build_concrete_summary_table,
         build_detailed_boq_table,
+        build_formwork_summary_table,
     )
+
+    # P13: grade x category concrete - what to order, grade by grade - and
+    # level x category shuttering, placed with the other summaries just
+    # before the Detailed BOQ that prices them.
+    concrete_summary = build_concrete_summary_table(data_result, summary_info)
+    if len(concrete_summary) > 2:
+        sheet_names.append(CONCRETE_SUMMARY_SHEET_NAME)
+        sheet_rows[CONCRETE_SUMMARY_SHEET_NAME] = concrete_summary
+        quantity_column_map[CONCRETE_SUMMARY_SHEET_NAME] = list(
+            range(2, len(concrete_summary[0]) + 1))
+
+    formwork_summary = build_formwork_summary_table(data_result)
+    if len(formwork_summary) > 2:
+        sheet_names.append(FORMWORK_SUMMARY_SHEET_NAME)
+        sheet_rows[FORMWORK_SUMMARY_SHEET_NAME] = formwork_summary
+        quantity_column_map[FORMWORK_SUMMARY_SHEET_NAME] = list(
+            range(2, len(formwork_summary[0]) + 1))
 
     detailed_boq = build_detailed_boq_table(
         data_result,
