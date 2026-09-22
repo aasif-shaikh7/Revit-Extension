@@ -131,7 +131,9 @@ def find_rate_entry_conflict(entries, candidate, ignore_index=-1):
 
     One code may carry many rates - one per location and per effective
     date - but two rates for the same code, place and day leave nobody sure
-    which the BOQ means. Codes and locations compare case-insensitively.
+    which the BOQ means. The place is the first level of the location, so
+    'Gujarat' and 'Gujarat, India' are the same place. Codes and places
+    compare case-insensitively.
     `ignore_index` is the entry being updated, which may keep its own key.
     """
     wanted = normalize_rate_entry(candidate)
@@ -142,28 +144,55 @@ def find_rate_entry_conflict(entries, candidate, ignore_index=-1):
             continue
         entry = normalize_rate_entry(raw)
         if (_same(entry["item_code"], wanted["item_code"])
-                and _same(entry["location"], wanted["location"])
+                and _same(_entry_place(entry), _entry_place(wanted))
                 and entry["effective_date"] == wanted["effective_date"]):
             return index
     return -1
+
+
+def location_levels(location):
+    """Split a location into levels, most specific first.
+
+    'Navsari, Gujarat, India' -> ['Navsari', 'Gujarat', 'India']. Any
+    city, state or country in the world works; nothing here knows a place
+    name.
+    """
+    try:
+        text = str(location or "")
+    except Exception:
+        return []
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
+def _entry_place(entry):
+    """The place an entry's rate belongs to: the first level of its location.
+
+    An entry saved as 'Gujarat, India' is a Gujarat rate; one saved as
+    'India' is a country rate.
+    """
+    levels = location_levels(entry.get("location", ""))
+    return levels[0] if levels else ""
 
 
 def find_rate(entries, item_code, location="", on_date=""):
     """The entry that prices this item here on this day, or None.
 
     - Only entries with this code and a usable rate are considered.
-    - A named location uses its own rates; only when it has none does it
-      fall back to entries with no location (a general rate). Another
-      location's rate is never borrowed, and a lookup that names no
-      location uses general rates only.
+    - The project location is searched level by level, most specific
+      first: for 'Navsari, Gujarat, India' a Navsari rate, else a Gujarat
+      rate, else an India rate, else a general rate (an entry with no
+      location). The first level that has a rate decides.
+    - A sibling place is never borrowed: a Surat rate does not price a
+      Navsari job unless Surat is one of the job's own levels. Put the rate
+      at the level it is true for - a state or country rate reaches every
+      city under it.
     - Entries dated after `on_date` are not yet in force. Of the rest, the
       latest date wins; an undated entry ranks below any dated one.
-    - Two equally good entries (same code, location and date) are a
-      conflict, and a conflict prices nothing rather than guessing.
+    - Two equally good entries (same code, place and date) are a conflict,
+      and a conflict prices nothing rather than guessing.
     """
     try:
         code = str(item_code or "").strip()
-        place = str(location or "").strip()
     except Exception:
         return None
     if not code:
@@ -183,8 +212,11 @@ def find_rate(entries, item_code, location="", on_date=""):
             continue
         usable.append(entry)
 
-    local = [e for e in usable if place and _same(e["location"], place)]
-    pool = local or [e for e in usable if not e["location"]]
+    pool = []
+    for level in location_levels(location) + [""]:
+        pool = [e for e in usable if _same(_entry_place(e), level)]
+        if pool:
+            break
     if not pool:
         return None
 

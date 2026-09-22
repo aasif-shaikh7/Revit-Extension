@@ -29,8 +29,11 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   Description, Unit, Rate, Currency, Location, Vendor and Effective Date, plus a Source.
 - **Lookup (`find_rate`):** answers "what is the rate for this item, here, on this day?":
   - the latest rate in force on the day wins, and a rate dated later is not used yet;
-  - a named location uses its own rate, else the general (no-location) rate, never another
-    location's;
+  - **any city, state or country:** the job location is searched level by level, most
+    specific first. For `Navsari, Gujarat, India`: a Navsari rate, else Gujarat, else India, else
+    the general rate. A job in `Dubai, UAE` picks up a `UAE` rate in AED. A state or country rate
+    reaches every city under it, and a sibling city's rate (Surat for a Navsari job) is never
+    borrowed;
   - two rates with the same code, location and date are a conflict and price nothing.
 - **Rules:**
   - A rate must be a non-negative number. Blank, text, boolean and NaN are refused, not read as
@@ -47,10 +50,11 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   no real rates yet, and they go in later without a code change.
 
 ### Verified (harness only - nothing is wired into Revit yet)
-- `python test_xlsx_writer.py`: **338 checks pass**, up from 327, with 11 new P12 checks.
-- A mutation run broke the engine six ways, and the harness catches every one: ignoring the date
-  cutoff, borrowing another location's rate, picking one of two clashing rates, accepting a
-  negative rate, case-sensitive codes, and a sample shown as ready.
+- `python test_xlsx_writer.py`: **340 checks pass**, up from 327, with 13 new P12 checks.
+- A mutation run broke the engine eight ways, and the harness catches every one: ignoring the date
+  cutoff, borrowing another location's rate, skipping the state/country levels, trying the general
+  rate before the city, picking one of two clashing rates, accepting a negative rate,
+  case-sensitive codes, and a sample shown as ready.
 
 ### Not yet
 - The Rate Database sheet in the workbook, the dialog tab, and the Detailed BOQ Rate column filled

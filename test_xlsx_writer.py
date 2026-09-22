@@ -4188,6 +4188,46 @@ def main():
         "P12 a city uses its own rate, else the general one - never another "
         "city's"
     )
+    # Any city, state or country: the job's location is searched level by
+    # level, most specific first, then the general rate.
+    world_rates = [
+        {"item_code": "RCC-M30", "unit": "m3", "rate": 7100, "currency": "INR",
+         "location": "Gujarat, India", "source": "SAMPLE"},
+        {"item_code": "RCC-M30", "unit": "m3", "rate": 6600, "currency": "INR",
+         "location": "India", "source": "SAMPLE"},
+        {"item_code": "RCC-M30", "unit": "m3", "rate": 7300, "currency": "INR",
+         "location": "Navsari", "source": "SAMPLE"},
+        {"item_code": "RCC-M30", "unit": "m3", "rate": 320, "currency": "AED",
+         "location": "UAE", "source": "SAMPLE"},
+        {"item_code": "RCC-M30", "unit": "m3", "rate": 99, "currency": "USD",
+         "source": "SAMPLE"},
+    ]
+
+    def world(location):
+        found = ratedb.find_rate(world_rates, "RCC-M30", location)
+        return None if found is None else (found["rate"], found["currency"])
+
+    check(
+        world("Navsari, Gujarat, India") == (7300.0, "INR")
+        and world("Surat, Gujarat, India") == (7100.0, "INR")
+        and world("Pune, Maharashtra, India") == (6600.0, "INR")
+        and world("Dubai, UAE") == (320.0, "AED")
+        and world("london, uk") == (99.0, "USD")
+        and world("") == (99.0, "USD")
+        and ratedb.location_levels(" Navsari ,Gujarat,, India ")
+        == ["Navsari", "Gujarat", "India"],
+        "P12 any city, state or country: city, else state, else country, "
+        "else the general rate"
+    )
+    check(
+        ratedb.find_rate(world_rates[2:3], "RCC-M30", "Surat, Gujarat, India")
+        is None
+        and ratedb.find_rate_entry_conflict(
+            world_rates, dict(world_rates[0], location="gujarat")) == 0,
+        "P12 a sibling city's rate is never borrowed; 'Gujarat' and "
+        "'Gujarat, India' are one place"
+    )
+
     check(
         looked_up("SHUT-BM") == 450.0
         and looked_up("UNKNOWN") is None
