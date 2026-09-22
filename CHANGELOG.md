@@ -22,6 +22,96 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.26.6] - 2026-09-22
+
+### Fixed (a headless export erased the saved rate build-ups)
+- **Found live, on a second Revit window.** A site-format export of a BBS model through the
+  Secondary bridge came out with no Rate Analysis sheet, and the settings file afterwards held
+  **0** rate build-ups where it had held 4. A headless export never shows the dialog, so the
+  Rate Analysis tab is never loaded and its list stays empty - and `capture_and_save_settings`
+  then saved that empty list over the owner's build-ups, before the export read them.
+- This is the same fault `v1.25.4` fixed for Site Items; the v1.26.3 tab did not take the same
+  guard. `rate_analysis_ready` is now set only when the tab has actually loaded the saved
+  build-ups, and saving is skipped until it is. The owner's four build-ups were restored from
+  their recorded values.
+
+### Verified (live, isolated second Revit window)
+- An isolated test Revit was started on the **Secondary** bridge (`48886`) with a copy of the
+  owner's `UMA NIWAS BUILDING-BBS FOUNDATION` model, following the README procedure: the shared
+  add-in manifest was pointed at the installed `v2.5.0-secondary` build, the test Revit started,
+  and the manifest was restored to Primary **byte-for-byte**. The owner's working Revit kept the
+  Primary bridge throughout. The owner enabled write consent in the test window only.
+- **Site format ran live for the first time** since the new sheets: 11 sheets, canonical validator
+  **zero mismatches**. The Rate Analysis sheet carries the site title bands
+  (`RCC - RATE ANALYSIS`), the three priced items at `7958.72`, `8911.84` and `5249.20`, and
+  `SHUT-BM` blank with `Input required: machinery, overheads_pct`.
+- **The rate build-ups survived the export: 4 before, 4 after** - where the same sequence a moment
+  earlier had erased them.
+- **The v1.26.5 rebar rule held on real reinforcement:** the model carries 142 bars, 12 PCC and 12
+  reinforced footings, 12 reinforced walls and 17 columns without bars. The Unmapped report held
+  24 `Missing structural material` findings and **no `No rebar hosted` finding** - PCC excluded
+  through the classifier, unreinforced columns left alone as not detailed in this file.
+- This closes both items v1.26.5 recorded as not verified.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **313 checks pass**, up from 312.
+
+---
+
+## [v1.26.5] - 2026-09-22
+
+A close-out audit of everything recorded as "not verified" since v1.25.0. Three paths had never
+met real data; this entry closes what can be closed and records what cannot.
+
+### Fixed (the missing-rebar check would have buried the owner's BBS files)
+- The v1.25.11 rule reported every concrete element without hosted rebar once a model had any
+  rebar at all. The owner's BBS is split by member - a beam file, a column file, a foundation
+  file - so a beam file reports every column, wall and slab whose bars live in another file.
+- **Measured, on copies of the owner's three BBS files** (`UMA NIWAS BUILDING-BBS BEAM`,
+  `-BBS COLUMN`, `-BBS FOUNDATION`), opened read-only in Revit 2025:
+
+  | File | Rebar | Old rule | New rule |
+  |---|---:|---:|---:|
+  | BBS BEAM | 2,623 bars on 475 hosts | 616 | **113** |
+  | BBS COLUMN | 3,812 bars on 177 hosts | 20 | **7** |
+  | BBS FOUNDATION | 142 bars on 24 hosts | 29 | **0** |
+
+- **A category now counts as detailed in a file only when at least half of it is reinforced**
+  (`MIN_REBAR_COVERAGE`, the same reasoning as `MIN_PARAMETER_FILL`). "Any bar in the category"
+  was not enough: in the beam file 18 of 184 columns host a few beam bars - anchorage, not a
+  detailed column set - and that rule would still have reported 166 columns.
+- **PCC is never asked for bars.** In the foundation file every RCC footing type is reinforced
+  (12 of 12) and the 12 elements without bars are all type `PCC`. PCC is plain concrete by
+  definition, so those were 12 false findings. The export now passes the classifier's PCC
+  elements to the check, which removes them before measuring coverage.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **312 checks pass**, up from 306.
+- The two writers are now **executed** with a rate analysis - classic and site - instead of the
+  harness only checking that the call is in the source. The site workbook's Rate Analysis sheet
+  had never actually run before; it does now, with `7958.72` and
+  `Input required: machinery, overheads_pct` in the written workbook.
+- The rebar checks were rewritten for the per-category rule, and the three BBS files are rebuilt
+  from their measured counts as a regression: **113 / 7 / 0**.
+
+### Recorded (not applicable to this owner)
+- **Floor-to-Foundation routing cannot be exercised on the owner's models: none of the five has a
+  single Floor element** (two structural full models and three BBS files). This owner models
+  slabs as Structural Foundations, which is the direction verified on 325 real elements in
+  v1.25.7. The Floor direction stays verified on the authored fixture only.
+
+### Decided
+- **Validation findings warn; they do not block the export.** The owner took the recommendation
+  on 2026-09-21. P9 is closed.
+
+### Not verified
+- A live **site-format** export through the bridge: the bridge's write consent was off and Revit
+  had the NCC project active. The site writer itself is now executed by the harness.
+- A live export of a BBS model: the new rebar rule was replayed on the files' measured counts, not
+  run through the export pipeline on the files themselves.
+
+---
+
 ## [v1.26.4] - 2026-09-21
 
 ### Fixed (the Rate Analysis tab accepted the same item code twice)

@@ -2976,13 +2976,83 @@ def main():
         validation_engine.collect_missing_rebar_findings(p9_rebar_data) == [],
         "P9 stays silent about rebar in a model that models none"
     )
+    # Detailed category (2 of 3 reinforced): the third is named.
     p9_rebar_data["Rebar"] = [{"Rebar: Host Element ID": "1"},
-                              {"Rebar: Host Element ID": "1"}]
+                              {"Rebar: Host Element ID": "2"}]
     check(
         [row["element_id"] for row in
          validation_engine.collect_missing_rebar_findings(p9_rebar_data)]
-        == ["2", "3"],
-        "P9 names the concrete elements no rebar is hosted by"
+        == ["3"],
+        "P9 names the element a detailed category left without rebar"
+    )
+
+    # Below half reinforced, the category is detailed in another file.
+    p9_rebar_data["Rebar"] = [{"Rebar: Host Element ID": "1"}]
+    check(
+        validation_engine.collect_missing_rebar_findings(p9_rebar_data) == [],
+        "P9 leaves alone a category this file does not detail"
+    )
+
+    # PCC is plain concrete and is never asked for bars.
+    pcc_data = {
+        "Foundation": [{"Element ID": "F1"}, {"Element ID": "F2"},
+                       {"Element ID": "P1"}, {"Element ID": "P2"},
+                       {"Element ID": "P3"}],
+        "Rebar": [{"Rebar: Host Element ID": "F1"},
+                  {"Rebar: Host Element ID": "F2"}],
+    }
+    check(
+        validation_engine.collect_missing_rebar_findings(
+            pcc_data, ["P1", "P2", "P3"]) == []
+        and len(validation_engine.collect_missing_rebar_findings(
+            pcc_data)) == 0,
+        "P9 never reports PCC for missing rebar"
+    )
+
+    # The owner's three BBS files, rebuilt from their measured counts:
+    # (category, elements, elements hosting rebar), plus PCC elements.
+    def bbs_model(counts, pcc=0):
+        data, rebar, pcc_ids, serial = {}, [], [], 0
+        for category, total, hosting in counts:
+            rows = []
+            for index in range(total):
+                serial += 1
+                rows.append({"Element ID": str(serial)})
+                if index < hosting:
+                    rebar.append({"Rebar: Host Element ID": str(serial)})
+            data[category] = rows
+        for _index in range(pcc):
+            serial += 1
+            data["Foundation"].append({"Element ID": str(serial)})
+            pcc_ids.append(str(serial))
+        data["Rebar"] = rebar
+        return data, pcc_ids
+
+    measured = {
+        "beam": ([("Beam", 570, 457), ("Column", 184, 18),
+                  ("Structure Wall", 12, 0), ("Slab", 303, 0),
+                  ("Foundation", 22, 0)], 0, 113),
+        "column": ([("Beam", 3, 0), ("Column", 184, 177),
+                    ("Foundation", 10, 0)], 0, 7),
+        "foundation": ([("Column", 17, 0), ("Structure Wall", 12, 12),
+                        ("Foundation", 12, 12)], 12, 0),
+    }
+    replay = {}
+    for name, (counts, pcc, _expected) in measured.items():
+        data, pcc_ids = bbs_model(counts, pcc)
+        replay[name] = len(validation_engine.collect_missing_rebar_findings(
+            data, pcc_ids))
+    check(
+        replay == {name: value[2] for name, value in measured.items()},
+        "P9 on the owner's measured BBS files reports 113 / 7 / 0, not "
+        "616 / 20 / 29 ({0})".format(replay)
+    )
+
+    rebar_call_source = export_handler_source
+    check(
+        'result.get("subtype") == "PCC"' in rebar_call_source
+        and "element_data, unreinforced_ids" in rebar_call_source,
+        "P9 export handler passes the PCC elements to the rebar check"
     )
     check(
         validation_engine.issue_severity(
@@ -3628,6 +3698,19 @@ def main():
         "P11 tab refuses an item with no code"
     )
 
+    # Found live on a second Revit window: a headless export never loads
+    # the tab, so its empty list must not be saved over the build-ups.
+    rate_ready_capture = nested_handler_source("capture_and_save_settings")
+    rate_ready_load = nested_handler_source("rate_load_saved")
+    check(
+        "if rate_analysis_ready[0]:" in rate_ready_capture
+        and rate_ready_capture.index("if rate_analysis_ready[0]:")
+        < rate_ready_capture.index("save_rate_analysis(settings")
+        and "rate_analysis_ready[0] = True" in rate_ready_load
+        and "rate_analysis_ready = [False]" in script_text,
+        "P11 a headless export cannot erase the saved rate build-ups"
+    )
+
     capture_rate_block = nested_handler_source("capture_and_save_settings")
     check(
         "save_rate_analysis(settings, rate_analysis_state)" in capture_rate_block,
@@ -3699,6 +3782,48 @@ def main():
         and "load_rate_analysis(" in export_handler_source,
         "P11 the export handler loads the build-ups and passes them on"
     )
+
+    # Execute both writers with a rate analysis, rather than only checking
+    # that the call is in the source. The site writer's Rate Analysis
+    # sheet had never actually run before v1.26.5.
+    import zipfile as rate_zip
+    import tempfile as rate_tmp
+    import export_engine as export_engine_module
+    rate_fixture = {
+        "Beam": [{"Element ID": "11", "Level": "03 PLINTH LEVEL",
+                  "Grade": "M30", "ID_UNMT": "B1", "Qty: Volume (m3)": 0.5,
+                  "Qty: Area (m2)": 2.0, "Qty: Length (m)": 3.0,
+                  "Qty: Count": 1}],
+    }
+    rate_items = [full_buildup,
+                  {"item_code": "SHUT-BM", "unit": "m2", "material": 180,
+                   "wastage_pct": 5, "labour": 120}]
+    rate_dir = rate_tmp.mkdtemp()
+    try:
+        for label, writer, kwargs in (
+            ("classic", export_engine_module.write_basic_xlsx, {}),
+            ("site", export_engine_module.write_site_xlsx,
+             {"project_name": "RATE TEST"}),
+        ):
+            rate_path = os.path.join(rate_dir, label + ".xlsx")
+            writer(rate_path, rate_fixture, rate_analysis=rate_items, **kwargs)
+            with rate_zip.ZipFile(rate_path) as rate_book:
+                sheet_names = re.findall(
+                    r'<sheet name="([^"]+)"',
+                    rate_book.read("xl/workbook.xml").decode("utf-8"))
+                text = "".join(
+                    rate_book.read(name).decode("utf-8", "ignore")
+                    for name in rate_book.namelist()
+                    if name.startswith("xl/"))
+            check(
+                "Rate Analysis" in sheet_names
+                and "7958.72" in text
+                and "Input required: machinery, overheads_pct" in text,
+                "P11 {0} workbook actually writes the Rate Analysis sheet "
+                "with its rates".format(label)
+            )
+    finally:
+        shutil.rmtree(rate_dir, ignore_errors=True)
 
     rate_source = io.open(
         os.path.join(LIB_DIR, "costing_engine.py"),

@@ -49,7 +49,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | **done** (`v1.25.6`) — engine, store, sheet + Costing and dialog tab; owner-confirmed 2026-09-21 |
 | P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` 5,931 -> 5,688) |
-| P9 | Validation Engine (compact report) | 4/4/3/4 | `building` (foundation `v1.21.0`, severity + compact report `v1.25.8`) |
+| P9 | Validation Engine (compact report) | 4/4/3/4 | **done** (`v1.21.0` foundation, `v1.25.8` severity + compact report, `v1.25.11` parameters + rebar, `v1.26.5` rebar rule measured on the BBS files; findings warn, not block) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `todo` |
@@ -80,7 +80,7 @@ Rebar/BBS QA are complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled St
 assignment is done after isolated Secondary rollback, assignment, export and save/reopen
 persistence QA (`v1.23.0`).
 
-### P9 — Validation Engine — `building` (`v1.25.8`)
+### P9 — Validation Engine — **done** (`v1.26.5`)
 
 **Built:** severity and the compact report in `lib/validation_engine.py` - errors/warnings counts
 and one short line per issue, built from the same table the `Unmapped Elements` sheet is written
@@ -96,9 +96,11 @@ filled in**. The check would report nothing on this project. This model identifi
 family/type text and `ID_UNMT` / `ITEM DES.` / `CODE_UNIMONT`. If duplicate identity matters here,
 the field to check is one the project actually fills - an owner decision, not a guess.
 
-**Open - needs an owner decision:** should errors **block** the export, or only warn? Today the
-report informs and the export proceeds, which is a strict improvement on the old bare count and
-changes nobody's flow. Blocking is a different product, so it is not being assumed.
+**Decided 2026-09-21:** findings warn; they do not block the export.
+
+**Rebar rule measured (`v1.26.5`):** on the owner's three BBS files the first rule would have
+reported 616 / 20 / 29 elements; judging each category only where at least half of it is
+reinforced, and never asking PCC for bars, it reports 113 / 7 / 0.
 
 **Also open:** PRD section 12 lists missing rebar and missing parameters, neither of which the
 engine checks yet.

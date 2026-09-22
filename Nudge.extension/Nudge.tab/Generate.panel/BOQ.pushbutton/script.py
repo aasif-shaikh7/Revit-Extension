@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.26.4'
+__version__ = '1.26.6'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.26.4'
+SCRIPT_VERSION = '1.26.6'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -285,6 +285,13 @@ site_items_state = []
 # site_items_state - the list on screen is exactly what gets saved and
 # exported.
 rate_analysis_state = []
+
+# True only once the tab has actually loaded the saved build-ups. A
+# headless export never shows the tab, so rate_analysis_state stays empty
+# there, and saving it would erase the owner's build-ups - which is what a
+# site-format export on a second Revit window did on 2026-09-22. The same
+# guard site_items_ready gives the Site Items list.
+rate_analysis_ready = [False]
 
 # False until site_items_load_for_document() has run. Settings are saved
 # after every list mutation, including the parameter restore that happens
@@ -4469,6 +4476,8 @@ try:
                 rate_analysis_state.extend(
                     load_rate_analysis(load_app_settings())
                 )
+                # Only now does the list on screen stand for the saved one.
+                rate_analysis_ready[0] = True
             except:
                 del rate_analysis_state[:]
 
@@ -4685,10 +4694,13 @@ try:
             except:
                 pass
 
-            # P11: the rate build-ups shown in the tab.
+            # P11: the rate build-ups shown in the tab - but only when the
+            # tab has loaded them. A headless export never loads the tab,
+            # and writing its empty list here erased the saved build-ups.
             try:
-                from costing_engine import save_rate_analysis
-                settings = save_rate_analysis(settings, rate_analysis_state)
+                if rate_analysis_ready[0]:
+                    from costing_engine import save_rate_analysis
+                    settings = save_rate_analysis(settings, rate_analysis_state)
             except:
                 pass
 
@@ -5718,8 +5730,18 @@ try:
                         extra_findings.extend(
                             collect_missing_parameter_findings(element_data)
                         )
+                        # PCC is plain concrete: it is never asked for
+                        # bars. The classifier already knows which
+                        # elements are PCC.
+                        unreinforced_ids = [
+                            result.get("element_id")
+                            for result in routing_audit.get("results", [])
+                            if result.get("subtype") == "PCC"
+                        ]
                         extra_findings.extend(
-                            collect_missing_rebar_findings(element_data)
+                            collect_missing_rebar_findings(
+                                element_data, unreinforced_ids
+                            )
                         )
                     except:
                         pass
