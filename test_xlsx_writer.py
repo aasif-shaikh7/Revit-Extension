@@ -1932,7 +1932,8 @@ def main():
         check(
             sheet_order_site == [
                 "Summary", "Beam", "Structure Wall", "Rebar",
-                "Rebar Summary", "Rebar BBS", "Structural Assembly"
+                "Rebar Summary", "Rebar BBS", "Structural Assembly",
+                "Concrete Summary", "Formwork Summary", "Detailed BOQ"
             ],
             "Site workbook order: Summary then populated categories "
             "(got {})".format(sheet_order_site)
@@ -4035,6 +4036,88 @@ def main():
         and len(boq_engine.build_formwork_summary_table(
             {"Beam": [{"Element ID": "1", "Level": "L1"}]})) == 1,
         "P13 no concrete or no shuttering yields no summary sheet"
+    )
+
+    # Site format: the same three sheets inside the title bands. The bands
+    # push every data row down five rows, so these checks evaluate each
+    # formula against the site sheet itself - a formula left pointing at
+    # its plain row would read a band or an empty cell and fail here.
+    site_dir = tempfile.mkdtemp()
+    try:
+        site_sheets = boq_engine.write_site_xlsx(
+            os.path.join(site_dir, "site.xlsx"), boq_fixture,
+            project_name="SITE BOQ TEST")
+    finally:
+        shutil.rmtree(site_dir, ignore_errors=True)
+
+    def site_value(sheet, cell):
+        if not (isinstance(cell, tuple) and cell and cell[0] == "FORMULA"):
+            return cell
+        match = re.match(r"^SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$", cell[1])
+        if not match:
+            raise AssertionError("unhandled site formula: " + cell[1])
+        first_col, first, last_col, last = match.groups()
+        total = 0.0
+        for row in site_sheets[sheet][int(first) - 1:int(last)]:
+            for index in range(boq_column(first_col), boq_column(last_col) + 1):
+                value = site_value(sheet, row[index] if index < len(row) else "")
+                if value in ("", None):
+                    continue
+                try:
+                    total += float(value)
+                except (TypeError, ValueError):
+                    # A band or header cell: the formula is aimed at the
+                    # wrong row, so make the comparison fail, not crash.
+                    return float("nan")
+        return total
+
+    def site_matrix(name):
+        # Data starts below the six band/header rows.
+        return [[row[0]] + [
+            ("" if cell == "" else round(site_value(name, cell), 6))
+            for cell in row[1:]] for row in (site_sheets.get(name) or [])[6:]]
+
+    check(
+        site_matrix("Concrete Summary") == [
+            ["M10", 0.5, "", 0.5],
+            ["M30", 3.5, "", 3.5],
+            ["M40", "", 0.75, 0.75],
+            ["(No Grade)", 0.25, "", 0.25],
+            ["TOTAL", 4.25, 0.75, 5.0],
+        ],
+        "P13 site Concrete Summary, evaluated inside its title bands, matches "
+        "the classic figures ({0})".format(site_matrix("Concrete Summary"))
+    )
+    check(
+        site_matrix("Formwork Summary") == [
+            ["L1", 8.0, 4.0, 12.0],
+            ["L2", 9.0, "", 9.0],
+            ["TOTAL", 17.0, 4.0, 21.0],
+        ],
+        "P13 site Formwork Summary, evaluated inside its title bands, matches "
+        "the classic figures"
+    )
+
+    site_boq = site_sheets.get("Detailed BOQ") or []
+    site_items = [(index, row) for index, row in enumerate(site_boq, 1)
+                  if index > 6 and "." in str(row[0])]
+    check(
+        [(row[0], row[1], round(float(row[3]), 6)) for _index, row in site_items]
+        == [("A.1", "Concrete M10 in Beams", 0.5),
+            ("A.2", "Concrete M30 in Beams", 3.5),
+            ("A.3", "Concrete in Beams - grade not recorded", 0.25),
+            ("A.4", "Concrete M40 in Columns", 0.75),
+            ("B.1", "Centering and shuttering to Beams", 17.0),
+            ("B.2", "Centering and shuttering to Columns", 4.0),
+            ("C.1", "Reinforcement steel, 8 mm dia", 20.0),
+            ("C.2", "Reinforcement steel, 12 mm dia", 150.0)]
+        and all(row[5] == ("FORMULA", 'IF(E{0}="","",D{0}*E{0})'.format(index))
+                for index, row in site_items)
+        and site_boq[-1][1] == "TOTAL"
+        and site_boq[-1][5] == ("FORMULA", "SUM(F{0}:F{1})".format(
+            site_items[0][0], site_items[-1][0])),
+        "P13 site Detailed BOQ: same items, and every Amount and the TOTAL "
+        "point at the rows they land on inside the title bands"
     )
 
     rate_source = io.open(

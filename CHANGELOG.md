@@ -22,6 +22,38 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.29.0] - 2026-09-22
+
+### Added (P13 site format: the three BOQ sheets in the site workbook)
+- The **site-format** workbook now carries **Concrete Summary**, **Formwork Summary** and
+  **Detailed BOQ** after Structural Assembly, in the site title bands (project, band, title,
+  header). The Detailed BOQ description column is widened for the item text.
+- The site title bands push every data row five rows down, so the builders take a `row_offset`:
+  each Amount `IF(E{r}="","",D{r}*E{r})`, each row total and every TOTAL `SUM` points at the row it
+  actually lands on inside the bands.
+- The site element sheets carry no Volume or Grade column for a `SUMIF` to read, so in the site
+  workbook the concrete cells are the rounded sums of the element rows (`_concrete_quantity`); the
+  classic workbook keeps its live `SUMIF`s. Row and column totals and Amounts stay live in both.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **326 checks pass**, up from 323. The site sheets are **evaluated**
+  inside their bands against the same figures as the classic sheets, and every site Amount and
+  TOTAL is checked against the row it lands on. With the offset deliberately set to 0 the three new
+  checks fail, so they do catch a formula aimed at a band row.
+
+### Verified (live, owner's model, isolated second Revit window)
+- A copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` exported in the **site
+  format** from a test Revit on the Secondary bridge: **10 sheets, 13,256 cells, zero mismatches**.
+- Every formula in the three sheets was evaluated by its real cell address:
+  - **Concrete Summary:** M10 22.8123, M30 454.7580, M40 396.1257, total **873.6960 m3**, and
+    every category column matches the site Structural Assembly.
+  - **Formwork Summary:** 12 levels, every level x category cell matches the classic export of the
+    same model to the centimetre, total **6,563.07 m2**.
+  - **Detailed BOQ:** items A.1-A.7 and B.1-B.5 on rows 8-20. Every Amount points at its own row,
+    the TOTAL is `SUM(F8:F20)`, and the concrete and shuttering equal the two summaries.
+
+---
+
 ## [v1.28.0] - 2026-09-22
 
 ### Added (P13 second slice: Concrete Summary and Formwork Summary)
