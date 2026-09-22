@@ -267,6 +267,47 @@ def load_rate_database(settings):
     return [normalize_rate_entry(item) for item in raw if isinstance(item, dict)]
 
 
+PROJECT_LOCATION_SETTINGS_KEY = "project_location"
+
+
+def get_project_location(settings, project_key):
+    """The location saved for this project, or ''.
+
+    Kept per project (the document title), because one office prices a
+    Navsari job and a Dubai job from the same rate database.
+    """
+    try:
+        saved = (settings or {}).get(PROJECT_LOCATION_SETTINGS_KEY)
+        if not isinstance(saved, dict):
+            return ""
+        return str(saved.get(str(project_key or ""), "") or "").strip()
+    except Exception:
+        return ""
+
+
+def set_project_location(settings, project_key, location):
+    """Return the settings document with this project's location stored.
+
+    A blank location removes the project's entry; other projects keep
+    theirs.
+    """
+    document = settings if isinstance(settings, dict) else {}
+    saved = document.get(PROJECT_LOCATION_SETTINGS_KEY)
+    saved = dict(saved) if isinstance(saved, dict) else {}
+    key = str(project_key or "").strip()
+    try:
+        place = ", ".join(location_levels(location))
+    except Exception:
+        place = ""
+    if key:
+        if place:
+            saved[key] = place
+        else:
+            saved.pop(key, None)
+    document[PROJECT_LOCATION_SETTINGS_KEY] = saved
+    return document
+
+
 def save_rate_database(settings, entries):
     """Return the settings document with these rate entries stored.
 

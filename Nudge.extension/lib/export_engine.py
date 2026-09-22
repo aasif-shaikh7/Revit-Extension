@@ -2033,7 +2033,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
                      site_format=False, validation_report_path=None,
                      unmapped_report=None, site_items=None,
-                     rate_analysis=None):
+                     rate_analysis=None, rate_database=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2372,6 +2372,18 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
         # Material, Wastage, Labour, Machinery, Overheads, Analysed Rate.
         quantity_column_map[RATE_ANALYSIS_SHEET_NAME] = [3, 4, 5, 6, 7, 8]
+
+    # P12: the rate database, with a status on every entry. Emitted only
+    # when rates exist, like the Rate Analysis sheet above.
+    from rate_database_engine import (
+        RATE_DATABASE_SHEET_NAME,
+        build_rate_database_sheet,
+    )
+    rate_db_table = build_rate_database_sheet(rate_database)
+    if len(rate_db_table) > 1:
+        sheet_names.append(RATE_DATABASE_SHEET_NAME)
+        sheet_rows[RATE_DATABASE_SHEET_NAME] = rate_db_table
+        quantity_column_map[RATE_DATABASE_SHEET_NAME] = [3]
 
     # P2: level-wise grouping. One row per Level x Category with live SUMIF
     # formulas against the category sheets, placed between BOQ Summary and
@@ -3147,7 +3159,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     include_formwork=True, selected_parameters=None,
                     assembly_profile=None, validation_report_path=None,
                     unmapped_report=None, site_items=None,
-                    rate_analysis=None):
+                    rate_analysis=None, rate_database=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -3274,6 +3286,24 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
         sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
         sheet_widths[RATE_ANALYSIS_SHEET_NAME] = rate_widths
+
+    # P12: the rate database, in the site bands. Appended only when rates
+    # exist.
+    from rate_database_engine import (
+        RATE_DATABASE_SHEET_NAME,
+        build_rate_database_sheet,
+    )
+    rate_db_plain_table = build_rate_database_sheet(rate_database)
+    if len(rate_db_plain_table) > 1:
+        rate_db_table, rate_db_widths = build_site_tabular_sheet(
+            project_name,
+            "RATE DATABASE",
+            rate_db_plain_table,
+            band_title="RCC - RATE DATABASE"
+        )
+        sheet_names.append(RATE_DATABASE_SHEET_NAME)
+        sheet_rows[RATE_DATABASE_SHEET_NAME] = rate_db_table
+        sheet_widths[RATE_DATABASE_SHEET_NAME] = rate_db_widths
 
     # P13: the same three sheets as the classic workbook, in the site
     # title bands. The bands put five rows above every data row

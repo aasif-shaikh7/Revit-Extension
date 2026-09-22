@@ -1015,6 +1015,108 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="Rate Database">
+                <Grid Margin="18">
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Rate Database" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="RateDbIntro" TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
+                                   Style="{DynamicResource BrandBodyText}"
+                                   Text="Your rates, with where and from when each one applies. A rate for a city, a state or a country: a project looks for its city first, then its state, then its country, then a rate with no location. A later Effective Date replaces an earlier one from that day. Write &quot;SAMPLE&quot; in Source for a test figure and the workbook marks it as not a real rate."/>
+                        <TextBlock x:Name="RateDbSource" Margin="0,6,0,0" Style="{DynamicResource BrandLabelText}" Text=""/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+                        <TextBlock Text="This project's location" VerticalAlignment="Center" Margin="0,0,10,0"
+                                   Style="{DynamicResource BrandLabelText}"/>
+                        <TextBox x:Name="RateDbProjectLocation" Width="420" Style="{DynamicResource BrandTextBox}"
+                                 ToolTip="City, State, Country - for example Navsari, Gujarat, India or Dubai, UAE."/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2" Margin="0,0,0,10" MaxWidth="1100" HorizontalAlignment="Left">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="470"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Item Code" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Unit" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Rate (per unit)" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="3" Text="Description" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="RateDbItemCode" Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="RateDbUnit" Grid.Row="1" Grid.Column="1" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="For example m3, m2, kg."/>
+                        <TextBox x:Name="RateDbRate" Grid.Row="1" Grid.Column="2" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"/>
+                        <TextBox x:Name="RateDbDescription" Grid.Row="1" Grid.Column="3" Margin="0,0,0,10" Style="{DynamicResource BrandTextBox}"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Location" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Currency" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Effective Date" Style="{DynamicResource BrandLabelText}" Margin="0,0,10,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="3" Text="Vendor" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+
+                        <TextBox x:Name="RateDbLocation" Grid.Row="3" Grid.Column="0" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}"
+                                 ToolTip="A city, state or country - or blank for a rate that applies anywhere."/>
+                        <TextBox x:Name="RateDbCurrency" Grid.Row="3" Grid.Column="1" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="For example INR, AED, USD."/>
+                        <TextBox x:Name="RateDbEffectiveDate" Grid.Row="3" Grid.Column="2" Margin="0,0,10,10" Style="{DynamicResource BrandTextBox}" ToolTip="YYYY-MM-DD, for example 2026-09-22. Blank means no date."/>
+                        <TextBox x:Name="RateDbVendor" Grid.Row="3" Grid.Column="3" Margin="0,0,0,10" Style="{DynamicResource BrandTextBox}"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4" Text="Source (SOR, quotation, or SAMPLE)" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,2"/>
+                        <TextBox x:Name="RateDbSourceText" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="4" Margin="0,0,0,0" Style="{DynamicResource BrandTextBox}"/>
+
+                    </Grid>
+
+                    <Grid Grid.Row="3">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox Grid.Column="0" Header="Rates" Margin="0,0,8,0">
+                            <ListBox
+                                x:Name="RateDbList"
+                                Margin="5"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+                        </GroupBox>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="150">
+                            <Button x:Name="RateDbAdd" Content="Add rate" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RateDbUpdate" Content="Update selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RateDbRemove" Content="Remove selected" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RateDbClear" Content="Clear fields" Height="34" Margin="0,0,0,0" Style="{DynamicResource BrandSecondaryButton}"/>
+                        </StackPanel>
+
+                    </Grid>
+
+                    <TextBlock x:Name="RateDbSummary" Grid.Row="4" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandBodyText}" Text="No rates."/>
+
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
 

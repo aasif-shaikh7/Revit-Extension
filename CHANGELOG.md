@@ -22,6 +22,36 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.31.0] - 2026-09-22
+
+### Added (P12 second slice: Rate Database tab and sheet)
+- **Rate Database tab** in the BOQ dialog, after Rate Analysis. It has fields for Item Code, Unit,
+  Rate, Description, Location, Currency, Effective Date, Vendor and Source, a list of rates, and
+  Add / Update selected / Remove selected / Clear fields.
+- **This project's location** field (for example `Navsari, Gujarat, India` or `Dubai, UAE`),
+  saved **per project** so one rate database serves jobs in different cities and countries.
+- **The tab refuses** a rate with no item code, a Rate that is not a number of zero or more, an
+  Effective Date that is not `YYYY-MM-DD`, and a second rate for the same code, location and date,
+  on both Add and Update. A blank Rate is allowed and shows as needing input.
+- **Summary line:** counts ready rates, samples and rates needing input.
+- **Rate Database sheet** in both workbook formats (after Rate Analysis, in the site bands for the
+  site format), with a status on every row. It appears only when rates exist, so a project without
+  rates keeps its familiar workbook.
+- **Headless exports are guarded:** saving the rates and the location is guarded by
+  `rate_db_ready`, as P11 is, so an export that never showed the tab cannot erase them.
+- `get_project_location` / `set_project_location` in `lib/rate_database_engine.py`.
+
+### Verified
+- Harness: `python test_xlsx_writer.py` passes **350 checks**, up from 340. The new checks cover:
+  - every control exists once and every handler is wired;
+  - the four refusals on Add and Update;
+  - the headless guard and the per-project location;
+  - both writers actually run and write the sheet only when rates exist.
+- `ui.xaml` loads with WPF's own `XamlReader` outside Revit, and every new control is found by name.
+- **Not yet verified in Revit:** the tab has not been used in a live Revit session yet.
+
+---
+
 ## [v1.30.0] - 2026-09-22
 
 ### Added (P12 first slice: the rate database engine)

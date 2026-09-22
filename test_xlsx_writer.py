@@ -4330,6 +4330,140 @@ def main():
     )
 
     # ------------------------------------------------------------
+    # P12 Rate Database tab and sheet (v1.31.0)
+    #
+    # Same contract as the P11 tab: every control the handlers look for
+    # exists, every handler is wired, a headless export cannot erase the
+    # saved rates, and both workbook formats actually write the sheet.
+    # ------------------------------------------------------------
+    rate_db_controls = (
+        "RateDbProjectLocation", "RateDbItemCode", "RateDbDescription",
+        "RateDbUnit", "RateDbRate", "RateDbCurrency", "RateDbLocation",
+        "RateDbVendor", "RateDbEffectiveDate", "RateDbSourceText",
+        "RateDbList", "RateDbAdd", "RateDbUpdate", "RateDbRemove",
+        "RateDbClear", "RateDbSummary", "RateDbSource",
+    )
+    missing_db_controls = [name for name in rate_db_controls
+                           if 'x:Name="{0}"'.format(name) not in xaml_source]
+    check(
+        not missing_db_controls
+        and all(xaml_source.count('x:Name="{0}"'.format(name)) == 1
+                for name in rate_db_controls),
+        "P12 tab declares every control its handlers use, once each{0}".format(
+            "" if not missing_db_controls else
+            " (missing: {0})".format(", ".join(missing_db_controls)))
+    )
+    db_field_names = re.findall(
+        r'\("\w+", "(RateDb\w+)"\)',
+        script_text[script_text.index("RATE_DB_FIELD_CONTROLS = ("):
+                    script_text.index("def rate_db_display_text")])
+    check(
+        len(db_field_names) == 9
+        and all(name in rate_db_controls for name in db_field_names),
+        "P12 tab reads all nine rate fields from real controls"
+    )
+    db_wire_block = nested_handler_source("rate_db_wire_controls")
+    check(
+        all(name in db_wire_block for name in
+            ("RateDbAdd", "RateDbUpdate", "RateDbRemove", "RateDbClear",
+             "RateDbList"))
+        and "SelectionChanged" in db_wire_block
+        and "rate_db_wire_controls()" in script_text
+        and "rate_db_load_saved()" in script_text,
+        "P12 tab wires all four buttons and the list, and is loaded on open"
+    )
+    db_read_block = nested_handler_source("rate_db_read_fields")
+    db_add_block = nested_handler_source("rate_db_add")
+    db_update_block = nested_handler_source("rate_db_update")
+    check(
+        "normalize_rate_entry" in db_read_block
+        and "date_invalid" in db_read_block
+        and 'entry.get("rate") is None' in db_read_block
+        and "if problem:" in db_add_block and "if problem:" in db_update_block
+        and "find_rate_entry_conflict(rate_db_state, entry)" in db_add_block
+        and "find_rate_entry_conflict(rate_db_state, entry, index)"
+        in db_update_block,
+        "P12 tab refuses a missing code, a non-numeric rate, a bad date and "
+        "a duplicate, on both Add and Update"
+    )
+    db_capture = nested_handler_source("capture_and_save_settings")
+    db_load = nested_handler_source("rate_db_load_saved")
+    check(
+        "if rate_db_ready[0]:" in db_capture
+        and db_capture.index("if rate_db_ready[0]:")
+        < db_capture.index("save_rate_database(settings, rate_db_state)")
+        and db_capture.index("if rate_db_ready[0]:")
+        < db_capture.index("set_project_location(")
+        and "rate_db_ready[0] = True" in db_load
+        and "rate_db_ready = [False]" in script_text,
+        "P12 a headless export cannot erase the saved rates or location"
+    )
+    check(
+        "rate_database=rate_database," in export_handler_source
+        and export_handler_source.count("rate_database=rate_database,") == 2
+        and "load_rate_database(" in export_handler_source,
+        "P12 the export handler loads the rates and passes them to both "
+        "formats"
+    )
+
+    located = ratedb.set_project_location(
+        {"theme": "Auto"}, "UMA NIWAS", " Navsari ,Gujarat, India ")
+    located = ratedb.set_project_location(located, "DUBAI TOWER", "Dubai, UAE")
+    check(
+        ratedb.get_project_location(located, "UMA NIWAS")
+        == "Navsari, Gujarat, India"
+        and ratedb.get_project_location(located, "DUBAI TOWER") == "Dubai, UAE"
+        and ratedb.get_project_location(located, "OTHER") == ""
+        and located["theme"] == "Auto",
+        "P12 each project keeps its own location"
+    )
+    cleared = ratedb.set_project_location(dict(located), "UMA NIWAS", "  ")
+    check(
+        ratedb.get_project_location(cleared, "UMA NIWAS") == ""
+        and ratedb.get_project_location(cleared, "DUBAI TOWER") == "Dubai, UAE"
+        and ratedb.get_project_location({"project_location": "junk"}, "X") == ""
+        and ratedb.get_project_location(None, "X") == "",
+        "P12 a blank location clears only that project; a corrupt store "
+        "reads as blank"
+    )
+
+    db_dir = rate_tmp.mkdtemp()
+    try:
+        for label, writer, kwargs in (
+            ("classic", export_engine_module.write_basic_xlsx, {}),
+            ("site", export_engine_module.write_site_xlsx,
+             {"project_name": "RATE DB TEST"}),
+        ):
+            db_path = os.path.join(db_dir, label + ".xlsx")
+            writer(db_path, rate_fixture, rate_database=sample_rates[:2]
+                   + [{"item_code": "PCC-M10", "unit": "m3"}], **kwargs)
+            with rate_zip.ZipFile(db_path) as db_book:
+                db_sheet_names = re.findall(
+                    r'<sheet name="([^"]+)"',
+                    db_book.read("xl/workbook.xml").decode("utf-8"))
+                db_text = "".join(
+                    db_book.read(name).decode("utf-8", "ignore")
+                    for name in db_book.namelist()
+                    if name.startswith("xl/"))
+            empty_path = os.path.join(db_dir, label + "-none.xlsx")
+            writer(empty_path, rate_fixture, **kwargs)
+            with rate_zip.ZipFile(empty_path) as empty_book:
+                empty_names = re.findall(
+                    r'<sheet name="([^"]+)"',
+                    empty_book.read("xl/workbook.xml").decode("utf-8"))
+            check(
+                "Rate Database" in db_sheet_names
+                and "6800" in db_text
+                and ratedb.STATUS_SAMPLE in db_text
+                and "Input required: rate" in db_text
+                and "Rate Database" not in empty_names,
+                "P12 {0} workbook writes the Rate Database sheet when rates "
+                "exist, and only then".format(label)
+            )
+    finally:
+        shutil.rmtree(db_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------
     # Saved selections survive a document that has none of them (v1.26.1)
     #
     # Found live: an export run on an architectural model with no
