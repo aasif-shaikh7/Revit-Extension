@@ -1781,14 +1781,33 @@ def main():
 
         styles_xml = archive.read("xl/styles.xml").decode("utf-8")
 
+        # v1.34.0: Indian digit grouping (1,23,456.78 / 1,23,45,678.90)
+        # replaces the builtin #,##0.00 on every number style.
+        cellxfs_xml = styles_xml.split("<cellXfs")[1]
         check(
-            'numFmtId="4"' in styles_xml,
-            "Styles define the #,##0.00 number format (builtin 4)"
+            '<numFmt numFmtId="164" formatCode="[&gt;=10000000]##\\,##\\,##\\,##0.00;'
+            '[&gt;=100000]##\\,##\\,##0.00;##,##0.00"/>' in styles_xml
+            and cellxfs_xml.count('numFmtId="164"') == 4
+            and 'numFmtId="4"' not in cellxfs_xml,
+            "Styles define the Indian number format and all four number styles use it"
         )
 
         check(
-            'rgb="FFF2994A"' in styles_xml,
-            "Styles define the Ember accent header fill"
+            'rgb="FFC8102E"' in styles_xml and 'rgb="FFEEF9CC"' in styles_xml
+            and "F2994A" not in styles_xml,
+            "Styles use the theme's header red and lime totals, no Ember left"
+        )
+
+        # Every sheet prints A4 landscape, one page wide; sheetPr must be
+        # the worksheet's first child or Excel reports a damaged file.
+        classic_sheet_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+        check(
+            re.search(r'<worksheet [^>]*><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ',
+                      classic_sheet_xml) is not None
+            and re.search(r'</sheetData>.*<pageMargins [^>]*/><pageSetup paperSize="9" '
+                          r'orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>$',
+                          classic_sheet_xml, re.S) is not None,
+            "Classic sheets print A4 landscape, fitted one page wide"
         )
 
         cellxf_count = len(
@@ -2050,8 +2069,18 @@ def main():
         ).decode("utf-8")
 
         check(
-            'rgb="FFFCE8D5"' in site_styles_xml,
-            "Site styles define the Ember light band fill"
+            'rgb="FFF4A582"' in site_styles_xml and 'rgb="FFFDEADF"' in site_styles_xml
+            and "FCE8D5" not in site_styles_xml,
+            "Site styles define the theme's peach band and sub-band fills"
+        )
+        site_sheet_xml = site_archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+        check(
+            re.search(r'<worksheet [^>]*><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ',
+                      site_sheet_xml) is not None
+            and re.search(r'<pageSetup paperSize="9" orientation="landscape" '
+                          r'fitToWidth="1" fitToHeight="0"/></worksheet>$', site_sheet_xml)
+            is not None,
+            "Site sheets print A4 landscape, fitted one page wide"
         )
 
         # ---- Merge-grid integrity (owner saw Excel's repair prompt) ----
