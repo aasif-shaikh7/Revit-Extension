@@ -22,6 +22,27 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.34.1] - 2026-09-22
+
+### Changed (dialog tab strip in gold)
+- **Light theme:** the strip behind the dialog's tabs (Beam, Column, Structure Wall, Rebar, Slab,
+  ...) is now Excel's **Gold, Accent 4, Lighter 60%** (`#FFE699`). The owner first tried the
+  workbook's blue `#DAE9F8`, then asked for gold.
+  - Hover is Gold Lighter 40% (`#FFD966`).
+  - Tab text on the strip is 4.9:1, and dark text on hover is 11.6:1.
+  - The open tab stays on the page colour, bold, with the black accent underline.
+- **Dark theme:** the strip is a deep gold `#3D3317` (tab text 4.8:1, hover `#4D4020`). A light
+  gold strip there would glare against Revit's dark greys.
+- **Tokens:** new `TabStripBrush` and `TabHoverBrush`, in both themes.
+
+### Verified
+- `python test_xlsx_writer.py` passes **376 checks**. The theme contrast check now also covers
+  tab text on the strip and on hover, in both themes.
+- `ui.xaml` renders in Light and Dark with WPF `XamlReader`, and all resource keys resolve.
+- Not yet opened in Revit.
+
+---
+
 ## [v1.34.0] - 2026-09-22
 
 ### Changed (theme step 3: the workbook)

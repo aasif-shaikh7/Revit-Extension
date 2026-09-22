@@ -316,7 +316,7 @@
                                 <Condition Property="IsMouseOver" Value="True"/>
                                 <Condition Property="IsSelected" Value="False"/>
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource ItemHoverBrush}"/>
+                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource TabHoverBrush}"/>
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -342,7 +342,7 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0"
-                                Background="{DynamicResource SurfaceAltBrush}"
+                                Background="{DynamicResource TabStripBrush}"
                                 Padding="6,3,6,0">
                             <TabPanel IsItemsHost="True"
                                       KeyboardNavigation.TabNavigation="Local"/>

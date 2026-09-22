@@ -43,6 +43,14 @@
     <SolidColorBrush x:Key="TextPrimaryBrush"    Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondaryColor}"/>
 
+    <!-- ===== Tab strip: the owner's pick, Excel's "Gold, Accent 4,
+         Lighter 60%" (#FFE699), hover "Lighter 40%" (#FFD966). Tab text on
+         the strip 4.9:1; dark text on hover 11.6:1. ===== -->
+    <Color x:Key="TabStripColor">#FFE699</Color>
+    <Color x:Key="TabHoverColor">#FFD966</Color>
+    <SolidColorBrush x:Key="TabStripBrush" Color="{StaticResource TabStripColor}"/>
+    <SolidColorBrush x:Key="TabHoverBrush" Color="{StaticResource TabHoverColor}"/>
+
     <!-- ===== Interactive states ===== -->
     <Color x:Key="HoverColor">#F1EADF</Color>
     <Color x:Key="PressedColor">#E8DFD2</Color>
