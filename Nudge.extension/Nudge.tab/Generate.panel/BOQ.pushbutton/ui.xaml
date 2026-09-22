@@ -8,7 +8,7 @@
     ResizeMode="CanResize"
     Background="{DynamicResource SurfaceBrush}">
 
-    <Grid Margin="12">
+    <Grid Margin="0">
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -18,43 +18,54 @@
 
 
         <!-- ================================================= -->
-        <!-- HEADER (Level Sync-style studio band: title +       -->
-        <!-- subtitle left, plum primary Export right)           -->
+        <!-- HEADER BAND (v1.33.0): brand band with an accent  -->
+        <!-- rule under it; title and project on the band,     -->
+        <!-- the one primary action on the right.              -->
         <!-- ================================================= -->
 
-        <DockPanel
+        <Border
             Grid.Row="0"
-            Margin="10,5,10,10">
+            Background="{DynamicResource HeaderBandBrush}"
+            BorderBrush="{DynamicResource AccentBrush}"
+            BorderThickness="0,0,0,3"
+            Padding="20,14,20,14">
 
-            <Button
-                x:Name="ExportButton"
-                DockPanel.Dock="Right"
-                Content="Export Excel"
-                Height="36"
-                VerticalAlignment="Center"
-                Margin="10,0,0,0"
-                Style="{DynamicResource BrandPrimaryButton}"/>
+            <DockPanel>
 
-            <StackPanel>
+                <Button
+                    x:Name="ExportButton"
+                    DockPanel.Dock="Right"
+                    Content="Export Excel"
+                    Height="38"
+                    VerticalAlignment="Center"
+                    Margin="10,0,0,0"
+                    Style="{DynamicResource BrandPrimaryButton}"/>
 
-                <TextBlock
-                    Text="RCC BOQ Parameter Manager"
-                    Style="{DynamicResource BrandHeaderText}"/>
+                <StackPanel>
 
-                <TextBlock
-                    Text="Structural Bill of Quantities — pick parameters for Beam, Column, Structure Wall, Slab, Foundation and Rebar."
-                    Style="{DynamicResource BrandBodyText}"
-                    Margin="0,5,0,0"/>
+                    <TextBlock
+                        Text="RCC BOQ Parameter Manager"
+                        Style="{DynamicResource BrandHeaderText}"
+                        Foreground="{DynamicResource HeaderBandTextBrush}"/>
 
-                <TextBlock
-                    x:Name="ProjectName"
-                    Text="Project:"
-                    Style="{DynamicResource BrandBodyText}"
-                    Margin="0,5,0,0"/>
+                    <TextBlock
+                        Text="Structural Bill of Quantities — pick parameters for Beam, Column, Structure Wall, Slab, Foundation and Rebar."
+                        Style="{DynamicResource BrandBodyText}"
+                        Foreground="{DynamicResource HeaderBandSubTextBrush}"
+                        Margin="0,5,0,0"/>
 
-            </StackPanel>
+                    <TextBlock
+                        x:Name="ProjectName"
+                        Text="Project:"
+                        Style="{DynamicResource BrandBodyText}"
+                        Foreground="{DynamicResource HeaderBandSubTextBrush}"
+                        Margin="0,5,0,0"/>
 
-        </DockPanel>
+                </StackPanel>
+
+            </DockPanel>
+
+        </Border>
 
 
         <!-- ================================================= -->
@@ -64,6 +75,7 @@
         <TabControl
             x:Name="MainTabs"
             Grid.Row="1"
+            Margin="12,10,12,0"
             Background="{DynamicResource SurfaceBrush}"
             BorderThickness="0">
 
@@ -1132,28 +1144,40 @@
             BorderBrush="{DynamicResource BorderBrush2}"
             Background="{DynamicResource SurfaceAltBrush}">
 
+            <!-- Two rows: the status line gets the full width, and the
+                 options wrap instead of overlapping when the font is wide
+                 or the window narrow. -->
             <Grid>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBlock
                     x:Name="StatusText"
+                    Grid.Row="0"
                     Grid.Column="0"
+                    Grid.ColumnSpan="2"
+                    Margin="4,0,8,6"
                     VerticalAlignment="Center"
                     Style="{DynamicResource BrandBodyText}"
+                    TextWrapping="NoWrap"
                     TextTrimming="CharacterEllipsis"
                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
                     Text="Ready"/>
 
-                <StackPanel
-                    Grid.Column="1"
+                <WrapPanel
+                    Grid.Row="1"
+                    Grid.Column="0"
                     Orientation="Horizontal"
                     VerticalAlignment="Center"
-                    Margin="0,0,20,0">
+                    Margin="4,0,20,0">
 
                     <TextBlock
                         Text="Theme:"
@@ -1217,11 +1241,12 @@
                         Margin="16,0,0,0"
                         ToolTip="Compute the SHUTTERING (formwork contact area, m2) column in the site-format workbook: Column 2(L+W)H, Beam (W+2H)L, Slab soffit, Foundation sides. Per-category junction deduction percentages live in the settings file under 'formwork'."/>
 
-                </StackPanel>
+                </WrapPanel>
 
                 <Button
                     x:Name="CloseButton"
-                    Grid.Column="2"
+                    Grid.Row="1"
+                    Grid.Column="1"
                     Content="Close"
                     Width="100"
                     Height="34"

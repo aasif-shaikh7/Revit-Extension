@@ -2,33 +2,21 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-        Plum & Peach palette - LIGHT (v1.33.0, the owner's choice)
-
-        Tier 1 primitives, then Tier 2 semantic brushes. Controls reference
-        the semantic brushes only, so a palette change never touches a
-        control template.
-
-        Primary  Plum          #6B2D5C  white on it 9.7:1  - actions, focus, checkboxes
-        Peach    selection     #FDE9DE  plum text on it 11.5:1 - selected list items
-        Accent   Deep Peach    #D9744A  3.2:1 on white     - the active-tab underline and
-                                                             thin rules only; never text
-                 (true peach #F4A582 is 2.0:1 on white - too faint for a line here;
-                  the Dark theme uses it, where it reaches 7.1:1)
-        Graphite               #1E2329  15.8:1 on white    - headings, header band
-        Concrete               #5B6470  6.0:1 on white     - secondary text
-
-        Error red stays well apart from both brand colours, so red always
-        means something went wrong.
+        Owner's theme (v1.33.0), from the BOQ Theme Picker:
+            header #C8102E  button #F4A582  selection #C6F432
+            line #111111    background Warm  font Consolas
+        Measured: white title on the red band 5.9:1; black text and tick on
+        the peach button 9.5:1 (white would be 2.0:1, so text on the button
+        is black); black on the lime selection 14.7:1.
     -->
-
     <!-- ===== Tier 1: brand primitives ===== -->
-    <Color x:Key="Primary500Color">#6B2D5C</Color>
-    <Color x:Key="Primary600Color">#5A2550</Color>
-    <Color x:Key="Primary700Color">#4A1F40</Color>
-    <Color x:Key="Primary100Color">#F3E6EF</Color>
-    <Color x:Key="Primary900Color">#4A1F40</Color>
-    <Color x:Key="AccentColor">#D9744A</Color>
-    <Color x:Key="GraphiteColor">#1E2329</Color>
+    <Color x:Key="Primary500Color">#F4A582</Color>
+    <Color x:Key="Primary600Color">#E98E68</Color>
+    <Color x:Key="Primary700Color">#DB7B54</Color>
+    <Color x:Key="Primary100Color">#FDEADF</Color>
+    <Color x:Key="Primary900Color">#111111</Color>
+    <Color x:Key="AccentColor">#111111</Color>
+    <Color x:Key="GraphiteColor">#C8102E</Color>
 
     <!-- ===== Tier 2: brand brushes ===== -->
     <SolidColorBrush x:Key="PrimaryBrush"           Color="{StaticResource Primary500Color}"/>
@@ -36,15 +24,16 @@
     <SolidColorBrush x:Key="PrimaryPressedBrush"    Color="{StaticResource Primary700Color}"/>
     <SolidColorBrush x:Key="PrimaryTintBrush"       Color="{StaticResource Primary100Color}"/>
     <SolidColorBrush x:Key="PrimaryDeepBrush"       Color="{StaticResource Primary900Color}"/>
-    <SolidColorBrush x:Key="PrimaryForegroundBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="PrimaryForegroundBrush" Color="#111111"/>
     <SolidColorBrush x:Key="AccentBrush"            Color="{StaticResource AccentColor}"/>
     <SolidColorBrush x:Key="HeaderBandBrush"        Color="{StaticResource GraphiteColor}"/>
     <SolidColorBrush x:Key="HeaderBandTextBrush"    Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="HeaderBandSubTextBrush" Color="#FFEDEF"/>
 
     <!-- ===== Surfaces / neutrals ===== -->
-    <Color x:Key="SurfaceColor">#FFFFFF</Color>
-    <Color x:Key="SurfaceAltColor">#F4F6F8</Color>
-    <Color x:Key="BorderColor">#D5DAE1</Color>
+    <Color x:Key="SurfaceColor">#FFFDF9</Color>
+    <Color x:Key="SurfaceAltColor">#F6F1EA</Color>
+    <Color x:Key="BorderColor">#E2D9CC</Color>
     <Color x:Key="TextPrimaryColor">#1E2329</Color>
     <Color x:Key="TextSecondaryColor">#5B6470</Color>
 
@@ -55,19 +44,19 @@
     <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondaryColor}"/>
 
     <!-- ===== Interactive states ===== -->
-    <Color x:Key="HoverColor">#E9EDF2</Color>
-    <Color x:Key="PressedColor">#DCE2EA</Color>
-    <Color x:Key="ItemHoverColor">#F0F3F7</Color>
-    <Color x:Key="SelectedColor">#FDE9DE</Color>
-    <Color x:Key="FocusColor">#6B2D5C</Color>
-    <Color x:Key="DisabledColor">#F1F3F5</Color>
+    <Color x:Key="HoverColor">#F1EADF</Color>
+    <Color x:Key="PressedColor">#E8DFD2</Color>
+    <Color x:Key="ItemHoverColor">#F8F3EC</Color>
+    <Color x:Key="SelectedColor">#C6F432</Color>
+    <Color x:Key="FocusColor">#111111</Color>
+    <Color x:Key="DisabledColor">#F3EFE9</Color>
     <Color x:Key="ControlColor">#FFFFFF</Color>
 
     <SolidColorBrush x:Key="HoverBrush"             Color="{StaticResource HoverColor}"/>
     <SolidColorBrush x:Key="PressedBrush"           Color="{StaticResource PressedColor}"/>
     <SolidColorBrush x:Key="ItemHoverBrush"         Color="{StaticResource ItemHoverColor}"/>
     <SolidColorBrush x:Key="SelectedBrush"          Color="{StaticResource SelectedColor}"/>
-    <SolidColorBrush x:Key="SelectedTextBrush"      Color="{StaticResource Primary900Color}"/>
+    <SolidColorBrush x:Key="SelectedTextBrush"      Color="#111111"/>
     <SolidColorBrush x:Key="FocusBrush"             Color="{StaticResource FocusColor}"/>
     <SolidColorBrush x:Key="DisabledBrush"          Color="{StaticResource DisabledColor}"/>
     <SolidColorBrush x:Key="DisabledTextBrush"      Color="#9AA3AE"/>

@@ -24,45 +24,46 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ## [v1.33.0] - 2026-09-22
 
-### Changed (theme step 1 of 3: the Plum & Peach palette)
-- **New palette, chosen by the owner:** Plum & Peach. The owner first saw Steel & Rebar and six
-  rendered alternatives.
-- **The owner's design guide:** the system and rules of `AnonGee_BIM_Tools_Brand_Guidelines.md`
-  were adopted: tiered tokens, full state matrices, contrast measured, one primary action. Its
-  brand name and red identity were not.
-  - **Primary: Plum `#6B2D5C`**, for actions, focus and checkboxes. White on it is **9.7:1**.
-  - **Peach for selection:** `#FDE9DE` is the selected-item background, and plum text on it is
-    **11.5:1**.
-  - **Accent: deep peach `#D9744A`**, for the active-tab underline and thin rules only, never
-    text (3.2:1). True peach `#F4A582` is only 2.0:1 on white, too faint for a line; the Dark theme
-    uses it, where it reaches 7.1:1.
-  - **Graphite `#1E2329`** for headings, and **Concrete `#5B6470`** for secondary text (6.0:1).
-  - Error, warning, success and info stay apart from both brand colours.
-- **Why the change:** the old Ember orange `#F2994A` carried white text at **2.23:1**, below the WCAG
-  AA 4.5:1 needed for text. Every text pair in both themes now passes.
-- **Dark theme:** the same keys as Light. The neutrals stay on Revit's own dark greys; plum
-  selection is `#43243C`, and focus is `#C07AB0` (4.5:1).
-- **Token names:** the `Ember*` keys became `Primary*` / `Accent*`. New keys are
-  `PrimaryForegroundBrush`, `HeaderBandBrush` and `HeaderBandTextBrush` (the band is for step 2).
-- **Controls:** disabled Primary and Secondary buttons now show a real disabled colour instead of
-  fading to 50% opacity, so they stay readable.
-- **Font:** the UI font is now Segoe UI. The previous Sora was never installed on the owner's machine
-  and always fell back to Segoe UI anyway. A mono family and a `BrandCodeText` style are added for
-  IDs and codes.
-- **Search boxes:** `script.py` no longer hard-codes the old Ember and grey hex values. It reads the
-  theme's own Color keys, with the new palette as a fallback.
+### Changed (theme: the owner's own palette, with a header band)
+- **How the palette was chosen:**
+  - The owner reviewed the design system in `AnonGee_BIM_Tools_Brand_Guidelines.md`. Its rules
+    were adopted: tiered tokens, full state matrices, contrast measured, one primary action.
+  - Thirteen rendered designs did not suit. A **BOQ Theme Picker** page was then built, where each
+    part of the dialog could be coloured live, and the owner picked:
+    **header `#C8102E`, button `#F4A582`, selection `#C6F432`, line `#111111`, background Warm,
+    font Consolas.**
+- **Applied as chosen, with three readability adjustments** (all measured):
+  - Text and the tick on the peach button are **black** (9.5:1). White there would be 2.0:1.
+  - The header subtitle is near-white `#FFEDEF` (5.6:1) on the red band. The title is white (5.9:1).
+  - In the **Dark** theme the black accent line would vanish on Revit's `#2B2B2B` (1.3:1), so there
+    it is light grey `#EDEDED`. The header, button and lime selection are the same in both themes.
+- **Header band:** the title and project now sit on a full-width band (`HeaderBandBrush`) with a
+  3px accent rule under it; the Export button stays on the right.
+- **Footer:** now two rows. The status line gets the full width, and the options sit in a
+  `WrapPanel`. Consolas is wider than the old font, and in one row "Ready" wrapped and then
+  overlapped the Theme selector.
+- **Token names:** the old Ember orange `#F2994A` (white on it 2.23:1) is gone, and the `Ember*`
+  keys became `Primary*` / `Accent*`. New keys: `PrimaryForegroundBrush`, `HeaderBandBrush`,
+  `HeaderBandTextBrush`, `HeaderBandSubTextBrush`.
+- **Controls:**
+  - Disabled buttons show a real disabled colour instead of 50% opacity.
+  - The checkbox tick uses `PrimaryForegroundBrush`, so it stays visible on any button colour.
+- **`script.py`:** the search-box colours are read from the theme's Color keys instead of hard-coded
+  hex, and the selected-text colour in those boxes is black.
+- **Note for the owner:** the header red `#C8102E` is very close to the error red `#C62828`. Error
+  messages appear in the footer, not on the band, and they say what went wrong.
 
 ### Verified
-- **Harness:** `python test_xlsx_writer.py` passes **373 checks**, up from 368. The new checks:
+- **Harness:** `python test_xlsx_writer.py` passes **373 checks**. The theme checks cover:
   - Light and Dark define identical keys;
-  - every resource `ui.xaml` and the controls use is defined;
-  - no Ember key or colour is left;
-  - both themes meet 4.5:1 for text and 3:1 for focus and accent.
-  Re-inserting the old orange makes the contrast check fail at 2.23:1.
-- **WPF render:** `ui.xaml` was loaded with the real WPF `XamlReader` and the dictionaries merged,
-  in Light and in Dark, with sample list items selected. All 13 resource keys it uses resolved, and
-  the window rendered.
-- **Not yet verified in Revit:** the dialog has not been opened in Revit with the new theme.
+  - every resource used is defined;
+  - no Ember is left;
+  - text is at least 4.5:1 and the focus and accent at least 3:1, in both themes, now including the
+    header band's title and subtitle.
+- **WPF render:** `ui.xaml` was loaded with WPF's own `XamlReader` in Light and in Dark, with sample
+  items selected. All 17 resource keys resolved, and the header, footer and lists rendered without
+  overlap.
+- **Not yet verified in Revit:** the dialog has not been opened in Revit with this theme.
 
 ---
 

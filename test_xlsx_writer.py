@@ -4541,6 +4541,8 @@ def main():
             ("ErrorBrush", "SurfaceColor", 4.5),
             ("FocusColor", "SurfaceColor", 3.0),
             ("AccentColor", "SurfaceColor", 3.0),
+            ("HeaderBandTextBrush", "HeaderBandBrush", 4.5),
+            ("HeaderBandSubTextBrush", "HeaderBandBrush", 4.5),
         )
         failing = ["{0} on {1} {2:.2f}".format(a, b, contrast(colors[a], colors[b]))
                    for a, b, floor in pairs

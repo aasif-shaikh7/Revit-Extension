@@ -14,7 +14,7 @@
         <Setter Property="Padding" Value="8"/>
     </Style>
 
-    <!-- ===== Primary Button (plum fill) - one per window ===== -->
+    <!-- ===== Primary Button (brand fill) - one per window ===== -->
     <Style x:Key="BrandPrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
@@ -143,7 +143,7 @@
                                 VerticalAlignment="Center">
                             <Path x:Name="CheckMark"
                                   Data="M2,8 L6,12 L13,3"
-                                  Stroke="White"
+                                  Stroke="{DynamicResource PrimaryForegroundBrush}"
                                   StrokeThickness="2"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
@@ -282,7 +282,7 @@
     <!-- consuming XAML declarations.                       -->
     <!-- ================================================== -->
 
-    <!-- ===== TabItem (implicit: folder tab, peach accent underline) ===== -->
+    <!-- ===== TabItem (implicit: folder tab, accent underline) ===== -->
     <Style TargetType="TabItem">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>

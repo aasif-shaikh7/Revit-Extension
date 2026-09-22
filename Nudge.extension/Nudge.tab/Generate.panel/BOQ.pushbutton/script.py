@@ -3096,21 +3096,21 @@ try:
 
             # v1.33.0: the colours come from the merged theme's own Color
             # keys, so this box can never drift from the palette. The
-            # fallbacks are the same Plum & Peach values, used only if a
+            # fallbacks are the same owner's-theme values, used only if a
             # key cannot be found.
             if theme_name == "Dark":
                 fallback_hex = {
                     "TextPrimaryColor": "EDEDED",
                     "SurfaceColor": "2B2B2B",
                     "BorderColor": "40454C",
-                    "Primary500Color": "6B2D5C",
+                    "Primary500Color": "F4A582",
                 }
             else:
                 fallback_hex = {
                     "TextPrimaryColor": "1E2329",
-                    "SurfaceColor": "FFFFFF",
-                    "BorderColor": "D5DAE1",
-                    "Primary500Color": "6B2D5C",
+                    "SurfaceColor": "FFFDF9",
+                    "BorderColor": "E2D9CC",
+                    "Primary500Color": "F4A582",
                 }
 
             def theme_brush(color_key):
@@ -3134,8 +3134,10 @@ try:
                 surface_brush = theme_brush("SurfaceColor")
                 border_brush = theme_brush("BorderColor")
                 selection_brush = theme_brush("Primary500Color")
+                # Text over the selection highlight: black, readable
+                # on the peach primary (9.5:1) where white is not.
                 white_brush = SolidColorBrush(
-                    Color.FromRgb(0xFF, 0xFF, 0xFF)
+                    Color.FromRgb(0x11, 0x11, 0x11)
                 )
             except:
                 return

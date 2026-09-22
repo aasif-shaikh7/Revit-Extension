@@ -2,15 +2,11 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-        UI font: Segoe UI (v1.33.0). It ships with every Windows and Revit
-        host, reads well in dense parameter lists, and matches Revit, so
-        the dialog feels native. (Sora, used before, was never installed on
-        the owner's machine, so it always fell back to Segoe UI anyway.)
-
-        Mono is for things a person copies or compares character by
-        character - element IDs, item codes, file paths - never for prose.
+        UI font: Consolas (v1.33.0, the owner's choice from the Theme Picker).
+        A monospace face across the dialog; Cascadia Mono, then Segoe UI, are
+        the fallbacks. Every Windows host has Consolas.
     -->
-    <FontFamily x:Key="BrandFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="BrandFontFamily">Consolas, Cascadia Mono, Segoe UI</FontFamily>
     <FontFamily x:Key="BrandMonoFontFamily">Cascadia Mono, Consolas</FontFamily>
 
     <!-- ===== Type scale ===== -->
