@@ -2032,6 +2032,16 @@ def main():
             "P5 Site workbook includes shape dimensions and cutting length"
         )
 
+        site_assembly_xml = site_archive.read(
+            "xl/worksheets/sheet7.xml"
+        ).decode("utf-8")
+        check(
+            ">RCC - STRUCTURAL ASSEMBLY<" in site_assembly_xml
+            and "REINFORCEMENT BBS" not in site_assembly_xml
+            and ">RCC - REINFORCEMENT BBS<" in site_rebar_bbs_xml,
+            "Site Structural Assembly carries its own band, not the BBS one"
+        )
+
         site_styles_xml = site_archive.read(
             "xl/styles.xml"
         ).decode("utf-8")

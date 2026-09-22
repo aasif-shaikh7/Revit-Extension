@@ -22,6 +22,23 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.29.1] - 2026-09-22
+
+### Fixed
+- The site workbook's **Structural Assembly** sheet showed the band "RCC - REINFORCEMENT BBS"
+  because it fell back to the BBS default of `build_site_tabular_sheet`. It now passes its own
+  band, **"RCC - STRUCTURAL ASSEMBLY"**. Rebar Summary and Rebar BBS keep the BBS band.
+
+### Verified
+- Harness: `python test_xlsx_writer.py` passes **327 checks**, up from 326. The new check pins the
+  Structural Assembly band and confirms the BBS sheet still has its own.
+- Live, in the owner's own Revit 2025 on UMA NIWAS (Primary bridge, consent given): the site export
+  gave 10 sheets, 13,256 cells and 0 mismatches, and row 2 of Structural Assembly reads
+  "RCC - STRUCTURAL ASSEMBLY". The P13 sheets are unchanged: 873.6960 m3 and 6,563.07 m2, no
+  problems. Nothing was saved.
+
+---
+
 ## [v1.29.0] - 2026-09-22
 
 ### Added (P13 site format: the three BOQ sheets in the site workbook)
