@@ -1030,7 +1030,7 @@
                         <TextBlock Text="Rate Database" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
                         <TextBlock x:Name="RateDbIntro" TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
                                    Style="{DynamicResource BrandBodyText}"
-                                   Text="Your rates, with where and from when each one applies. A rate for a city, a state or a country: a project looks for its city first, then its state, then its country, then a rate with no location. A later Effective Date replaces an earlier one from that day. Write &quot;SAMPLE&quot; in Source for a test figure and the workbook marks it as not a real rate."/>
+                                   Text="Your rates, with where and from when each one applies. A rate for a city, a state or a country: a project looks for its city first, then its state, then its country, then a rate with no location. A later Effective Date replaces an earlier one from that day. Write &quot;SAMPLE&quot; in Source for a test figure and the workbook marks it as not a real rate. The Detailed BOQ looks up these codes, most specific first: RCC-M30-BEAM then RCC-M30 for concrete, SHUT-SLAB then SHUT for shuttering, STEEL-12 then STEEL for reinforcement."/>
                         <TextBlock x:Name="RateDbSource" Margin="0,6,0,0" Style="{DynamicResource BrandLabelText}" Text=""/>
                     </StackPanel>
 
