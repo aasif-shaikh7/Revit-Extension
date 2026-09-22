@@ -27,7 +27,9 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 ### Changed (theme step 3: the workbook)
 - **Colours:** the exported workbook now uses the owner's theme, the same as the dialog.
   - Title and classic header rows: red `#C8102E` with bold white text.
-  - Site band rows: peach `#F4A582` with bold black text, and sub-band rows `#FDEADF`.
+  - Site band and sub-band rows: `#DAE9F8`, the owner's pick of Excel's "Dark Blue, Text 2,
+    Lighter 90%". The value was read from the owner's own Excel through COM (Office theme Text 2
+    `#0E2841` at a 90% tint), and the text on it is bold black.
   - TOTAL rows: the lime tint `#EEF9CC`.
   - The old Ember fills are gone.
 - **Indian digit grouping** on every number style: `1,00,000.00`, `15,29,387.60`,
