@@ -200,6 +200,9 @@ def main():
             failures.append(message)
             print("FAIL: {}".format(message))
 
+    # The crash trail is for live Revit runs; keep the harness out of it.
+    os.environ["RCC_BOQ_NO_TRAIL"] = "1"
+
     # source texts: engine modules first, script.py as fallback.
     if LIB_DIR not in sys.path:
         sys.path.insert(0, LIB_DIR)
@@ -4462,6 +4465,79 @@ def main():
             )
     finally:
         shutil.rmtree(db_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------
+    # Stack overflow on BBS models (v1.32.1)
+    #
+    # Revit died with 0xc00000fd while writing a workbook for a rebar
+    # model: under pyRevit's IronPython the writers run at the bottom of a
+    # very deep main-thread call chain. They touch no Revit API, so the
+    # export runs them on a large-stack thread. Here that runner must pass
+    # results and exceptions through unchanged, and both formats must use
+    # it. The live proof - five site and two classic exports in one
+    # session - is recorded in CHANGELOG.
+    # ------------------------------------------------------------
+    import stack_runner
+    import crash_trail
+
+    check(
+        stack_runner.run_with_large_stack(lambda a, b=0: a + b, 2, b=3) == 5
+        and stack_runner.run_with_large_stack(
+            lambda **kw: sorted(kw), x=1, _stack_bytes=1024 * 1024) == ["x"],
+        "Stack runner returns the result and keeps its own option out of "
+        "the call"
+    )
+    try:
+        stack_runner.run_with_large_stack(lambda: {}["missing"])
+        runner_raised = False
+    except KeyError:
+        runner_raised = True
+    check(runner_raised, "Stack runner re-raises the writer's own exception")
+
+    writer_calls = re.findall(
+        r"sheet_rows = (\w+)\(\s*\n\s*(\w+),", export_handler_source)
+    check(
+        sorted(writer_calls) == [("run_with_large_stack", "write_basic_xlsx"),
+                                 ("run_with_large_stack", "write_site_xlsx")]
+        and "from stack_runner import run_with_large_stack" in export_handler_source,
+        "Both workbook writers run on the large-stack thread "
+        "(got {0})".format(writer_calls)
+    )
+
+    trail_dir = tempfile.mkdtemp()
+    saved_env = (os.environ.get("LOCALAPPDATA"), os.environ.pop("RCC_BOQ_NO_TRAIL", None))
+    try:
+        os.environ["LOCALAPPDATA"] = trail_dir
+        crash_trail.mark("harness step one")
+        crash_trail.mark("harness step two")
+        trail_text = io.open(crash_trail.trail_path(), encoding="utf-8").read()
+        os.environ["LOCALAPPDATA"] = os.path.join(trail_dir, "file.txt")
+        io.open(os.environ["LOCALAPPDATA"], "w").close()
+        crash_trail.mark("cannot be written")    # a file where a folder must be
+        trail_survived = True
+    except Exception:
+        trail_text, trail_survived = "", False
+    finally:
+        if saved_env[0] is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = saved_env[0]
+        os.environ["RCC_BOQ_NO_TRAIL"] = "1"
+        shutil.rmtree(trail_dir, ignore_errors=True)
+    check(
+        trail_survived
+        and trail_text.count("\n") == 2
+        and trail_text.index("harness step one") < trail_text.index("harness step two"),
+        "Crash trail appends one line per step and never raises"
+    )
+    for helper in ("stack_runner.py", "crash_trail.py"):
+        helper_source = io.open(os.path.join(LIB_DIR, helper),
+                                encoding="utf-8-sig").read()
+        check(
+            "import Autodesk" not in helper_source
+            and "from pyrevit" not in helper_source,
+            "{0} imports no Revit symbol".format(helper)
+        )
 
     # ------------------------------------------------------------
     # P12 Detailed BOQ priced from the rate database (v1.32.0)
