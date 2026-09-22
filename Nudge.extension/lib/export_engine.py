@@ -1506,7 +1506,59 @@ def _boq_diameter_text(diameter):
     return ("%.3f" % number).rstrip("0").rstrip(".")
 
 
-def build_detailed_boq_table(data_result, summary_info, rebar_rows=None):
+def _grades_in(rows):
+    """The grades these rows carry, M10 < M30 < M40, unrecorded last."""
+    grades = []
+    for row in rows or []:
+        try:
+            grade = str(row.get("Grade", "") or "").strip()
+        except AttributeError:
+            continue
+        grade = grade or NO_GRADE_LABEL
+        if grade not in grades:
+            grades.append(grade)
+    grades.sort(key=lambda grade: (grade == NO_GRADE_LABEL,
+                                   identity_sort_key(grade)))
+    return grades
+
+
+def _concrete_quantity(data, info_by_sheet, sheet_name, grade):
+    """Concrete of one grade in one category: live where possible.
+
+    Where the category sheet carries Grade and Volume columns (the classic
+    workbook) this is a SUMIF against that sheet. The site workbook's
+    detail sheets are laid out for reading - title bands, no Grade column -
+    so there the figure is summed from the rows instead. Returns None when
+    the rows carry no volume at all for this grade.
+    """
+    info = info_by_sheet.get(sheet_name) or {}
+    columns = info.get("columns") or {}
+    volume_col = columns.get("Volume (m3)")
+    grade_col = info.get("grade_col") or ""
+    data_end = info.get("data_end") or 0
+
+    if volume_col and grade_col and data_end > 1:
+        return ("FORMULA", (
+            "SUMIF({0}!${1}$2:${1}${4},\"{2}\",{0}!${3}$2:${3}${4})"
+        ).format(xlsx_sheet_reference(sheet_name), grade_col, grade,
+                 volume_col, data_end))
+
+    total = 0.0
+    found = False
+    for row in data.get(sheet_name) or []:
+        try:
+            row_grade = str(row.get("Grade", "") or "").strip() or NO_GRADE_LABEL
+            if row_grade != grade:
+                continue
+            total += float(row.get("Qty: Volume (m3)", ""))
+            found = True
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return round(total, 4) if found else None
+
+
+def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
+                             row_offset=0):
     """Build the itemized BOQ a client or contractor prices.
 
     Item No. / Description / Unit / Quantity / Rate / Amount, in three
@@ -1525,48 +1577,34 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None):
     typed, then shows Quantity x Rate, so the sheet can be priced in Excel
     without touching a formula. A header-only table means there was
     nothing to itemize.
+
+    `row_offset` is how far below its plain position each row will land:
+    the site workbook wraps this table in title bands, pushing every data
+    row down five rows, and the Amount and TOTAL formulas must point at
+    where the numbers really are.
     """
     data = data_result if isinstance(data_result, dict) else {}
     info_by_sheet = summary_info if isinstance(summary_info, dict) else {}
     table = [list(DETAILED_BOQ_HEADERS)]
     sections = []
 
-    # A. Concrete, one item per category and grade present.
+    # A. Concrete, one item per category and grade present - M10, M30, M40
+    # in number order; an unrecorded grade stays visible but goes last,
+    # where it will be noticed rather than priced.
     concrete = []
     for sheet_name, label in DETAILED_BOQ_CATEGORIES:
         rows = data.get(sheet_name) or []
-        info = info_by_sheet.get(sheet_name) or {}
-        columns = info.get("columns") or {}
-        volume_col = columns.get("Volume (m3)")
-        grade_col = info.get("grade_col") or ""
-        data_end = info.get("data_end") or 0
-        if not rows or not volume_col or not grade_col or data_end <= 1:
+        if not rows:
             continue
-
-        grades = []
-        for row in rows:
-            try:
-                grade = str(row.get("Grade", "") or "").strip()
-            except AttributeError:
+        for grade in _grades_in(rows):
+            quantity = _concrete_quantity(data, info_by_sheet, sheet_name, grade)
+            if quantity is None:
                 continue
-            grade = grade or NO_GRADE_LABEL
-            if grade not in grades:
-                grades.append(grade)
-        # M10, M30, M40 in number order; an unrecorded grade stays visible
-        # but goes last, where it will be noticed rather than priced.
-        grades.sort(key=lambda grade: (grade == NO_GRADE_LABEL,
-                                       identity_sort_key(grade)))
-
-        reference = xlsx_sheet_reference(sheet_name)
-        for grade in grades:
-            formula = (
-                "SUMIF({0}!${1}$2:${1}${4},\"{2}\",{0}!${3}$2:${3}${4})"
-            ).format(reference, grade_col, grade, volume_col, data_end)
             if grade == NO_GRADE_LABEL:
                 description = "Concrete in {0} - grade not recorded".format(label)
             else:
                 description = "Concrete {0} in {1}".format(grade, label)
-            concrete.append((description, "m3", ("FORMULA", formula)))
+            concrete.append((description, "m3", quantity))
     if concrete:
         sections.append(("A", "CONCRETE", concrete))
 
@@ -1633,7 +1671,7 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None):
     for letter, title, items in sections:
         table.append([letter, title, "", "", "", ""])
         for index, (description, unit, quantity) in enumerate(items, 1):
-            row_number = len(table) + 1
+            row_number = len(table) + 1 + row_offset
             if first_item_row is None:
                 first_item_row = row_number
             table.append([
@@ -1646,7 +1684,7 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None):
                  'IF(E{0}="","",D{0}*E{0})'.format(row_number)),
             ])
 
-    last_row = len(table)
+    last_row = len(table) + row_offset
     table.append([
         "", "TOTAL", "", "", "",
         ("FORMULA", "SUM(F{0}:F{1})".format(first_item_row, last_row)),
@@ -1668,12 +1706,14 @@ def _present_categories(data):
             if data.get(sheet_name)]
 
 
-def _matrix_with_totals(first_header, categories, total_header, keyed_rows):
+def _matrix_with_totals(first_header, categories, total_header, keyed_rows,
+                        row_offset=0):
     """Lay out a key x category matrix with row totals and a TOTAL row.
 
     keyed_rows is [(key, [cell per category])]; row and column totals are
     live SUM formulas over the cells, so a figure typed over in Excel
-    carries through.
+    carries through. `row_offset` shifts every formula's row numbers by
+    the rows a site title band will add above the table.
     """
     headers = [first_header] + [sheet for sheet, _label in categories]
     headers.append(total_header)
@@ -1681,11 +1721,11 @@ def _matrix_with_totals(first_header, categories, total_header, keyed_rows):
     last_col = xlsx_column_name(len(categories) + 1)
 
     for key, cells in keyed_rows:
-        row_number = len(table) + 1
+        row_number = len(table) + 1 + row_offset
         table.append([key] + list(cells) + [(
             "FORMULA", "SUM(B{0}:{1}{0})".format(row_number, last_col))])
 
-    first_data, last_data = 2, len(table)
+    first_data, last_data = 2 + row_offset, len(table) + row_offset
     totals = ["TOTAL"]
     for index in range(len(categories) + 1):
         column = xlsx_column_name(index + 2)
@@ -1695,61 +1735,52 @@ def _matrix_with_totals(first_header, categories, total_header, keyed_rows):
     return table
 
 
-def build_concrete_summary_table(data_result, summary_info):
+def build_concrete_summary_table(data_result, summary_info, row_offset=0):
     """Concrete by grade across categories: what to order, grade by grade.
 
     One row per grade (M10, M30, M40 ... in number order, an unrecorded
     grade last), one column per category, a Total (m3) per grade and a
-    TOTAL row. Each cell is the same live SUMIF against the category sheet
-    that BOQ by Grade and the Detailed BOQ use, so all three always agree.
-    A header-only table means there was no concrete to summarize.
+    TOTAL row. In the classic workbook each cell is the same live SUMIF
+    against the category sheet that BOQ by Grade and the Detailed BOQ use,
+    so all three always agree; the site workbook sums the rows instead
+    (see _concrete_quantity). A header-only table means there was no
+    concrete to summarize.
     """
     data = data_result if isinstance(data_result, dict) else {}
     info_by_sheet = summary_info if isinstance(summary_info, dict) else {}
 
-    categories = []
     grades = []
-    for sheet_name, label in _present_categories(data):
-        info = info_by_sheet.get(sheet_name) or {}
-        if not ((info.get("columns") or {}).get("Volume (m3)")
-                and info.get("grade_col") and (info.get("data_end") or 0) > 1):
-            continue
-        categories.append((sheet_name, label))
-        for row in data.get(sheet_name) or []:
-            try:
-                grade = str(row.get("Grade", "") or "").strip() or NO_GRADE_LABEL
-            except AttributeError:
+    cells_by_key = {}
+    used = []
+    for sheet_name, _label in _present_categories(data):
+        for grade in _grades_in(data.get(sheet_name)):
+            quantity = _concrete_quantity(data, info_by_sheet, sheet_name, grade)
+            if quantity is None:
                 continue
+            cells_by_key[(grade, sheet_name)] = quantity
             if grade not in grades:
                 grades.append(grade)
+            if sheet_name not in used:
+                used.append(sheet_name)
 
+    categories = [(sheet, label) for sheet, label in _present_categories(data)
+                  if sheet in used]
     if not categories:
         return [["Grade", "Total (m3)"]]
 
     grades.sort(key=lambda grade: (grade == NO_GRADE_LABEL,
                                    identity_sort_key(grade)))
-
     keyed_rows = []
     for grade in grades:
-        cells = []
-        for sheet_name, _label in categories:
-            present = any(
-                (str(row.get("Grade", "") or "").strip() or NO_GRADE_LABEL) == grade
-                for row in data.get(sheet_name) or [])
-            if not present:
-                cells.append("")
-                continue
-            info = info_by_sheet[sheet_name]
-            cells.append(("FORMULA", (
-                "SUMIF({0}!${1}$2:${1}${4},\"{2}\",{0}!${3}$2:${3}${4})"
-            ).format(xlsx_sheet_reference(sheet_name), info["grade_col"],
-                     grade, info["columns"]["Volume (m3)"], info["data_end"])))
-        keyed_rows.append((grade, cells))
+        keyed_rows.append((grade, [
+            cells_by_key.get((grade, sheet_name), "")
+            for sheet_name, _label in categories]))
 
-    return _matrix_with_totals("Grade", categories, "Total (m3)", keyed_rows)
+    return _matrix_with_totals("Grade", categories, "Total (m3)", keyed_rows,
+                               row_offset)
 
 
-def build_formwork_summary_table(data_result):
+def build_formwork_summary_table(data_result, row_offset=0):
     """Centering and shuttering by level across categories.
 
     One row per level in level order, one column per category, a
@@ -1794,7 +1825,8 @@ def build_formwork_summary_table(data_result):
             cells.append("" if value is None else round(value, 2))
         keyed_rows.append((level, cells))
 
-    return _matrix_with_totals("Level", categories, "Total (m2)", keyed_rows)
+    return _matrix_with_totals("Level", categories, "Total (m2)", keyed_rows,
+                               row_offset)
 
 
 def sanitize_file_name(value):
@@ -3241,6 +3273,47 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
         sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
         sheet_widths[RATE_ANALYSIS_SHEET_NAME] = rate_widths
+
+    # P13: the same three sheets as the classic workbook, in the site
+    # title bands. The bands put five rows above every data row
+    # (project, band, title, a blank, the header, a blank), so each table
+    # is built with row_offset=5 and its Amount and total formulas point at
+    # where the figures really land. The site detail sheets carry no Grade
+    # column, so concrete here is summed from the rows (summary_info={}).
+    from export_engine import (
+        CONCRETE_SUMMARY_SHEET_NAME,
+        DETAILED_BOQ_SHEET_NAME,
+        FORMWORK_SUMMARY_SHEET_NAME,
+        build_concrete_summary_table,
+        build_detailed_boq_table,
+        build_formwork_summary_table,
+    )
+
+    site_band_offset = 5
+    for p13_name, p13_title, p13_band, p13_plain in (
+        (CONCRETE_SUMMARY_SHEET_NAME, "CONCRETE SUMMARY",
+         "RCC - CONCRETE SUMMARY",
+         build_concrete_summary_table(data_result, {}, site_band_offset)),
+        (FORMWORK_SUMMARY_SHEET_NAME, "FORMWORK SUMMARY",
+         "RCC - FORMWORK SUMMARY",
+         build_formwork_summary_table(data_result, site_band_offset)),
+        (DETAILED_BOQ_SHEET_NAME, "DETAILED BILL OF QUANTITIES",
+         "RCC - DETAILED BOQ",
+         build_detailed_boq_table(data_result, {},
+                                  data_result.get("Rebar") or [],
+                                  site_band_offset)),
+    ):
+        # A summary is header + at least one row + TOTAL; the Detailed BOQ
+        # is header + at least one section row.
+        if len(p13_plain) <= 2:
+            continue
+        p13_table, p13_widths = build_site_tabular_sheet(
+            project_name, p13_title, p13_plain, band_title=p13_band)
+        if p13_name == DETAILED_BOQ_SHEET_NAME and len(p13_widths) > 1:
+            p13_widths[1] = 48          # item descriptions need the room
+        sheet_names.append(p13_name)
+        sheet_rows[p13_name] = p13_table
+        sheet_widths[p13_name] = p13_widths
 
     # P7: same typed line items as the classic workbook, wrapped in the
     # site title bands and appended only when there are items.
