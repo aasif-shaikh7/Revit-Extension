@@ -22,6 +22,58 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.32.1] - 2026-09-22
+
+### Fixed (Revit crashed exporting a rebar / BBS model)
+- **What happened:** on the owner's `R-25 BBS BEAM` model, Revit crashed with a **stack overflow**
+  (APPCRASH, `coreclr.dll` / `ucrtbase.dll`, exception `0xc00000fd`). It crashed once in the
+  owner's own Revit and repeatedly in the isolated test Revit. The model file was never touched.
+- **How it was found:** a new crash trail, `lib/crash_trail.py`, writes one flushed line per step
+  to `%LOCALAPPDATA%\RCC_BOQ\logs\boq_crash_trail.log`.
+  - Reading the model always finished: 1,387 rows, every rebar's level, quantities and
+    parameters.
+  - The crash was always inside the **workbook writer**, at a different sheet each time: after
+    the Rebar data once, at the P13 summaries the next.
+  - There is no recursion in the Python code; every call graph was checked.
+  - Replayed outside the live pipeline, the writers ran even on a 128 KB stack, both with the
+    real rows (dumped from the crashing run) and with a synthetic BBS.
+  - **Cause:** the BOQ button runs on pyRevit's **IronPython 2.7.12** engine (`script.py` has no
+    `#! python3` line). Its writers run at the bottom of a very deep call chain on Revit's main
+    thread (external event, pyRevit, the dialog, the export handler). On a rebar model, the extra
+    sheets were enough to cross the stack's edge.
+- **Fix:** new `lib/stack_runner.py`. Both workbook writers now run on their own thread with a
+  **64 MB stack**; the result or exception is passed back unchanged, and the calling thread's
+  culture is kept. The writers touch no Revit API; reading the model stays on Revit's main thread.
+- The crash trail stays, at phase level only (about 55 lines per export), so any future hard crash
+  names its step. `RCC_BOQ_NO_TRAIL=1` turns it off, and the harness sets it.
+
+### Verified
+- **Live, isolated test Revit, copy of `R-25 BBS BEAM`:**
+  - Before the fix, the site export crashed Revit on the first or second export in a session,
+    four times out of four sessions.
+  - With the fix, **13 exports ran in one session with no crash**: 5 site, 2 classic, and 3 more
+    site after the diagnostics were trimmed. Site: 15 sheets, 0 mismatches. Classic: 19 sheets,
+    0 mismatches.
+- **Same data as before the fix:** a pre-fix site workbook and a post-fix one are
+  **identical cell by cell** outside the title rows, and so are the first and fifth post-fix runs.
+- **BBS data:**
+  - 332 rebar and 6,920.987 kg; every bar's weight matches `d2/162` x length.
+  - Detailed BOQ reinforcement equals the Rebar sheet on every diameter (8, 10, 12, 16, 20, 25 and
+    32 mm).
+- **Harness:** `python test_xlsx_writer.py` passes **368 checks**, up from 362. The new checks
+  cover:
+  - the runner passes results and exceptions through;
+  - both writers are routed through it;
+  - the trail appends and never raises;
+  - neither helper imports Revit.
+
+### Known
+- `CLAUDE.md` and the `script.py` docstring describe CP3123 (CPython) as the runtime. In fact the
+  BOQ button runs on IronPython 2.7.12, and every live check so far ran there. Moving to CPython
+  would be a separate, deliberate change.
+
+---
+
 ## [v1.32.0] - 2026-09-22
 
 ### Added (P12 third slice: the Detailed BOQ priced from the rate database)

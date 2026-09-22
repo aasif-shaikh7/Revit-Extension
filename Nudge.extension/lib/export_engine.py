@@ -3219,6 +3219,13 @@ def write_site_xlsx(file_path, data_result, project_name="",
     Returns a plain {sheet_name: table} mapping (identical contract to
     write_basic_xlsx) covering Summary plus every populated category.
     """
+    try:
+        from crash_trail import mark as _trail
+    except Exception:
+        def _trail(step):
+            pass
+    _trail("site | start")
+
     produced = {}
 
     site_detail_meta = {}
@@ -3240,6 +3247,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         if not rows:
             continue
 
+        _trail("site | detail sheet {0} ({1} rows)".format(category_name, len(rows)))
         table, meta = build_site_detail_sheet(
             category_name,
             rows,
@@ -3268,6 +3276,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
         site_detail_meta[category_name] = meta
 
+    _trail("site | rebar summary + BBS")
     rebar_source_rows = data_result.get("Rebar") or []
     if rebar_source_rows:
         from rebar_engine import (
@@ -3298,6 +3307,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
             sheet_rows[p5_sheet_name] = p5_table
             sheet_widths[p5_sheet_name] = p5_widths
 
+    _trail("site | structural assembly")
     from assembly_engine import build_structural_assembly_table
     assembly_plain_table = build_structural_assembly_table(data_result, assembly_profile)
     if len(assembly_plain_table) > 1:
@@ -3311,6 +3321,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_rows["Structural Assembly"] = assembly_table
         sheet_widths["Structural Assembly"] = assembly_widths
 
+    _trail("site | rate analysis + rate database")
     # P11: the rate build-up, in the site bands like every other sheet
     # here. Appended only when build-ups exist.
     from costing_engine import (
@@ -3347,6 +3358,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_rows[RATE_DATABASE_SHEET_NAME] = rate_db_table
         sheet_widths[RATE_DATABASE_SHEET_NAME] = rate_db_widths
 
+    _trail("site | P13 sheets")
     # P13: the same three sheets as the classic workbook, in the site
     # title bands. The bands put five rows above every data row
     # (project, band, title, a blank, the header, a blank), so each table
@@ -3363,6 +3375,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
     )
 
     site_band_offset = 5
+    _trail("site | P13 builders start")
     for p13_name, p13_title, p13_band, p13_plain in (
         (CONCRETE_SUMMARY_SHEET_NAME, "CONCRETE SUMMARY",
          "RCC - CONCRETE SUMMARY",
@@ -3391,6 +3404,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_rows[p13_name] = p13_table
         sheet_widths[p13_name] = p13_widths
 
+    _trail("site | site items + unmapped")
     # P7: same typed line items as the classic workbook, wrapped in the
     # site title bands and appended only when there are items.
     if site_items:
@@ -3441,6 +3455,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
         summary_meta = {"empty": True}
 
+    _trail("site | summary built")
     total_columns = summary_meta.get("total_columns", 3)
 
     # SNO | CATEGORY | ELEMENTS | VOL (+ SHUT only when formwork shows)
@@ -3508,6 +3523,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
             ).encode("utf-8")
         )
 
+        _trail("site | styles.xml")
         archive.writestr(
             "xl/styles.xml",
             enforce_uniform_grid_borders(
@@ -3516,6 +3532,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
         for index, sheet_name in enumerate(sheet_names, 1):
 
+            _trail("site | sheet xml {0}: {1} ({2} rows)".format(
+                index, sheet_name, len(sheet_rows[sheet_name])))
             sheet_xml = build_xlsx_sheet_xml_site(
                 sheet_rows[sheet_name],
                 sheet_widths.get(sheet_name)
@@ -3526,6 +3544,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
                 sheet_xml.encode("utf-8")
             )
 
+    _trail("site | validate workbook")
     from export_validation import validate_workbook, write_validation_report
     validation_report = validate_workbook(
         temp_path,
@@ -3549,11 +3568,13 @@ def write_site_xlsx(file_path, data_result, project_name="",
             .format(validation_report.get("mismatch_count", 0))
         )
 
+    _trail("site | publish")
     _publish_temp_workbook(temp_path, file_path)
 
     if validation_report_path:
         write_validation_report(validation_report_path, validation_report)
 
+    _trail("site | done")
     # {sheet_name: table} mapping in workbook order - same contract as
     # write_basic_xlsx, so the export dialog code can treat both writers
     # uniformly and list sheets in the order Excel shows them.

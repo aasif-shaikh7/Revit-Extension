@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.32.0'
+__version__ = '1.32.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -27,10 +27,22 @@ from pyrevit import revit, forms
 from Autodesk.Revit import DB
 
 import os
+import sys
 import traceback
 import re
 import time
 from collections import OrderedDict
+
+# Crash trail: one flushed line per step. Revit died with a stack overflow
+# on a BBS model on 2026-09-22; the last line of
+# %LOCALAPPDATA%\RCC_BOQ\logs\boq_crash_trail.log names the step it was on.
+try:
+    from crash_trail import mark as trail
+except Exception:
+    def trail(step):
+        pass
+
+trail("---- BOQ start | engine {0}".format(sys.version.split("\n")[0][:60]))
 from System import Environment
 from System.Windows.Forms import SaveFileDialog, DialogResult
 
@@ -66,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.32.0'
+SCRIPT_VERSION = '1.32.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2089,6 +2101,9 @@ def build_element_data(include_grade=True, material_sink=None):
 
             elements = filtered
 
+        trail("build data | {0}: {1} elements, {2} selected parameters".format(
+            element_name, len(elements), len(selected_names)))
+
         for element in elements:
 
             needs_parameter_context = (
@@ -2244,6 +2259,7 @@ def build_element_data(include_grade=True, material_sink=None):
     # once, so the element sheets, the Costing rows and the unmapped
     # report all read in the same order. Guarded: an ordering problem
     # must never cost somebody their export.
+    trail("build data | sorting {0} rows".format(total_rows))
     try:
         from export_engine import sort_rows_for_boq
 
@@ -2254,6 +2270,7 @@ def build_element_data(include_grade=True, material_sink=None):
     except:
         pass
 
+    trail("build data | done")
     return (
         data_result,
         total_rows,
@@ -2930,6 +2947,9 @@ all_structural_wall_elements = [
 all_floor_elements = get_elements(CATEGORY_INFO['Slab'])
 all_foundation_elements = get_elements(CATEGORY_INFO['Foundation'])
 all_rebar_elements = get_elements(CATEGORY_INFO['Rebar'])
+trail("collected | floors {0} foundations {1} rebar {2}".format(
+    len(all_floor_elements), len(all_foundation_elements),
+    len(all_rebar_elements)))
 
 rcc_logical_collections = build_logical_rcc_collections(
     all_floor_elements,
@@ -2956,6 +2976,9 @@ category_elements = {
 
 category_parameters = {}
 
+trail("classified | slab {0} foundation {1}".format(
+    len(logical_slab_elements), len(logical_foundation_elements)))
+
 for element_name in category_elements.keys():
     derived_names = ()
     if element_name == "Structure Wall":
@@ -2963,10 +2986,13 @@ for element_name in category_elements.keys():
     elif element_name == "Rebar":
         derived_names = REBAR_DERIVED_PARAMETERS
 
+    trail("discover parameters | {0} ({1} elements)".format(
+        element_name, len(category_elements[element_name])))
     category_parameters[element_name] = get_parameters(
         category_elements[element_name],
         derived_names
     )
+trail("discover parameters | done")
 
 active_filters = {
     'Slab': 'All Slab Types',
@@ -5941,6 +5967,7 @@ try:
 
                     data_started = time.time()
                     element_materials = {}
+                    trail("export | build_element_data")
                     (
                         element_data,
                         total_rows,
@@ -6051,6 +6078,7 @@ try:
                     except:
                         pass
 
+                    trail("export | unmapped report")
                     unmapped_report = build_unmapped_element_report(
                         element_data,
                         extra_findings,
@@ -6117,10 +6145,20 @@ try:
                     except:
                         site_items = []
 
+                    # The writers are pure Python; on a BBS model they
+                    # overflowed Revit's main-thread stack (2026-09-22).
+                    # Run them on a thread with room to spare.
+                    try:
+                        from stack_runner import run_with_large_stack
+                    except Exception:
+                        def run_with_large_stack(function, *args, **kwargs):
+                            return function(*args, **kwargs)
                     workbook_started = time.time()
                     if use_site_format:
 
-                        sheet_rows = write_site_xlsx(
+                        trail("export | write_site_xlsx")
+                        sheet_rows = run_with_large_stack(
+                            write_site_xlsx,
                             output_path,
                             element_data,
                             project_name=(
@@ -6145,7 +6183,9 @@ try:
 
                     else:
 
-                        sheet_rows = write_basic_xlsx(
+                        trail("export | write_basic_xlsx")
+                        sheet_rows = run_with_large_stack(
+                            write_basic_xlsx,
                             output_path,
                             element_data,
                             parameter_metadata,
@@ -6167,6 +6207,7 @@ try:
                             site_items=site_items
                         )
 
+                    trail("export | workbook written")
                     workbook_seconds = time.time() - workbook_started
                     validation_report = read_validation_report(
                         validation_report_path
@@ -6490,6 +6531,7 @@ try:
             except:
                 pass
 
+            trail("dialog | show")
             window.ShowDialog()
 
 
