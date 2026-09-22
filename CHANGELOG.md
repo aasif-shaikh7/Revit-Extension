@@ -48,7 +48,18 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   - the headless guard and the per-project location;
   - both writers actually run and write the sheet only when rates exist.
 - `ui.xaml` loads with WPF's own `XamlReader` outside Revit, and every new control is found by name.
-- **Not yet verified in Revit:** the tab has not been used in a live Revit session yet.
+- **Live, owner's own Revit 2025 on UMA NIWAS:**
+  - The owner opened the tab, set the project location to `Navsari, Gujarat, India` and added
+    `RCC-M30`, 6500 INR/m3, Gujarat, from 2026-09-22, Source `SAMPLE`. The list showed "Sample - not
+    a real rate", and the summary read "1 rate(s) | 0 ready | 1 sample".
+  - Retyping the date as `22/09/2026` was refused with "Effective Date must be YYYY-MM-DD", as
+    designed.
+  - The settings file then held exactly that entry, and the location under the project's title.
+  - A site export on the Primary bridge gave **11 sheets, 13,277 cells, 0 mismatches**. The Rate
+    Database sheet sits after Structural Assembly and shows the entry with its Sample status. The
+    P13 sheets are unchanged (873.6960 m3, no problems).
+  - That export ran headless and the saved rate and location were still there afterwards, so the
+    `rate_db_ready` guard holds live.
 
 ---
 
