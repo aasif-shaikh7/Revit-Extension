@@ -22,6 +22,38 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.28.0] - 2026-09-22
+
+### Added (P13 second slice: Concrete Summary and Formwork Summary)
+- **Concrete Summary** - one row per grade (M10, M30, M40 ... in number order, an unrecorded grade
+  last), one column per category, a Total (m3) per grade and a TOTAL row: how much of each grade
+  the project needs, which is what RMC is ordered by. Every cell is the same live `SUMIF` BOQ by
+  Grade and the Detailed BOQ use, so the three always agree; row and column totals are live `SUM`s.
+- **Formwork Summary** - one row per level in level order, one column per category, a Total (m2)
+  per level and a TOTAL row: the floor-by-floor shuttering a site plans against. The classic
+  element sheets carry no shuttering column, so the level figures are summed from the rows, as
+  Structural Assembly and the Detailed BOQ do; the totals are live.
+- Both sit with the other summaries, just before the Detailed BOQ, and appear only when there is
+  concrete or shuttering to summarize.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **323 checks pass**, up from 318. Both sheets are **evaluated**,
+  not read - every `SUMIF` and every row and column `SUM` - and compared with sums taken straight
+  from the fixture; the Concrete Summary TOTAL is also checked against the Detailed BOQ's concrete.
+  The harness evaluator now handles row sums across columns as well as column sums.
+
+### Verified (live, owner's model, isolated second Revit window)
+- A copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` exported from a test Revit
+  on the Secondary bridge: **14 sheets, 18,805 cells, zero mismatches**.
+- **Concrete Summary:** M10 22.81, M30 454.76, M40 396.13 m3; every cell matched a direct recount
+  from the element sheets, and the grand total **873.6960 m3** equals every element volume in the
+  workbook. No beam appears under M40 - the three plinth `MB` beams the owner moved to M30 today.
+- **Formwork Summary:** 12 levels in order, `01 FOUNDATION LEVEL` to `13 OHW/LMR LEVEL`; every
+  category total matched the Structural Assembly sheet to the centimetre, grand total
+  **6,563.07 m2**.
+
+---
+
 ## [v1.27.0] - 2026-09-22
 
 ### Added (P13 first slice: the Detailed BOQ sheet)

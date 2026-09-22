@@ -1672,7 +1672,7 @@ def main():
             "Summary", "Beam", "Column", "Structure Wall", "Foundation",
             "Rebar", "Rebar Summary", "Rebar BBS", "BOQ Summary",
             "Structural Assembly", "BOQ by Level", "BOQ by Grade",
-            "Detailed BOQ", "Costing"
+            "Concrete Summary", "Detailed BOQ", "Costing"
         ]
 
         check(
@@ -3915,14 +3915,17 @@ def main():
             name, col, row_number = match.groups()
             return boq_value(name, boq_sheets[name][int(row_number) - 1][
                 boq_column(col)])
-        match = re.match(r"^SUM\(([A-Z]+)(\d+):[A-Z]+(\d+)\)$", text)
+        # A rectangle in this sheet: a column (F3:F16) or a row (B3:C3).
+        match = re.match(r"^SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$", text)
         if match:
-            col, first, last = match.groups()
+            first_col, first, last_col, last = match.groups()
             total = 0.0
             for row in boq_sheets[sheet][int(first) - 1:int(last)]:
-                value = boq_value(sheet, row[boq_column(col)])
-                if value not in ("", None):
-                    total += float(value)
+                for index in range(boq_column(first_col),
+                                   boq_column(last_col) + 1):
+                    value = boq_value(sheet, row[index])
+                    if value not in ("", None):
+                        total += float(value)
             return total
         raise AssertionError("unhandled formula: " + text)
 
@@ -3978,6 +3981,60 @@ def main():
         boq_engine.build_detailed_boq_table({}, {}, []) ==
         [list(boq_engine.DETAILED_BOQ_HEADERS)],
         "P13 nothing to itemize yields a header-only Detailed BOQ"
+    )
+
+    # Concrete Summary and Formwork Summary, evaluated the same way.
+    def boq_matrix(name):
+        sheet = boq_sheets.get(name) or []
+        return [[row[0]] + [
+            ("" if cell == "" else round(boq_value(name, cell), 6))
+            for cell in row[1:]] for row in sheet[1:]]
+
+    concrete_matrix = boq_matrix("Concrete Summary")
+    check(
+        (boq_sheets.get("Concrete Summary") or [[]])[0]
+        == ["Grade", "Beam", "Column", "Total (m3)"]
+        and concrete_matrix == [
+            ["M10", 0.5, "", 0.5],
+            ["M30", 3.5, "", 3.5],
+            ["M40", "", 0.75, 0.75],
+            ["(No Grade)", 0.25, "", 0.25],
+            ["TOTAL", 4.25, 0.75, 5.0],
+        ],
+        "P13 Concrete Summary, evaluated: grade x category with row and "
+        "column totals ({0})".format(concrete_matrix)
+    )
+    detailed_concrete = sum(
+        boq_value("Detailed BOQ", row[3]) for row in detailed[1:]
+        if str(row[0]).startswith("A."))
+    check(
+        abs(concrete_matrix[-1][-1] - detailed_concrete) < 1e-9,
+        "P13 Concrete Summary TOTAL agrees with the Detailed BOQ concrete"
+    )
+
+    formwork_matrix = boq_matrix("Formwork Summary")
+    check(
+        (boq_sheets.get("Formwork Summary") or [[]])[0]
+        == ["Level", "Beam", "Column", "Total (m2)"]
+        and formwork_matrix == [
+            ["L1", 8.0, 4.0, 12.0],
+            ["L2", 9.0, "", 9.0],
+            ["TOTAL", 17.0, 4.0, 21.0],
+        ],
+        "P13 Formwork Summary, evaluated: level x category shuttering with "
+        "totals ({0})".format(formwork_matrix)
+    )
+    check(
+        list(boq_sheets.keys()).index("Concrete Summary")
+        < list(boq_sheets.keys()).index("Formwork Summary")
+        < list(boq_sheets.keys()).index("Detailed BOQ"),
+        "P13 the two summaries sit just before the Detailed BOQ"
+    )
+    check(
+        len(boq_engine.build_concrete_summary_table({}, {})) == 1
+        and len(boq_engine.build_formwork_summary_table(
+            {"Beam": [{"Element ID": "1", "Level": "L1"}]})) == 1,
+        "P13 no concrete or no shuttering yields no summary sheet"
     )
 
     rate_source = io.open(
