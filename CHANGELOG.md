@@ -60,6 +60,24 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   right. Every item, Amount formula and the TOTAL are checked, and the sheet order and the
   worksheet count were updated for the new sheet.
 
+### Verified (live, owner's model, isolated second Revit window)
+- A copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` was exported in the classic
+  format from a test Revit on the Secondary bridge; the owner's working Revit was not touched and
+  the add-in manifest was restored to Primary byte-for-byte. Canonical validator: 12 sheets,
+  **18,713 cells, zero mismatches**.
+- The Detailed BOQ itemized **8 concrete lines** (M30/M40 beams, M40 columns, M40 walls, M30/M40
+  slabs, M10/M40 foundations) and **5 shuttering lines**; the model carries no Rebar, so section C
+  is correctly absent.
+- **Every concrete formula was evaluated against the element sheets as written and matched a
+  direct recount;** together they total **873.6960 m3**, exactly the sum of every element volume
+  in the workbook. **Every shuttering line matched the Structural Assembly sheet** - an
+  independent path to the same figure - to the centimetre: Beams 2,295.27, Columns 2,099.16,
+  Structure Walls 328.31, Slabs 1,741.93, Foundations 98.40 m2. The TOTAL is `SUM(F3:F16)`,
+  covering every item.
+- The copy opened with an *Unresolved References* dialog (its links point at the original
+  folder), which blocks the bridge; it was dismissed in the test window only, with
+  `TDM_CLICK_BUTTON` so no keystroke or mouse input reached the owner's session.
+
 ### Not yet
 - Only the classic workbook has the sheet; the site format follows in a later slice, as do the
   Concrete Summary and Formwork Summary sheets PRD section 12 lists.
