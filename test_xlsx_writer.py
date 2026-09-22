@@ -1671,7 +1671,8 @@ def main():
         expected_order = [
             "Summary", "Beam", "Column", "Structure Wall", "Foundation",
             "Rebar", "Rebar Summary", "Rebar BBS", "BOQ Summary",
-            "Structural Assembly", "BOQ by Level", "BOQ by Grade", "Costing"
+            "Structural Assembly", "BOQ by Level", "BOQ by Grade",
+            "Detailed BOQ", "Costing"
         ]
 
         check(
@@ -3824,6 +3825,160 @@ def main():
             )
     finally:
         shutil.rmtree(rate_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------
+    # P13 Detailed BOQ (v1.27.0)
+    #
+    # The quantities are formulas pointing into other sheets, so checking
+    # their text proves little: a formula aimed at the wrong column still
+    # "looks right". These checks evaluate every formula against the rows
+    # the writer produced and compare with sums taken directly from the
+    # fixture. That is how the first draft's shuttering SUM, which ran into
+    # the TOTAL row and doubled every figure, would have been caught.
+    # ------------------------------------------------------------
+    import export_engine as boq_engine
+
+    boq_fixture = {
+        "Beam": [
+            {"Element ID": "1", "Level": "L1", "Grade": "M30",
+             "Qty: Volume (m3)": 1.5, "Qty: Shuttering (m2)": 6.0,
+             "Qty: Count": 1},
+            {"Element ID": "2", "Level": "L1", "Grade": "M10",
+             "Qty: Volume (m3)": 0.5, "Qty: Shuttering (m2)": 2.0,
+             "Qty: Count": 1},
+            {"Element ID": "3", "Level": "L2", "Grade": "M30",
+             "Qty: Volume (m3)": 2.0, "Qty: Shuttering (m2)": 8.0,
+             "Qty: Count": 1},
+            {"Element ID": "4", "Level": "L2", "Grade": "(No Grade)",
+             "Qty: Volume (m3)": 0.25, "Qty: Shuttering (m2)": 1.0,
+             "Qty: Count": 1},
+        ],
+        "Column": [
+            {"Element ID": "5", "Level": "L1", "Grade": "M40",
+             "Qty: Volume (m3)": 0.75, "Qty: Shuttering (m2)": 4.0,
+             "Qty: Count": 1},
+        ],
+        "Rebar": [
+            {"Rebar: Element ID": "9001", "Rebar: Diameter (mm)": 12.0,
+             "Rebar: Quantity": 4, "Rebar: Total Length (m)": 10.0,
+             "Rebar: Total Weight (kg)": 100.0,
+             "Rebar: Host Category": "Structural Framing",
+             "Rebar: Host Element ID": "1", "Level": "L1"},
+            {"Rebar: Element ID": "9002", "Rebar: Diameter (mm)": 8.0,
+             "Rebar: Quantity": 2, "Rebar: Total Length (m)": 5.0,
+             "Rebar: Total Weight (kg)": 20.0,
+             "Rebar: Host Category": "Structural Framing",
+             "Rebar: Host Element ID": "3", "Level": "L2"},
+            {"Rebar: Element ID": "9003", "Rebar: Diameter (mm)": 12.0,
+             "Rebar: Quantity": 2, "Rebar: Total Length (m)": 5.0,
+             "Rebar: Total Weight (kg)": 50.0,
+             "Rebar: Host Category": "Structural Columns",
+             "Rebar: Host Element ID": "5", "Level": "L1"},
+        ],
+    }
+
+    boq_dir = tempfile.mkdtemp()
+    try:
+        boq_sheets = boq_engine.write_basic_xlsx(
+            os.path.join(boq_dir, "boq.xlsx"), boq_fixture)
+    finally:
+        shutil.rmtree(boq_dir, ignore_errors=True)
+
+    def boq_column(letters):
+        index = 0
+        for letter in letters:
+            index = index * 26 + (ord(letter) - 64)
+        return index - 1
+
+    def boq_value(sheet, cell):
+        """Evaluate the formula shapes the Detailed BOQ writes."""
+        if not (isinstance(cell, tuple) and cell and cell[0] == "FORMULA"):
+            return cell
+        text = cell[1]
+        sheet_ref = r"'?([^'!]+)'?!"
+        match = re.match(
+            r"^SUMIF\(" + sheet_ref + r"\$([A-Z]+)\$2:\$[A-Z]+\$(\d+),"
+            r'"([^"]*)",' + sheet_ref + r"\$([A-Z]+)\$2:\$[A-Z]+\$\d+\)$",
+            text)
+        if match:
+            name, criteria_col, end, criteria, _name, sum_col = match.groups()
+            rows = boq_sheets[name]
+            total = 0.0
+            for row in rows[1:int(end)]:
+                if str(row[boq_column(criteria_col)]) == criteria:
+                    value = row[boq_column(sum_col)]
+                    if value not in ("", None):
+                        total += float(value)
+            return total
+        match = re.match(r"^" + sheet_ref + r"\$([A-Z]+)\$(\d+)$", text)
+        if match:
+            name, col, row_number = match.groups()
+            return boq_value(name, boq_sheets[name][int(row_number) - 1][
+                boq_column(col)])
+        match = re.match(r"^SUM\(([A-Z]+)(\d+):[A-Z]+(\d+)\)$", text)
+        if match:
+            col, first, last = match.groups()
+            total = 0.0
+            for row in boq_sheets[sheet][int(first) - 1:int(last)]:
+                value = boq_value(sheet, row[boq_column(col)])
+                if value not in ("", None):
+                    total += float(value)
+            return total
+        raise AssertionError("unhandled formula: " + text)
+
+    detailed = boq_sheets.get("Detailed BOQ") or []
+    items = [row for row in detailed[1:] if "." in str(row[0])]
+    evaluated = [(row[0], row[1], row[2],
+                  round(boq_value("Detailed BOQ", row[3]), 6))
+                 for row in items]
+    check(
+        evaluated == [
+            ("A.1", "Concrete M10 in Beams", "m3", 0.5),
+            ("A.2", "Concrete M30 in Beams", "m3", 3.5),
+            ("A.3", "Concrete in Beams - grade not recorded", "m3", 0.25),
+            ("A.4", "Concrete M40 in Columns", "m3", 0.75),
+            ("B.1", "Centering and shuttering to Beams", "m2", 17.0),
+            ("B.2", "Centering and shuttering to Columns", "m2", 4.0),
+            ("C.1", "Reinforcement steel, 8 mm dia", "kg", 20.0),
+            ("C.2", "Reinforcement steel, 12 mm dia", "kg", 150.0),
+        ],
+        "P13 Detailed BOQ quantities, evaluated, equal the sums taken "
+        "directly from the elements ({0})".format(evaluated)
+    )
+    check(
+        [row[1] for row in detailed[1:] if row[0] in ("A", "B", "C")]
+        == ["CONCRETE", "CENTERING AND SHUTTERING", "REINFORCEMENT"],
+        "P13 Detailed BOQ groups items under concrete, shuttering and steel"
+    )
+
+    # Row 1 is the header, whose "Item No." also contains a dot.
+    amounts_ok = True
+    for index, row in enumerate(detailed[1:], 2):
+        if "." not in str(row[0]):
+            continue
+        if row[4] != "" or row[5] != (
+                "FORMULA", 'IF(E{0}="","",D{0}*E{0})'.format(index)):
+            amounts_ok = False
+    check(
+        amounts_ok,
+        "P13 every item leaves Rate blank and prices its own row: "
+        "Amount = Quantity x Rate once a rate is typed"
+    )
+
+    item_rows = [index for index, row in enumerate(detailed[1:], 2)
+                 if "." in str(row[0])]
+    check(
+        detailed[-1][1] == "TOTAL"
+        and detailed[-1][5] == ("FORMULA", "SUM(F{0}:F{1})".format(
+            item_rows[0], item_rows[-1])),
+        "P13 the TOTAL sums every item's Amount"
+    )
+
+    check(
+        boq_engine.build_detailed_boq_table({}, {}, []) ==
+        [list(boq_engine.DETAILED_BOQ_HEADERS)],
+        "P13 nothing to itemize yields a header-only Detailed BOQ"
+    )
 
     rate_source = io.open(
         os.path.join(LIB_DIR, "costing_engine.py"),

@@ -1473,6 +1473,187 @@ def build_grade_summary_table(data_result, summary_info):
     return (headers, rows_out)
 
 
+# ------------------------------------------------------------------
+# P13: Detailed BOQ
+# ------------------------------------------------------------------
+
+DETAILED_BOQ_SHEET_NAME = "Detailed BOQ"
+
+DETAILED_BOQ_HEADERS = (
+    "Item No.", "Description", "Unit", "Quantity", "Rate", "Amount",
+)
+
+# Sheet name -> how the category reads inside a BOQ item description.
+DETAILED_BOQ_CATEGORIES = (
+    ("Beam", "Beams"),
+    ("Column", "Columns"),
+    ("Structure Wall", "Structure Walls"),
+    ("Slab", "Slabs"),
+    ("Foundation", "Foundations"),
+)
+
+NO_GRADE_LABEL = "(No Grade)"
+
+
+def _boq_diameter_text(diameter):
+    """12.0 -> "12", 12.5 -> "12.5": a dia as it is written in a BOQ."""
+    try:
+        number = float(diameter)
+    except (TypeError, ValueError):
+        return str(diameter)
+    if number == int(number):
+        return str(int(number))
+    return ("%.3f" % number).rstrip("0").rstrip(".")
+
+
+def build_detailed_boq_table(data_result, summary_info, rebar_rows=None):
+    """Build the itemized BOQ a client or contractor prices.
+
+    Item No. / Description / Unit / Quantity / Rate / Amount, in three
+    sections - concrete by category and grade, centering and shuttering by
+    category, reinforcement by diameter - and a TOTAL.
+
+    Quantities for concrete and shuttering are live SUMIF / SUM formulas
+    against the category sheets, the same way BOQ by Grade is built, so an
+    edit to an element sheet flows through. Reinforcement comes from the
+    diameter summary the Rebar Summary sheet already uses; the Rebar sheet
+    has no quantity columns to reference, and a SUMIF on a diameter that
+    Revit stores as 11.9999 would silently miss bars.
+
+    Rate is left blank: rates are never invented here (P11 and P12 own
+    them). Amount is a live formula that stays blank until a rate is
+    typed, then shows Quantity x Rate, so the sheet can be priced in Excel
+    without touching a formula. A header-only table means there was
+    nothing to itemize.
+    """
+    data = data_result if isinstance(data_result, dict) else {}
+    info_by_sheet = summary_info if isinstance(summary_info, dict) else {}
+    table = [list(DETAILED_BOQ_HEADERS)]
+    sections = []
+
+    # A. Concrete, one item per category and grade present.
+    concrete = []
+    for sheet_name, label in DETAILED_BOQ_CATEGORIES:
+        rows = data.get(sheet_name) or []
+        info = info_by_sheet.get(sheet_name) or {}
+        columns = info.get("columns") or {}
+        volume_col = columns.get("Volume (m3)")
+        grade_col = info.get("grade_col") or ""
+        data_end = info.get("data_end") or 0
+        if not rows or not volume_col or not grade_col or data_end <= 1:
+            continue
+
+        grades = []
+        for row in rows:
+            try:
+                grade = str(row.get("Grade", "") or "").strip()
+            except AttributeError:
+                continue
+            grade = grade or NO_GRADE_LABEL
+            if grade not in grades:
+                grades.append(grade)
+        # M10, M30, M40 in number order; an unrecorded grade stays visible
+        # but goes last, where it will be noticed rather than priced.
+        grades.sort(key=lambda grade: (grade == NO_GRADE_LABEL,
+                                       identity_sort_key(grade)))
+
+        reference = xlsx_sheet_reference(sheet_name)
+        for grade in grades:
+            formula = (
+                "SUMIF({0}!${1}$2:${1}${4},\"{2}\",{0}!${3}$2:${3}${4})"
+            ).format(reference, grade_col, grade, volume_col, data_end)
+            if grade == NO_GRADE_LABEL:
+                description = "Concrete in {0} - grade not recorded".format(label)
+            else:
+                description = "Concrete {0} in {1}".format(grade, label)
+            concrete.append((description, "m3", ("FORMULA", formula)))
+    if concrete:
+        sections.append(("A", "CONCRETE", concrete))
+
+    # B. Centering and shuttering, one item per category. This points at
+    # the category sheet's own TOTAL cell rather than summing a range:
+    # summary_info's data_end is the TOTAL row itself, so a SUM up to it
+    # would count every square metre twice. (The grade SUMIFs above are
+    # safe - the TOTAL row has no grade, so their criteria skip it.)
+    #
+    # The classic element sheets do not show a shuttering column at all -
+    # the area lives on the rows, where Structural Assembly reads it - so
+    # there the quantity is summed from the rows, as that sheet does.
+    formwork = []
+    for sheet_name, label in DETAILED_BOQ_CATEGORIES:
+        rows = data.get(sheet_name) or []
+        if not rows:
+            continue
+        info = info_by_sheet.get(sheet_name) or {}
+        columns = info.get("columns") or {}
+        shuttering_col = columns.get("Shuttering (m2)")
+        total_row = info.get("total_row") or 0
+
+        if shuttering_col and total_row > 2:
+            quantity = ("FORMULA", "{0}!${1}${2}".format(
+                xlsx_sheet_reference(sheet_name), shuttering_col, total_row))
+        else:
+            total = 0.0
+            found = False
+            for row in rows:
+                try:
+                    value = float(row.get("Qty: Shuttering (m2)", ""))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                total += value
+                found = True
+            if not found or total <= 0:
+                continue
+            quantity = round(total, 2)
+
+        formwork.append(("Centering and shuttering to {0}".format(label),
+                         "m2", quantity))
+    if formwork:
+        sections.append(("B", "CENTERING AND SHUTTERING", formwork))
+
+    # C. Reinforcement, one item per diameter.
+    reinforcement = []
+    if rebar_rows:
+        from rebar_engine import build_rebar_diameter_summary_table
+        for row in build_rebar_diameter_summary_table(rebar_rows)[1:]:
+            diameter, weight_kg = row[0], row[4]
+            if not weight_kg:
+                continue
+            reinforcement.append((
+                "Reinforcement steel, {0} mm dia".format(
+                    _boq_diameter_text(diameter)),
+                "kg", weight_kg))
+    if reinforcement:
+        sections.append(("C", "REINFORCEMENT", reinforcement))
+
+    if not sections:
+        return table
+
+    first_item_row = None
+    for letter, title, items in sections:
+        table.append([letter, title, "", "", "", ""])
+        for index, (description, unit, quantity) in enumerate(items, 1):
+            row_number = len(table) + 1
+            if first_item_row is None:
+                first_item_row = row_number
+            table.append([
+                "{0}.{1}".format(letter, index),
+                description,
+                unit,
+                quantity,
+                "",
+                ("FORMULA",
+                 'IF(E{0}="","",D{0}*E{0})'.format(row_number)),
+            ])
+
+    last_row = len(table)
+    table.append([
+        "", "TOTAL", "", "", "",
+        ("FORMULA", "SUM(F{0}:F{1})".format(first_item_row, last_row)),
+    ])
+    return table
+
+
 def sanitize_file_name(value):
     """
     Return a filesystem-safe name fragment for output files.
@@ -2044,6 +2225,28 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append("BOQ by Grade")
         sheet_rows["BOQ by Grade"] = [grade_headers] + grade_rows
         quantity_column_map["BOQ by Grade"] = [4, 5, 6]
+
+    # P13: the itemized BOQ a client or contractor prices - concrete by
+    # grade, shuttering, steel by diameter - with live quantities and an
+    # Amount that fills in as rates are typed. Placed after the grouped
+    # views and before Costing. Imported at call time, like
+    # build_costing_sheet, so the regression harness - which runs this
+    # writer from its extracted source - reaches the real builder.
+    from export_engine import (
+        DETAILED_BOQ_SHEET_NAME,
+        build_detailed_boq_table,
+    )
+
+    detailed_boq = build_detailed_boq_table(
+        data_result,
+        summary_info,
+        data_result.get("Rebar") or []
+    )
+
+    if len(detailed_boq) > 1:
+        sheet_names.append(DETAILED_BOQ_SHEET_NAME)
+        sheet_rows[DETAILED_BOQ_SHEET_NAME] = detailed_boq
+        quantity_column_map[DETAILED_BOQ_SHEET_NAME] = [4, 5, 6]
 
     # Per-element Costing sheet. Each element row carries its primary
     # quantity, its unit rate and a computed amount (quantity x rate).

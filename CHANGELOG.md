@@ -22,6 +22,68 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.27.0] - 2026-09-22
+
+### Added (P13 first slice: the Detailed BOQ sheet)
+- The classic workbook gains a **Detailed BOQ** - the itemized schedule a client or contractor
+  prices: `Item No. | Description | Unit | Quantity | Rate | Amount`, in three sections and a
+  TOTAL:
+  - **A. Concrete** - one item per category and grade present (`Concrete M30 in Beams`), grades
+    in number order. An element with no recorded grade is itemized, not dropped
+    (`Concrete in Beams - grade not recorded`), and goes last where it will be noticed rather than
+    priced.
+  - **B. Centering and shuttering** - one item per category.
+  - **C. Reinforcement** - one item per diameter (`Reinforcement steel, 12 mm dia`), in kg.
+- **Concrete quantities are live `SUMIF` formulas** against the category sheets, built the way
+  BOQ by Grade is, so an edit to an element sheet flows through.
+- **Rate is left blank and Amount is a live formula** - blank until a rate is typed, then
+  Quantity x Rate - so the sheet can be priced in Excel without touching a formula. No rate is
+  invented; P11/P12 own rates.
+- Reinforcement reuses `build_rebar_diameter_summary_table`, the source of the Rebar Summary
+  sheet, rather than a second aggregation. It is a value rather than a formula on purpose: a
+  `SUMIF` on a diameter Revit stores as `11.9999` would silently miss bars.
+
+### Fixed before it shipped (worth recording)
+- **The first draft counted every square metre of shuttering twice.** `summary_info`'s
+  `data_end` is the category sheet's TOTAL row, not its last data row, so `SUM(...:data_end)`
+  added the TOTAL to the column it totals. Grade `SUMIF`s are unaffected - the TOTAL row has no
+  grade - which is why BOQ by Grade never showed it. Shuttering now points at the sheet's own
+  TOTAL cell where a shuttering column exists.
+- **The classic sheets carry no shuttering column at all** - the area lives on the rows, where
+  Structural Assembly reads it - so for the classic workbook the shuttering item is summed from
+  the rows the same way that sheet does.
+
+### Verified (harness)
+- `python test_xlsx_writer.py`: **318 checks pass**, up from 313. The Detailed BOQ checks do not
+  read the formulas - they **evaluate** them against the rows the writer produced and compare with
+  sums taken straight from the fixture, because a formula aimed at the wrong column still looks
+  right. Every item, Amount formula and the TOTAL are checked, and the sheet order and the
+  worksheet count were updated for the new sheet.
+
+### Verified (live, owner's model, isolated second Revit window)
+- A copy of `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` was exported in the classic
+  format from a test Revit on the Secondary bridge; the owner's working Revit was not touched and
+  the add-in manifest was restored to Primary byte-for-byte. Canonical validator: 12 sheets,
+  **18,713 cells, zero mismatches**.
+- The Detailed BOQ itemized **8 concrete lines** (M30/M40 beams, M40 columns, M40 walls, M30/M40
+  slabs, M10/M40 foundations) and **5 shuttering lines**; the model carries no Rebar, so section C
+  is correctly absent.
+- **Every concrete formula was evaluated against the element sheets as written and matched a
+  direct recount;** together they total **873.6960 m3**, exactly the sum of every element volume
+  in the workbook. **Every shuttering line matched the Structural Assembly sheet** - an
+  independent path to the same figure - to the centimetre: Beams 2,295.27, Columns 2,099.16,
+  Structure Walls 328.31, Slabs 1,741.93, Foundations 98.40 m2. The TOTAL is `SUM(F3:F16)`,
+  covering every item.
+- The copy opened with an *Unresolved References* dialog (its links point at the original
+  folder), which blocks the bridge; it was dismissed in the test window only, with
+  `TDM_CLICK_BUTTON` so no keystroke or mouse input reached the owner's session.
+
+### Not yet
+- Only the classic workbook has the sheet; the site format follows in a later slice, as do the
+  Concrete Summary and Formwork Summary sheets PRD section 12 lists.
+
+---
+
 ## [v1.26.6] - 2026-09-22
 
 ### Fixed (a headless export erased the saved rate build-ups)
