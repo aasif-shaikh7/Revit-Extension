@@ -52,6 +52,13 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   - **Detailed BOQ:** items A.1-A.7 and B.1-B.5 on rows 8-20. Every Amount points at its own row,
     the TOTAL is `SUM(F8:F20)`, and the concrete and shuttering equal the two summaries.
 
+### Verified (live, owner's own Revit, after the merge)
+- The owner opened `R25-UMA NIWAS BUILDING-ST-31-08-2026 - DUPLICATES REMOVED` in their own Revit
+  2025 and gave consent; the agent ran the site export on the Primary bridge: **10 sheets, 13,256
+  cells, zero mismatches**, nothing saved. The same evaluation of every formula in the three
+  sheets found no problems, and every figure equals the second-window run above (873.6960 m3,
+  6,563.07 m2).
+
 ---
 
 ## [v1.28.0] - 2026-09-22

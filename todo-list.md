@@ -53,7 +53,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `todo` |
-| P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | **done**, pending the owner's check (`v1.27.0` Detailed BOQ, `v1.28.0` Concrete Summary + Formwork Summary, `v1.29.0` all three in the site workbook; live-verified on UMA NIWAS in both formats) |
+| P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | **done** (`v1.27.0` Detailed BOQ, `v1.28.0` Concrete Summary + Formwork Summary, `v1.29.0` all three in the site workbook; live-verified on UMA NIWAS in both formats, the site format also in the owner's own Revit 2026-09-22) |
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
