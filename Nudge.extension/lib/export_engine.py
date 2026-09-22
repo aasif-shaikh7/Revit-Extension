@@ -3250,7 +3250,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
         assembly_table, assembly_widths = build_site_tabular_sheet(
             project_name,
             "STRUCTURAL ASSEMBLY",
-            assembly_plain_table
+            assembly_plain_table,
+            band_title="RCC - STRUCTURAL ASSEMBLY"
         )
         sheet_names.append("Structural Assembly")
         sheet_rows["Structural Assembly"] = assembly_table
