@@ -2069,9 +2069,9 @@ def main():
         ).decode("utf-8")
 
         check(
-            'rgb="FFF4A582"' in site_styles_xml and 'rgb="FFFDEADF"' in site_styles_xml
-            and "FCE8D5" not in site_styles_xml,
-            "Site styles define the theme's peach band and sub-band fills"
+            site_styles_xml.count('rgb="FFDAE9F8"') == 2
+            and "F4A582" not in site_styles_xml and "FCE8D5" not in site_styles_xml,
+            "Site band and sub-band use Excel's Dark Blue, Text 2, Lighter 90% (#DAE9F8)"
         )
         site_sheet_xml = site_archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
         check(

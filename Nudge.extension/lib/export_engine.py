@@ -213,13 +213,16 @@ STYLE_SITE_PLAIN = 14
 # BOQ dialog (header red, peach, lime), so the file a client receives
 # looks like the tool that made it. Keys map to the fills in styles.xml.
 #   THEME_HEADER    C8102E  title / header rows, bold white text (5.9:1)
-#   THEME_BAND      F4A582  band rows, bold black text (9.5:1)
-#   THEME_SUBBAND   FDEADF  sub-band rows, black text
+#   THEME_BAND      DAE9F8  band rows, bold black text - the owner's pick:
+#                           Excel's "Dark Blue, Text 2, Lighter 90%" (Office
+#                           theme Text 2 #0E2841 at 90% tint, read from Excel)
+#   THEME_SUBBAND   DAE9F8  sub-band rows, the same blue so both header tiers
+#                           read as one band
 #   THEME_TOTALS    EEF9CC  TOTAL rows, bold black text (a lime tint)
 # ------------------------------------------------------------
 THEME_HEADER = "C8102E"
-THEME_BAND = "F4A582"
-THEME_SUBBAND = "FDEADF"
+THEME_BAND = "DAE9F8"
+THEME_SUBBAND = "DAE9F8"
 THEME_TOTALS = "EEF9CC"
 
 # Indian digit grouping: 1,23,456.78 and 1,23,45,678.90. Excel groups in
@@ -873,8 +876,8 @@ def build_xlsx_styles_xml():
         '<fill><patternFill patternType="gray125"/></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFC8102E"/><bgColor indexed="64"/></patternFill></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFEEF9CC"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFF4A582"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFFDEADF"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFDAE9F8"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFDAE9F8"/><bgColor indexed="64"/></patternFill></fill>'
         '</fills>'
         '<borders count="3">'
         '<border><left/><right/><top/><bottom/><diagonal/></border>'
