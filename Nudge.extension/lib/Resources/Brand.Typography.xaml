@@ -2,17 +2,12 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-        Brand font: Sora (unique, geometric, distinct from Revit's native Segoe UI —
-        signals "this panel belongs to the toolkit"). Falls back cleanly to Segoe UI
-        Variable / Segoe UI if Sora isn't installed on the machine, so the UI never
-        breaks on a fresh install.
-
-        To ship Sora with the toolkit: place Sora-Regular.ttf and Sora-SemiBold.ttf
-        in a /Fonts folder next to this file and reference it as a pack font instead:
-            FontFamily="./Fonts/#Sora"
-        Until then, this fallback chain is safe to use as-is.
+        UI font: Consolas (v1.33.0, the owner's choice from the Theme Picker).
+        A monospace face across the dialog; Cascadia Mono, then Segoe UI, are
+        the fallbacks. Every Windows host has Consolas.
     -->
-    <FontFamily x:Key="BrandFontFamily">Sora, Segoe UI Variable, Segoe UI</FontFamily>
+    <FontFamily x:Key="BrandFontFamily">Consolas, Cascadia Mono, Segoe UI</FontFamily>
+    <FontFamily x:Key="BrandMonoFontFamily">Cascadia Mono, Consolas</FontFamily>
 
     <!-- ===== Type scale ===== -->
     <Style x:Key="BrandHeaderText" TargetType="TextBlock">
@@ -49,6 +44,12 @@
         <Setter Property="FontSize" Value="11"/>
         <Setter Property="FontWeight" Value="Regular"/>
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+
+    <Style x:Key="BrandCodeText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource BrandMonoFontFamily}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
     </Style>
 
     <!-- Default TextBlock style so plain <TextBlock> tags also inherit the brand font -->

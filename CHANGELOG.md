@@ -22,6 +22,67 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.33.0] - 2026-09-22
+
+### Changed (theme: the owner's own palette, with a header band)
+- **How the palette was chosen:**
+  - The owner reviewed the design system in `AnonGee_BIM_Tools_Brand_Guidelines.md`. Its rules
+    were adopted: tiered tokens, full state matrices, contrast measured, one primary action.
+  - Thirteen rendered designs did not suit. A **BOQ Theme Picker** page was then built, where each
+    part of the dialog could be coloured live, and the owner picked:
+    **header `#C8102E`, button `#F4A582`, selection `#C6F432`, line `#111111`, background Warm,
+    font Consolas.**
+- **Applied as chosen, with three readability adjustments** (all measured):
+  - Text and the tick on the peach button are **black** (9.5:1). White there would be 2.0:1.
+  - The header subtitle is near-white `#FFEDEF` (5.6:1) on the red band. The title is white (5.9:1).
+  - In the **Dark** theme the black accent line would vanish on Revit's `#2B2B2B` (1.3:1), so there
+    it is light grey `#EDEDED`. The header, button and lime selection are the same in both themes.
+- **Header band:** the title and project now sit on a full-width band (`HeaderBandBrush`) with a
+  3px accent rule under it; the Export button stays on the right.
+- **Footer:** now two rows. The status line gets the full width, and the options sit in a
+  `WrapPanel`. Consolas is wider than the old font, and in one row "Ready" wrapped and then
+  overlapped the Theme selector.
+- **Token names:** the old Ember orange `#F2994A` (white on it 2.23:1) is gone, and the `Ember*`
+  keys became `Primary*` / `Accent*`. New keys: `PrimaryForegroundBrush`, `HeaderBandBrush`,
+  `HeaderBandTextBrush`, `HeaderBandSubTextBrush`.
+- **Controls:**
+  - Disabled buttons show a real disabled colour instead of 50% opacity.
+  - The checkbox tick uses `PrimaryForegroundBrush`, so it stays visible on any button colour.
+- **`script.py`:** the search-box colours are read from the theme's Color keys instead of hard-coded
+  hex, and the selected-text colour in those boxes is black.
+- **Note for the owner:** the header red `#C8102E` is very close to the error red `#C62828`. Error
+  messages appear in the footer, not on the band, and they say what went wrong.
+
+### Fixed (saved Rebar parameters erased by a model without rebar)
+- **Found:** after the owner opened the dialog on `20260922-NCC-S&S-NW-FF`, the Available and
+  Selected lists were empty. That was correct: the crash trail shows **0 elements in every
+  category** for that model. But the saved Rebar selection (six parameters) had been erased.
+- **Cause:** the v1.26.1 guard kept a saved list only when the category had *no discovered
+  parameters*. Rebar and Structure Wall always list their derived fields (`Rebar: Diameter (mm)`,
+  `Qty: Thickness (m)` ...), so that was never true for them. A model with no rebar then saved an
+  empty Rebar list.
+- **Fix:** the guard asks whether the document has any **elements** in the category. With none, the
+  saved list stays; with elements, an empty list is still saved as a real choice.
+- The owner's six Rebar parameters were put back in the settings (backup kept in the agent's
+  scratchpad).
+
+### Verified
+- **Harness:** `python test_xlsx_writer.py` passes **374 checks**. The new check replays the guard
+  on a model with no rebar: the Rebar list is kept, and an intentional empty Beam list is still
+  saved. With the old parameter-based guard restored, it fails exactly as the owner saw
+  (`Rebar: []`). The theme checks cover:
+  - Light and Dark define identical keys;
+  - every resource used is defined;
+  - no Ember is left;
+  - text is at least 4.5:1 and the focus and accent at least 3:1, in both themes, now including the
+    header band's title and subtitle.
+- **WPF render:** `ui.xaml` was loaded with WPF's own `XamlReader` in Light and in Dark, with sample
+  items selected. All 17 resource keys resolved, and the header, footer and lists rendered without
+  overlap.
+- **Not yet verified in Revit:** the dialog has not been opened in Revit with this theme.
+
+---
+
 ## [v1.32.1] - 2026-09-22
 
 ### Fixed (Revit crashed exporting a rebar / BBS model)
