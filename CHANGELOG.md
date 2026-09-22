@@ -22,6 +22,47 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.31.0] - 2026-09-22
+
+### Added (P12 second slice: Rate Database tab and sheet)
+- **Rate Database tab** in the BOQ dialog, after Rate Analysis. It has fields for Item Code, Unit,
+  Rate, Description, Location, Currency, Effective Date, Vendor and Source, a list of rates, and
+  Add / Update selected / Remove selected / Clear fields.
+- **This project's location** field (for example `Navsari, Gujarat, India` or `Dubai, UAE`),
+  saved **per project** so one rate database serves jobs in different cities and countries.
+- **The tab refuses** a rate with no item code, a Rate that is not a number of zero or more, an
+  Effective Date that is not `YYYY-MM-DD`, and a second rate for the same code, location and date,
+  on both Add and Update. A blank Rate is allowed and shows as needing input.
+- **Summary line:** counts ready rates, samples and rates needing input.
+- **Rate Database sheet** in both workbook formats (after Rate Analysis, in the site bands for the
+  site format), with a status on every row. It appears only when rates exist, so a project without
+  rates keeps its familiar workbook.
+- **Headless exports are guarded:** saving the rates and the location is guarded by
+  `rate_db_ready`, as P11 is, so an export that never showed the tab cannot erase them.
+- `get_project_location` / `set_project_location` in `lib/rate_database_engine.py`.
+
+### Verified
+- Harness: `python test_xlsx_writer.py` passes **350 checks**, up from 340. The new checks cover:
+  - every control exists once and every handler is wired;
+  - the four refusals on Add and Update;
+  - the headless guard and the per-project location;
+  - both writers actually run and write the sheet only when rates exist.
+- `ui.xaml` loads with WPF's own `XamlReader` outside Revit, and every new control is found by name.
+- **Live, owner's own Revit 2025 on UMA NIWAS:**
+  - The owner opened the tab, set the project location to `Navsari, Gujarat, India` and added
+    `RCC-M30`, 6500 INR/m3, Gujarat, from 2026-09-22, Source `SAMPLE`. The list showed "Sample - not
+    a real rate", and the summary read "1 rate(s) | 0 ready | 1 sample".
+  - Retyping the date as `22/09/2026` was refused with "Effective Date must be YYYY-MM-DD", as
+    designed.
+  - The settings file then held exactly that entry, and the location under the project's title.
+  - A site export on the Primary bridge gave **11 sheets, 13,277 cells, 0 mismatches**. The Rate
+    Database sheet sits after Structural Assembly and shows the entry with its Sample status. The
+    P13 sheets are unchanged (873.6960 m3, no problems).
+  - That export ran headless and the saved rate and location were still there afterwards, so the
+    `rate_db_ready` guard holds live.
+
+---
+
 ## [v1.30.0] - 2026-09-22
 
 ### Added (P12 first slice: the rate database engine)
