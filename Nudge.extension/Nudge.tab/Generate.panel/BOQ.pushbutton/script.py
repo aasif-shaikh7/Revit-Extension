@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.26.4'
+__version__ = '1.26.5'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.26.4'
+SCRIPT_VERSION = '1.26.5'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -5718,8 +5718,18 @@ try:
                         extra_findings.extend(
                             collect_missing_parameter_findings(element_data)
                         )
+                        # PCC is plain concrete: it is never asked for
+                        # bars. The classifier already knows which
+                        # elements are PCC.
+                        unreinforced_ids = [
+                            result.get("element_id")
+                            for result in routing_audit.get("results", [])
+                            if result.get("subtype") == "PCC"
+                        ]
                         extra_findings.extend(
-                            collect_missing_rebar_findings(element_data)
+                            collect_missing_rebar_findings(
+                                element_data, unreinforced_ids
+                            )
                         )
                     except:
                         pass

@@ -36,6 +36,10 @@ ISSUE_MISSING_REBAR = "No rebar hosted"
 # less than this share of a category is treated as unused.
 MIN_PARAMETER_FILL = 0.5
 
+# The same reasoning for reinforcement, measured on the owner's BBS files:
+# a category is detailed in a file only when most of it is reinforced.
+MIN_REBAR_COVERAGE = 0.5
+
 # Columns that are not selected parameters and must never be reported as
 # one: the export adds them itself.
 _NON_PARAMETER_COLUMNS = ("Element ID", "Level", "Grade")
@@ -233,16 +237,28 @@ def collect_missing_parameter_findings(data_result, min_fill=MIN_PARAMETER_FILL)
     return findings
 
 
-def collect_missing_rebar_findings(data_result):
-    """Report concrete elements carrying no rebar - but only if any does.
+def collect_missing_rebar_findings(data_result, unreinforced_ids=None,
+                                   min_coverage=MIN_REBAR_COVERAGE):
+    """Report concrete elements carrying no rebar, where rebar is detailed.
 
-    A model with no reinforcement modelled at all is not a model with
-    thousands of faults; it is a model where rebar lives elsewhere, as it
-    does in this project's separate BBS files. So when no Rebar row names
-    a host, this reports nothing rather than flagging every element.
+    A model with no reinforcement at all is not a model with thousands of
+    faults, so no Rebar row naming a host means no findings. That alone is
+    not enough: the owner's BBS is split by member - a beam file, a column
+    file, a foundation file - and in the beam file 616 elements carry no
+    bars simply because their bars live in another file. So each category
+    is judged on its own: it counts as detailed here only when at least
+    `min_coverage` of its elements host rebar, the same rule the missing
+    parameter check uses for fields. In the beam file 18 of 184 columns
+    host a few beam bars; that is anchorage, not a detailed column set.
 
-    Hosts are read from the Rebar rows the export already built
-    ("Rebar: Host Element ID"), so this adds no Revit work.
+    `unreinforced_ids` are elements that should carry no bars at all - PCC,
+    which is plain concrete by definition. In the foundation file every
+    RCC footing type is reinforced and the 12 elements without bars are
+    all PCC, so asking PCC for rebar would report only false findings.
+    They are left out of the category before its coverage is measured.
+
+    Hosts come from "Rebar: Host Element ID" on rows the export already
+    built, so this adds no Revit work.
     """
     data = data_result if isinstance(data_result, dict) else {}
 
@@ -258,21 +274,39 @@ def collect_missing_rebar_findings(data_result):
     if not hosts:
         return []
 
+    skip = set(_text(value) for value in (unreinforced_ids or []))
+    try:
+        threshold = float(min_coverage)
+    except (TypeError, ValueError):
+        threshold = MIN_REBAR_COVERAGE
+
     findings = []
     for category in CONCRETE_CATEGORIES:
+        element_ids = []
         for row in data.get(category) or []:
             try:
                 element_id = _text(row.get("Element ID"))
             except AttributeError:
                 continue
-            if not element_id or element_id in hosts:
+            if element_id and element_id not in skip:
+                element_ids.append(element_id)
+        if not element_ids:
+            continue
+
+        hosting = sum(1 for element_id in element_ids if element_id in hosts)
+        if float(hosting) / len(element_ids) < threshold:
+            continue
+
+        for element_id in element_ids:
+            if element_id in hosts:
                 continue
             findings.append({
                 "element_id": element_id,
                 "issue": ISSUE_MISSING_REBAR,
                 "detail": (
-                    "No Rebar in this export is hosted by this element; "
-                    "its reinforcement is not counted"
+                    "No Rebar in this export is hosted by this element, "
+                    "while {0} of {1} {2} elements here are reinforced"
+                    .format(hosting, len(element_ids), category)
                 ),
             })
 
