@@ -22,6 +22,43 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.30.0] - 2026-09-22
+
+### Added (P12 first slice: the rate database engine)
+- New pure-Python engine `lib/rate_database_engine.py`. A rate entry has the PRD fields: Item Code,
+  Description, Unit, Rate, Currency, Location, Vendor and Effective Date, plus a Source.
+- **Lookup (`find_rate`):** answers "what is the rate for this item, here, on this day?":
+  - the latest rate in force on the day wins, and a rate dated later is not used yet;
+  - a named location uses its own rate, else the general (no-location) rate, never another
+    location's;
+  - two rates with the same code, location and date are a conflict and price nothing.
+- **Rules:**
+  - A rate must be a non-negative number. Blank, text, boolean and NaN are refused, not read as
+    zero.
+  - Dates must be `YYYY-MM-DD`, since `01/09/2026` reads two ways. An unreadable date is kept as
+    typed and flagged, and it blocks that rate.
+- **Samples are labelled:** a Source containing "SAMPLE" shows as "Sample - not a real rate".
+- **Store and sheet:**
+  - `load_rate_database` / `save_rate_database` use the settings key `rate_database`. Only the
+    declared fields are saved, and a corrupt store loads as empty.
+  - `build_rate_database_sheet` builds the Rate Database table, with a status on every row.
+  - `find_rate_entry_conflict` is for the dialog to refuse a duplicate.
+- **No rate lives in the engine.** The sample figures are in the harness fixture only. The owner has
+  no real rates yet, and they go in later without a code change.
+
+### Verified (harness only - nothing is wired into Revit yet)
+- `python test_xlsx_writer.py`: **338 checks pass**, up from 327, with 11 new P12 checks.
+- A mutation run broke the engine six ways, and the harness catches every one: ignoring the date
+  cutoff, borrowing another location's rate, picking one of two clashing rates, accepting a
+  negative rate, case-sensitive codes, and a sample shown as ready.
+
+### Not yet
+- The Rate Database sheet in the workbook, the dialog tab, and the Detailed BOQ Rate column filled
+  from the database are the next slices. There is no live Revit check for this slice, because
+  nothing in Revit calls the engine yet.
+
+---
+
 ## [v1.29.1] - 2026-09-22
 
 ### Fixed

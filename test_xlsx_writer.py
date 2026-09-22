@@ -4142,6 +4142,154 @@ def main():
     )
 
     # ------------------------------------------------------------
+    # P12 rate database (v1.30.0)
+    #
+    # Every figure here is a SAMPLE typed into the fixture - the engine
+    # holds no rate of its own. The lookup cases are the ones a site
+    # actually meets: a revised rate from a later date, a rate that is
+    # not in force yet, a city with its own rate, a city without one, and
+    # two rates for the same code, place and day.
+    # ------------------------------------------------------------
+    import rate_database_engine as ratedb
+
+    sample_rates = [
+        {"item_code": "RCC-M30", "description": "M30 concrete", "unit": "m3",
+         "rate": 6500, "currency": "INR", "effective_date": "2026-04-01",
+         "source": "SAMPLE - test fixture"},
+        {"item_code": "rcc-m30 ", "description": "M30 concrete, revised",
+         "unit": "m3", "rate": "6800", "currency": "INR",
+         "effective_date": "2026-09-01", "source": "SAMPLE - test fixture"},
+        {"item_code": "RCC-M30", "description": "M30 concrete, Surat",
+         "unit": "m3", "rate": 6900, "currency": "INR", "location": "Surat",
+         "effective_date": "2026-06-01", "source": "SAMPLE - test fixture"},
+        {"item_code": "RCC-M30", "description": "M30 concrete, next year",
+         "unit": "m3", "rate": 7200, "currency": "INR",
+         "effective_date": "2027-04-01", "source": "SAMPLE - test fixture"},
+        {"item_code": "SHUT-BM", "description": "Beam shuttering", "unit": "m2",
+         "rate": 450, "currency": "INR", "source": "SAMPLE - test fixture"},
+    ]
+
+    def looked_up(code, location="", on_date="2026-09-22"):
+        found = ratedb.find_rate(sample_rates, code, location, on_date)
+        return None if found is None else found["rate"]
+
+    check(
+        looked_up("RCC-M30") == 6800.0
+        and looked_up("RCC-M30", on_date="2026-05-01") == 6500.0
+        and looked_up("RCC-M30", on_date="2027-05-01") == 7200.0,
+        "P12 the latest rate in force on the day wins; a later one waits"
+    )
+    check(
+        looked_up("RCC-M30", "surat") == 6900.0
+        and looked_up("RCC-M30", "Navsari") == 6800.0
+        and looked_up("RCC-M30", "Surat", on_date="2026-05-01") == 6500.0
+        and ratedb.find_rate([sample_rates[2]], "RCC-M30", "Navsari") is None
+        and ratedb.find_rate([sample_rates[2]], "RCC-M30") is None,
+        "P12 a city uses its own rate, else the general one - never another "
+        "city's"
+    )
+    check(
+        looked_up("SHUT-BM") == 450.0
+        and looked_up("UNKNOWN") is None
+        and looked_up("") is None
+        and ratedb.find_rate(None, "RCC-M30") is None,
+        "P12 an undated general rate prices; an unknown code prices nothing"
+    )
+    clash = sample_rates + [dict(sample_rates[1], rate=7000)]
+    check(
+        ratedb.find_rate(clash, "RCC-M30", "", "2026-09-22") is None
+        and ratedb.find_rate_entry_conflict(sample_rates, sample_rates[1]) == 1
+        and ratedb.find_rate_entry_conflict(
+            sample_rates, sample_rates[1], ignore_index=1) == -1
+        and ratedb.find_rate_entry_conflict(
+            sample_rates, dict(sample_rates[1], location="Surat",
+                               effective_date="2026-06-01")) == 2
+        and ratedb.find_rate_entry_conflict(
+            sample_rates, dict(sample_rates[1], effective_date="2026-10-01")) == -1,
+        "P12 same code, place and day is a conflict and prices nothing; "
+        "another day or place is not"
+    )
+
+    refused = [bad for bad in (-1, "", "abc", None, True, float("nan"))
+               if ratedb.normalize_rate_entry(
+                   dict(sample_rates[0], rate=bad))["rate"] is not None]
+    check(
+        not refused
+        and ratedb.normalize_rate_entry(dict(sample_rates[0], rate=0))["rate"] == 0.0,
+        "P12 a negative, blank, text, boolean or NaN rate is refused; zero is "
+        "kept{0}".format("" if not refused else " (accepted: {0!r})".format(refused))
+    )
+    check(
+        ratedb.normalize_effective_date("2026-09-01") == "2026-09-01"
+        and ratedb.normalize_effective_date("01/09/2026") == ""
+        and ratedb.normalize_effective_date("2026-02-30") == ""
+        and ratedb.normalize_effective_date("2026-9-1") == "",
+        "P12 only a real YYYY-MM-DD date is accepted"
+    )
+    bad_date = dict(sample_rates[4], effective_date="01/09/2026")
+    check(
+        ratedb.find_rate([bad_date], "SHUT-BM") is None
+        and ratedb.normalize_rate_entry(
+            ratedb.normalize_rate_entry(bad_date))["date_invalid"] is True
+        and "effective date" in ratedb.rate_entry_status(bad_date),
+        "P12 an unreadable date blocks the rate and stays flagged after "
+        "re-normalizing"
+    )
+
+    rate_db_table = ratedb.build_rate_database_sheet(sample_rates + [
+        {"item_code": "PCC-M10", "description": "PCC", "source": "Vendor quote"},
+        {"item_code": "RCC-M40", "unit": "m3", "rate": 7400,
+         "source": "Vendor quote"},
+        bad_date,
+    ])
+    check(
+        rate_db_table[0] == list(ratedb.RATE_DATABASE_HEADERS)
+        and len(rate_db_table) == 9
+        and rate_db_table[1][3] == 6500.0
+        and rate_db_table[1][-1] == ratedb.STATUS_SAMPLE
+        and rate_db_table[6][3] == ""
+        and rate_db_table[6][-1] == "{0}: unit, rate".format(
+            ratedb.STATUS_INPUT_REQUIRED)
+        and rate_db_table[7][-1] == ratedb.STATUS_READY
+        and rate_db_table[8][7] == "01/09/2026"
+        and "effective date" in rate_db_table[8][-1],
+        "P12 sheet labels samples, keeps incomplete rows with what is "
+        "missing, and shows a bad date as typed"
+    )
+    check(
+        ratedb.build_rate_database_sheet(None)
+        == [list(ratedb.RATE_DATABASE_HEADERS)],
+        "P12 no rate database yields a header-only sheet"
+    )
+
+    stored = ratedb.save_rate_database(
+        {"other": 1}, sample_rates + [{}, "junk", {"item_code": "X", "hack": 1},
+                                      bad_date])
+    check(
+        stored["other"] == 1
+        and len(stored[ratedb.RATE_DATABASE_SETTINGS_KEY]) == 7
+        and stored[ratedb.RATE_DATABASE_SETTINGS_KEY][5] == {"item_code": "X"}
+        and stored[ratedb.RATE_DATABASE_SETTINGS_KEY][6]["effective_date"]
+        == "01/09/2026"
+        and ratedb.load_rate_database(stored)[1]["rate"] == 6800.0
+        and ratedb.load_rate_database(stored)[1]["item_code"] == "rcc-m30"
+        and ratedb.load_rate_database({"rate_database": "junk"}) == []
+        and ratedb.load_rate_database(None) == [],
+        "P12 store keeps only declared fields, drops empties, keeps other "
+        "settings, and a corrupt store loads as empty"
+    )
+
+    ratedb_source = io.open(
+        os.path.join(LIB_DIR, "rate_database_engine.py"),
+        "r", encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in ratedb_source
+        and "from pyrevit" not in ratedb_source
+        and not re.search(r"^\s*\"rate\"\s*:\s*\d", ratedb_source, re.M),
+        "P12 engine imports no Revit symbol and holds no rate of its own"
+    )
+
+    # ------------------------------------------------------------
     # Saved selections survive a document that has none of them (v1.26.1)
     #
     # Found live: an export run on an architectural model with no

@@ -307,7 +307,7 @@ every phase:
 | P9 Validation Engine | `lib/validation_engine.py` (**since v1.21.0** as the P10 foundation; **v1.25.8** adds issue severity and the compact pre-export report) |
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
-| P12 Rate Database | settings + data module |
+| P12 Rate Database | `lib/rate_database_engine.py` (**since v1.30.0**; entries live in settings) |
 | P13 Professional Excel BOQ | `lib/export_engine.py` (**exists since v1.8.6**) |
 | P14 Revision | `lib/export_engine.py` |
 | P15 Model change detection | separate diagnostic module |
