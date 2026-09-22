@@ -209,20 +209,32 @@ STYLE_SITE_TOTAL_TEXT = 13
 STYLE_SITE_PLAIN = 14
 
 # ------------------------------------------------------------
-# Brand palette (docs/reference/brand-guidelines.md) — Ember accent.
-# The exported workbook strips Revit's own blue (guidelines: "Don't use
-# Revit's own blue as an accent") and uses the Ember ramp instead. Keys
-# map to the fills baked into styles.xml.
-#   Ember 500  F2994A  primary accent / bold header fill (white text)
-#   Ember 100  FCE8D5  light band tint
-#   Ember 200  FFF0E3  lighter sub-band tint (keeps the band/sub-band
-#                      distinction of the blue ramp it replaces)
-#   Neutral    F2F2F2  totals shading (unchanged)
+# Workbook palette (v1.34.0) - the owner's theme, the same colours as the
+# BOQ dialog (header red, peach, lime), so the file a client receives
+# looks like the tool that made it. Keys map to the fills in styles.xml.
+#   THEME_HEADER    C8102E  title / header rows, bold white text (5.9:1)
+#   THEME_BAND      DAE9F8  band rows, bold black text - the owner's pick:
+#                           Excel's "Dark Blue, Text 2, Lighter 90%" (Office
+#                           theme Text 2 #0E2841 at 90% tint, read from Excel)
+#   THEME_SUBBAND   DAE9F8  sub-band rows, the same blue so both header tiers
+#                           read as one band
+#   THEME_TOTALS    EEF9CC  TOTAL rows, bold black text (a lime tint)
 # ------------------------------------------------------------
-EMBER_500 = "F2994A"
-EMBER_100 = "FCE8D5"
-EMBER_200 = "FFF0E3"
-GRAY_TOTALS_FILL = "F2F2F2"
+THEME_HEADER = "C8102E"
+THEME_BAND = "DAE9F8"
+THEME_SUBBAND = "DAE9F8"
+THEME_TOTALS = "EEF9CC"
+
+# Indian digit grouping: 1,23,456.78 and 1,23,45,678.90. Excel groups in
+# threes whatever the pattern, so lakhs and crores are two conditional
+# sections; below one lakh the ordinary 12,345.67 already reads right.
+INDIAN_NUMBER_FORMAT_ID = 164
+INDIAN_NUMBER_FORMAT = '[>=10000000]##\\,##\\,##\\,##0.00;[>=100000]##\\,##\\,##0.00;##,##0.00'
+
+# Print setup shared by every sheet: A4 landscape, all columns on one
+# page width, as many pages tall as the rows need.
+PRINT_SETUP_XML = '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>'
+FIT_TO_PAGE_XML = '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'
 
 
 def xlsx_formula_cell(cell_ref, expression, style_index=None):
@@ -474,6 +486,7 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + FIT_TO_PAGE_XML +
         '<dimension ref="{}"/>'
         '<sheetViews>'
         '<sheetView workbookViewId="0">'
@@ -484,7 +497,8 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
         '<sheetFormatPr defaultRowHeight="15"/>'
         '<cols>{}</cols>'
         '<sheetData>{}</sheetData>'
-        '{}' 
+        '{}'
+        + PRINT_SETUP_XML +
         '</worksheet>'
     ).format(
         dimension,
@@ -585,9 +599,18 @@ def build_xlsx_sheet_xml_site(rows, widths=None):
             elif is_subband:
                 style_index = STYLE_SITE_SUBBAND
             elif is_total:
+                # A formula on a TOTAL row is a sum: give it the number
+                # style too. try_export_as_number() does not read formula
+                # tuples, so these cells used to get the text style and
+                # showed 9114487.914 with no grouping (v1.34.0).
+                total_is_formula = (
+                    isinstance(value, tuple)
+                    and len(value) == 2
+                    and value[0] in ("FORMULA", "REF")
+                )
                 style_index = (
                     STYLE_SITE_TOTAL_NUM
-                    if try_export_as_number(value)
+                    if total_is_formula or try_export_as_number(value)
                     else STYLE_SITE_TOTAL_TEXT
                 )
 
@@ -807,6 +830,7 @@ def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/'
         'spreadsheetml/2006/main">'
+        + FIT_TO_PAGE_XML +
         '<dimension ref="{0}"/>'
         '<sheetViews>'
         '<sheetView workbookViewId="0" showGridLines="0">'
@@ -818,6 +842,7 @@ def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
         '<cols>{3}</cols>'
         '<sheetData>{4}</sheetData>'
         '{5}'
+        + PRINT_SETUP_XML +
         '</worksheet>'
     ).format(
         dimension,
@@ -832,15 +857,15 @@ def build_xlsx_styles_xml():
     Workbook styles used by the export engine:
 
     xf 0 - default body text
-    xf 1 - header row: bold white on Ember accent fill
-    xf 2 - numeric quantity cells with #,##0.00 formatting
-    xf 3 - totals label cells: bold on light gray with top border
-    xf 4 - totals number cells: bold #,##0.00 on light gray
+    xf 1 - header row: bold white on the header red
+    xf 2 - numeric quantity cells, Indian grouping (1,23,456.78)
+    xf 3 - totals label cells: bold on the lime tint with top border
+    xf 4 - totals number cells: bold, Indian grouping, on the lime tint
     """
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        '<numFmts count="0"/>'
+        '<numFmts count="1"><numFmt numFmtId="{0}" formatCode="{1}"/></numFmts>'
         '<fonts count="3">'
         '<font><sz val="11"/><name val="Segoe UI"/></font>'
         '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/></font>'
@@ -849,10 +874,10 @@ def build_xlsx_styles_xml():
         '<fills count="6">'
         '<fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFF2994A"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFFCE8D5"/><bgColor indexed="64"/></patternFill></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF0E3"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFC8102E"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFEEF9CC"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFDAE9F8"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFDAE9F8"/><bgColor indexed="64"/></patternFill></fill>'
         '</fills>'
         '<borders count="3">'
         '<border><left/><right/><top/><bottom/><diagonal/></border>'
@@ -865,17 +890,17 @@ def build_xlsx_styles_xml():
         '<cellXfs count="15">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
-        '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+        '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
         '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
-        '<xf numFmtId="4" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
+        '<xf numFmtId="164" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
         '<xf numFmtId="0" fontId="0" fillId="5" borderId="2" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
-        '<xf numFmtId="4" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+        '<xf numFmtId="164" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
-        '<xf numFmtId="4" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+        '<xf numFmtId="164" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
         '</cellXfs>'
@@ -883,7 +908,7 @@ def build_xlsx_styles_xml():
         '<cellStyle name="Normal" xfId="0" builtinId="0"/>'
         '</cellStyles>'
         '</styleSheet>'
-    )
+    ).format(INDIAN_NUMBER_FORMAT_ID, xml_escape(INDIAN_NUMBER_FORMAT))
 
 
 def build_xlsx_workbook_xml(sheet_names):
@@ -3400,6 +3425,12 @@ def write_site_xlsx(file_path, data_result, project_name="",
             project_name, p13_title, p13_plain, band_title=p13_band)
         if p13_name == DETAILED_BOQ_SHEET_NAME and len(p13_widths) > 1:
             p13_widths[1] = 48          # item descriptions need the room
+            # Rate Code ("RCC-M10-FOUNDATION / RCC-M10") and Rate Note get
+            # room too: a note that spilled past its column dragged the
+            # printed page out to four empty bordered columns (v1.34.0).
+            if len(p13_widths) > 7:
+                p13_widths[6] = 30
+                p13_widths[7] = 52
         sheet_names.append(p13_name)
         sheet_rows[p13_name] = p13_table
         sheet_widths[p13_name] = p13_widths

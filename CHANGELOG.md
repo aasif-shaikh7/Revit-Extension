@@ -22,6 +22,50 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.34.0] - 2026-09-22
+
+### Changed (theme step 3: the workbook)
+- **Colours:** the exported workbook now uses the owner's theme, the same as the dialog.
+  - Title and classic header rows: red `#C8102E` with bold white text.
+  - Site band and sub-band rows: `#DAE9F8`, the owner's pick of Excel's "Dark Blue, Text 2,
+    Lighter 90%". The value was read from the owner's own Excel through COM (Office theme Text 2
+    `#0E2841` at a 90% tint), and the text on it is bold black.
+  - TOTAL rows: the lime tint `#EEF9CC`.
+  - The old Ember fills are gone.
+- **Indian digit grouping** on every number style: `1,00,000.00`, `15,29,387.60`,
+  `1,23,45,678.90`. Excel groups in threes whatever the pattern, so lakhs and crores are two
+  conditional sections of one custom format (id 164). Below one lakh the ordinary `12,345.67`
+  already reads right. A negative figure of a lakh or more shows as `-150,000.00`, the one place
+  Excel's format rules stop.
+- **Print setup:** every sheet prints **A4 landscape, fitted one page wide**
+  (`sheetPr/fitToPage` plus `pageSetup`). Freeze panes were already in place.
+
+### Fixed
+- **Site TOTAL rows:** a formula on a site-format TOTAL row got the text style, because
+  `try_export_as_number` does not read formula tuples, so the Detailed BOQ total showed
+  `9114487.914`. It now gets the number style and shows `91,14,487.91`, and the same applies to
+  every site sheet's TOTAL formulas.
+- **Site Detailed BOQ widths:** Rate Code (30) and Rate Note (52) are wider. A long note spilled
+  past its column and dragged the printed page out to four empty bordered columns.
+
+### Verified
+- **Harness:** `python test_xlsx_writer.py` passes **376 checks**, up from 374. The new checks
+  cover:
+  - the exact Indian format code, used by all four number styles;
+  - the theme fills, with no Ember left;
+  - A4 landscape, one page wide, with `sheetPr` as the worksheet's first child, in both formats.
+- **Real Excel 16 via COM**, on workbooks written from the real `R-25 BBS BEAM` rows with SAMPLE
+  rates:
+  - both formats open without a repair (site 14 sheets, classic 18);
+  - every sheet is landscape and one page wide;
+  - the Detailed BOQ TOTAL reads `91,14,487.91`;
+  - probes read `1,00,000.00`, `1,23,45,678.90`, `999.50` and `0.00`.
+  A PDF of the site Detailed BOQ was exported and checked by eye.
+- **Not verified:** an export from Revit with this version. Nothing Revit-side changed, since the
+  workbook writer runs outside the Revit API, but it has not been run there yet.
+
+---
+
 ## [v1.33.0] - 2026-09-22
 
 ### Changed (theme: the owner's own palette, with a header band)
