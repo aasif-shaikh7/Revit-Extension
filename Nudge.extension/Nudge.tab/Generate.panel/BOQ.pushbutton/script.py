@@ -4857,14 +4857,20 @@ try:
                 except:
                     pass
 
-            # A category the current document has no parameters for could
-            # not restore or show anything, so an empty selection there
-            # means "this model does not have these fields", not "the user
+            # A category the current document has no ELEMENTS in could not
+            # restore or show anything, so an empty selection there means
+            # "this model does not have these fields", not "the user
             # cleared them". Overwriting the saved list in that case wipes
             # a BOQ setup simply because somebody exported a different
             # project - which is exactly what happened on an architectural
             # model with no structural elements. Where the category does
-            # have parameters, an empty list is a real choice and is saved.
+            # have elements, an empty list is a real choice and is saved.
+            #
+            # v1.33.0: judged by elements, not by discovered parameters.
+            # Rebar and Structure Wall always list their derived fields
+            # (Rebar: Diameter ..., Qty: Thickness ...), so their parameter
+            # list is never empty - and on 2026-09-22 opening a model with
+            # no rebar erased the owner's six saved Rebar parameters.
             previous_selected = {}
             try:
                 raw_previous = settings.get("selected")
@@ -4880,10 +4886,11 @@ try:
 
                 if not current:
                     try:
-                        discovered = category_parameters.get(element_name, [])
+                        has_elements = bool(
+                            category_elements.get(element_name, []))
                     except:
-                        discovered = []
-                    if not discovered:
+                        has_elements = False
+                    if not has_elements:
                         kept = previous_selected.get(element_name)
                         if isinstance(kept, list) and kept:
                             settings["selected"][element_name] = list(kept)

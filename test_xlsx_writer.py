@@ -4786,13 +4786,41 @@ def main():
     capture_block = nested_handler_source("capture_and_save_settings")
     check(
         "previous_selected" in capture_block
-        and "category_parameters.get(element_name" in capture_block,
-        "Saving selections consults what this document actually discovered"
+        and "category_elements.get(element_name" in capture_block
+        and "category_parameters.get(element_name" not in capture_block,
+        "Saving selections asks whether this document has elements in the "
+        "category, not whether it listed parameters"
     )
     check(
         capture_block.count("settings[\"selected\"][element_name] = current") == 1
-        and "if not discovered:" in capture_block,
-        "An empty category with no discovered parameters keeps its saved list"
+        and "if not has_elements:" in capture_block,
+        "A category with no elements in this document keeps its saved list"
+    )
+
+    # v1.33.0, found live: Rebar and Structure Wall always list their
+    # derived fields, so "no parameters discovered" was never true for
+    # them and a model without rebar erased the saved Rebar selection.
+    # Replay the guard itself on that case.
+    import textwrap
+    guard_start = capture_block.rfind(
+        "\n", 0, capture_block.index("previous_selected = {}")) + 1
+    guard_end = capture_block.index(
+        "\n", capture_block.index("settings[\"selected\"][element_name] = current")) + 1
+    guard_source = textwrap.dedent(capture_block[guard_start:guard_end])
+    guard_scope = {
+        "settings": {"selected": {"Rebar": ["ID_LIC", "LEVEL_V"],
+                                  "Beam": ["ID_UNMT"]}},
+        "selected_parameters": {"Rebar": [], "Beam": []},
+        "category_elements": {"Rebar": [], "Beam": ["beam element"]},
+        # Rebar lists its derived fields even with no rebar in the model.
+        "category_parameters": {"Rebar": ["Rebar: Diameter (mm)"], "Beam": ["Mark"]},
+    }
+    exec(guard_source, guard_scope)
+    check(
+        guard_scope["settings"]["selected"] == {"Rebar": ["ID_LIC", "LEVEL_V"],
+                                                "Beam": []},
+        "A model with no rebar keeps the saved Rebar list; a real empty Beam "
+        "choice is still saved (got {0})".format(guard_scope["settings"]["selected"])
     )
 
     engine_guard_block, _ = extract_from_sources(

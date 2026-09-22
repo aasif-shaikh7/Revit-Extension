@@ -53,8 +53,24 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 - **Note for the owner:** the header red `#C8102E` is very close to the error red `#C62828`. Error
   messages appear in the footer, not on the band, and they say what went wrong.
 
+### Fixed (saved Rebar parameters erased by a model without rebar)
+- **Found:** after the owner opened the dialog on `20260922-NCC-S&S-NW-FF`, the Available and
+  Selected lists were empty. That was correct: the crash trail shows **0 elements in every
+  category** for that model. But the saved Rebar selection (six parameters) had been erased.
+- **Cause:** the v1.26.1 guard kept a saved list only when the category had *no discovered
+  parameters*. Rebar and Structure Wall always list their derived fields (`Rebar: Diameter (mm)`,
+  `Qty: Thickness (m)` ...), so that was never true for them. A model with no rebar then saved an
+  empty Rebar list.
+- **Fix:** the guard asks whether the document has any **elements** in the category. With none, the
+  saved list stays; with elements, an empty list is still saved as a real choice.
+- The owner's six Rebar parameters were put back in the settings (backup kept in the agent's
+  scratchpad).
+
 ### Verified
-- **Harness:** `python test_xlsx_writer.py` passes **373 checks**. The theme checks cover:
+- **Harness:** `python test_xlsx_writer.py` passes **374 checks**. The new check replays the guard
+  on a model with no rebar: the Rebar list is kept, and an intentional empty Beam list is still
+  saved. With the old parameter-based guard restored, it fails exactly as the owner saw
+  (`Rebar: []`). The theme checks cover:
   - Light and Dark define identical keys;
   - every resource used is defined;
   - no Ember is left;
