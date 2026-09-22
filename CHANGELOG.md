@@ -22,6 +22,44 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.33.0] - 2026-09-22
+
+### Changed (theme step 1 of 3: the Steel & Rebar palette)
+- **New palette**, chosen for this extension after reviewing the owner's `AnonGee_BIM_Tools_Brand_Guidelines.md`.
+  The guide's system and rules were adopted: tiered tokens, full state matrices, contrast measured,
+  one primary action. Its brand name and red identity were not: in a BOQ tool red must mean an error,
+  and the guide's brand red (`#E02020`) sits next to its error red (`#DC2626`).
+  - **Primary: Steel Blue `#1D4E89`**, for actions, focus and selection. White on it is **8.4:1**.
+  - **Accent: Rebar Orange `#D9731A`**, only as the active-tab underline and thin rules, never text.
+  - **Graphite `#1E2329`** for headings, and **Concrete `#5B6470`** for secondary text (6.0:1).
+  - Error, warning, success and info are kept apart from both brand colours.
+- **Why the change:** the old Ember orange `#F2994A` carried white text at **2.23:1**, below the WCAG
+  AA 4.5:1 needed for text. Every text pair in both themes now passes.
+- **Dark theme:** the same keys as Light. The neutrals stay on Revit's own dark greys, so the dialog
+  still reads as part of Revit.
+- **Token names:** the `Ember*` keys became `Primary*` / `Accent*`. New keys are
+  `PrimaryForegroundBrush`, `HeaderBandBrush` and `HeaderBandTextBrush` (the band is for step 2).
+- **Controls:** disabled Primary and Secondary buttons now show a real disabled colour instead of
+  fading to 50% opacity, so they stay readable.
+- **Font:** the UI font is now Segoe UI. The previous Sora was never installed on the owner's machine
+  and always fell back to Segoe UI anyway. A mono family and a `BrandCodeText` style are added for
+  IDs and codes.
+- **Search boxes:** `script.py` no longer hard-codes the old Ember and grey hex values. It reads the
+  theme's own Color keys, with the new palette as a fallback.
+
+### Verified
+- **Harness:** `python test_xlsx_writer.py` passes **373 checks**, up from 368. The new checks:
+  - Light and Dark define identical keys;
+  - every resource `ui.xaml` and the controls use is defined;
+  - no Ember key or colour is left;
+  - both themes meet 4.5:1 for text and 3:1 for focus and accent.
+  Re-inserting the old orange makes the contrast check fail at 2.23:1.
+- **WPF render:** `ui.xaml` was loaded with the real WPF `XamlReader` and the dictionaries merged,
+  in Light and in Dark. All 13 resource keys it uses resolved, and the window rendered.
+- **Not yet verified in Revit:** the dialog has not been opened in Revit with the new theme.
+
+---
+
 ## [v1.32.1] - 2026-09-22
 
 ### Fixed (Revit crashed exporting a rebar / BBS model)

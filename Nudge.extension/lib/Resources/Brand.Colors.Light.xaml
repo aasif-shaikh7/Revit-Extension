@@ -1,25 +1,49 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ===== Accent (Ember) — same across Light/Dark for brand consistency ===== -->
-    <Color x:Key="Ember500Color">#F2994A</Color>
-    <Color x:Key="Ember600Color">#D97C2B</Color>
-    <Color x:Key="Ember700Color">#C06D20</Color>
-    <Color x:Key="Ember100Color">#FCE8D5</Color>
-    <Color x:Key="Ember900Color">#7A3F14</Color>
+    <!--
+        Steel & Rebar palette - LIGHT (v1.33.0)
 
-    <SolidColorBrush x:Key="EmberBrush"        Color="{StaticResource Ember500Color}"/>
-    <SolidColorBrush x:Key="EmberHoverBrush"   Color="{StaticResource Ember600Color}"/>
-    <SolidColorBrush x:Key="EmberPressedBrush" Color="{StaticResource Ember700Color}"/>
-    <SolidColorBrush x:Key="EmberTintBrush"    Color="{StaticResource Ember100Color}"/>
-    <SolidColorBrush x:Key="EmberDeepBrush"    Color="{StaticResource Ember900Color}"/>
+        Tier 1 primitives, then Tier 2 semantic brushes. Controls reference
+        the semantic brushes only, so a palette change never touches a
+        control template.
 
-    <!-- ===== Surfaces / neutrals (Light) ===== -->
+        Primary  Steel Blue    #1D4E89  white on it 8.4:1  - actions, focus, selection
+        Accent   Rebar Orange  #D9731A  3.3:1 on white     - thin rules and the active-tab
+                                                             underline only; never text
+        Graphite               #1E2329  15.8:1 on white    - headings, header band
+        Concrete               #5B6470  6.0:1 on white     - secondary text
+
+        Error red stays well apart from both brand colours, so red always
+        means something went wrong.
+    -->
+
+    <!-- ===== Tier 1: brand primitives ===== -->
+    <Color x:Key="Primary500Color">#1D4E89</Color>
+    <Color x:Key="Primary600Color">#173F70</Color>
+    <Color x:Key="Primary700Color">#123257</Color>
+    <Color x:Key="Primary100Color">#E3ECF7</Color>
+    <Color x:Key="Primary900Color">#0E2745</Color>
+    <Color x:Key="AccentColor">#D9731A</Color>
+    <Color x:Key="GraphiteColor">#1E2329</Color>
+
+    <!-- ===== Tier 2: brand brushes ===== -->
+    <SolidColorBrush x:Key="PrimaryBrush"           Color="{StaticResource Primary500Color}"/>
+    <SolidColorBrush x:Key="PrimaryHoverBrush"      Color="{StaticResource Primary600Color}"/>
+    <SolidColorBrush x:Key="PrimaryPressedBrush"    Color="{StaticResource Primary700Color}"/>
+    <SolidColorBrush x:Key="PrimaryTintBrush"       Color="{StaticResource Primary100Color}"/>
+    <SolidColorBrush x:Key="PrimaryDeepBrush"       Color="{StaticResource Primary900Color}"/>
+    <SolidColorBrush x:Key="PrimaryForegroundBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="AccentBrush"            Color="{StaticResource AccentColor}"/>
+    <SolidColorBrush x:Key="HeaderBandBrush"        Color="{StaticResource GraphiteColor}"/>
+    <SolidColorBrush x:Key="HeaderBandTextBrush"    Color="#FFFFFF"/>
+
+    <!-- ===== Surfaces / neutrals ===== -->
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
-    <Color x:Key="SurfaceAltColor">#F3F3F3</Color>
-    <Color x:Key="BorderColor">#D6D6D6</Color>
-    <Color x:Key="TextPrimaryColor">#1F1F1F</Color>
-    <Color x:Key="TextSecondaryColor">#6B6B6B</Color>
+    <Color x:Key="SurfaceAltColor">#F4F6F8</Color>
+    <Color x:Key="BorderColor">#D5DAE1</Color>
+    <Color x:Key="TextPrimaryColor">#1E2329</Color>
+    <Color x:Key="TextSecondaryColor">#5B6470</Color>
 
     <SolidColorBrush x:Key="SurfaceBrush"        Color="{StaticResource SurfaceColor}"/>
     <SolidColorBrush x:Key="SurfaceAltBrush"     Color="{StaticResource SurfaceAltColor}"/>
@@ -27,31 +51,31 @@
     <SolidColorBrush x:Key="TextPrimaryBrush"    Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondaryColor}"/>
 
-    <!-- ===== Interactive states (Light) ===== -->
-    <Color x:Key="HoverColor">#E8E8E8</Color>
-    <Color x:Key="PressedColor">#DCDCDC</Color>
-    <Color x:Key="ItemHoverColor">#F0F0F0</Color>
-    <Color x:Key="SelectedColor">#FCE8D5</Color>
-    <Color x:Key="FocusColor">#F2994A</Color>
-    <Color x:Key="DisabledColor">#F5F5F5</Color>
+    <!-- ===== Interactive states ===== -->
+    <Color x:Key="HoverColor">#E9EDF2</Color>
+    <Color x:Key="PressedColor">#DCE2EA</Color>
+    <Color x:Key="ItemHoverColor">#F0F3F7</Color>
+    <Color x:Key="SelectedColor">#E3ECF7</Color>
+    <Color x:Key="FocusColor">#1D4E89</Color>
+    <Color x:Key="DisabledColor">#F1F3F5</Color>
     <Color x:Key="ControlColor">#FFFFFF</Color>
 
     <SolidColorBrush x:Key="HoverBrush"             Color="{StaticResource HoverColor}"/>
     <SolidColorBrush x:Key="PressedBrush"           Color="{StaticResource PressedColor}"/>
     <SolidColorBrush x:Key="ItemHoverBrush"         Color="{StaticResource ItemHoverColor}"/>
     <SolidColorBrush x:Key="SelectedBrush"          Color="{StaticResource SelectedColor}"/>
-    <SolidColorBrush x:Key="SelectedTextBrush"      Color="#7A3F14"/>
+    <SolidColorBrush x:Key="SelectedTextBrush"      Color="{StaticResource Primary900Color}"/>
     <SolidColorBrush x:Key="FocusBrush"             Color="{StaticResource FocusColor}"/>
     <SolidColorBrush x:Key="DisabledBrush"          Color="{StaticResource DisabledColor}"/>
-    <SolidColorBrush x:Key="DisabledTextBrush"      Color="#9E9E9E"/>
+    <SolidColorBrush x:Key="DisabledTextBrush"      Color="#9AA3AE"/>
     <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{StaticResource ControlColor}"/>
     <SolidColorBrush x:Key="HeadingBrush"           Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="LabelBrush"             Color="{StaticResource TextPrimaryColor}"/>
 
-    <!-- ===== System colors ===== -->
-    <SolidColorBrush x:Key="SuccessBrush" Color="#3FB68B"/>
-    <SolidColorBrush x:Key="WarningBrush" Color="#E0A62B"/>
-    <SolidColorBrush x:Key="ErrorBrush"   Color="#E4574C"/>
-    <SolidColorBrush x:Key="InfoBrush"    Color="#4C9BE4"/>
+    <!-- ===== Semantic (system feedback only - never decoration) ===== -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#15803D"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="#A16207"/>
+    <SolidColorBrush x:Key="ErrorBrush"   Color="#C62828"/>
+    <SolidColorBrush x:Key="InfoBrush"    Color="#0369A1"/>
 
 </ResourceDictionary>

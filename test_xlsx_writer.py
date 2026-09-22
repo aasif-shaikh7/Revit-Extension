@@ -4467,6 +4467,91 @@ def main():
         shutil.rmtree(db_dir, ignore_errors=True)
 
     # ------------------------------------------------------------
+    # Steel & Rebar theme (v1.33.0)
+    #
+    # The palette lives in two colour dictionaries. They must define the
+    # same keys, every key the dialog and the controls ask for must exist
+    # in both, and the pairs people actually read must meet WCAG AA - the
+    # old Ember orange carried white text at 2.2:1.
+    # ------------------------------------------------------------
+    resources_dir = os.path.join(LIB_DIR, "Resources")
+
+    def xaml_text(name):
+        return io.open(os.path.join(resources_dir, name), encoding="utf-8-sig").read()
+
+    def dictionary_keys(text):
+        return set(re.findall(r'x:Key="([A-Za-z0-9_]+)"', text))
+
+    def color_values(text):
+        colors = dict(re.findall(
+            r'<Color x:Key="([A-Za-z0-9_]+)">#([0-9A-Fa-f]{6})</Color>', text))
+        for key, value in re.findall(
+                r'<SolidColorBrush x:Key="([A-Za-z0-9_]+)"\s+Color="#([0-9A-Fa-f]{6})"', text):
+            colors[key] = value
+        for key, ref in re.findall(
+                r'<SolidColorBrush x:Key="([A-Za-z0-9_]+)"\s+Color="\{StaticResource ([A-Za-z0-9_]+)\}"', text):
+            if ref in colors:
+                colors[key] = colors[ref]
+        return colors
+
+    def contrast(first, second):
+        def luminance(value):
+            channels = []
+            for index in (0, 2, 4):
+                channel = int(value[index:index + 2], 16) / 255.0
+                channels.append(channel / 12.92 if channel <= 0.03928
+                                else ((channel + 0.055) / 1.055) ** 2.4)
+            return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+        high, low = sorted((luminance(first), luminance(second)), reverse=True)
+        return (high + 0.05) / (low + 0.05)
+
+    light_text = xaml_text("Brand.Colors.Light.xaml")
+    dark_text = xaml_text("Brand.Colors.Dark.xaml")
+    controls_text = xaml_text("Brand.Controls.xaml")
+    typography_text = xaml_text("Brand.Typography.xaml")
+    check(
+        dictionary_keys(light_text) == dictionary_keys(dark_text),
+        "Theme: Light and Dark define exactly the same keys ({0} only in one)".format(
+            sorted(dictionary_keys(light_text) ^ dictionary_keys(dark_text)))
+    )
+    defined = (dictionary_keys(light_text) | dictionary_keys(controls_text)
+               | dictionary_keys(typography_text))
+    wanted = set(re.findall(r'\{(?:Dynamic|Static)Resource ([A-Za-z0-9_]+)\}',
+                            controls_text + typography_text + xaml_source))
+    check(
+        not (wanted - defined),
+        "Theme: every resource the dialog and controls use is defined "
+        "(missing: {0})".format(sorted(wanted - defined))
+    )
+    check(
+        all("Ember" not in text for text in
+            (light_text, dark_text, controls_text, typography_text, xaml_source))
+        and "0xF2, 0x99, 0x4A" not in script_text,
+        "Theme: no Ember key or hard-coded Ember colour is left"
+    )
+    for theme_name, text in (("Light", light_text), ("Dark", dark_text)):
+        colors = color_values(text)
+        pairs = (
+            ("PrimaryForegroundBrush", "PrimaryBrush", 4.5),
+            ("PrimaryForegroundBrush", "PrimaryHoverBrush", 4.5),
+            ("TextPrimaryColor", "SurfaceColor", 4.5),
+            ("TextSecondaryColor", "SurfaceColor", 4.5),
+            ("TextSecondaryColor", "SurfaceAltColor", 4.5),
+            ("SelectedTextBrush", "SelectedColor", 4.5),
+            ("ErrorBrush", "SurfaceColor", 4.5),
+            ("FocusColor", "SurfaceColor", 3.0),
+            ("AccentColor", "SurfaceColor", 3.0),
+        )
+        failing = ["{0} on {1} {2:.2f}".format(a, b, contrast(colors[a], colors[b]))
+                   for a, b, floor in pairs
+                   if contrast(colors[a], colors[b]) < floor]
+        check(
+            not failing,
+            "Theme {0}: text meets WCAG AA 4.5:1 and borders/accents 3:1{1}".format(
+                theme_name, "" if not failing else " (" + "; ".join(failing) + ")")
+        )
+
+    # ------------------------------------------------------------
     # Stack overflow on BBS models (v1.32.1)
     #
     # Revit died with 0xc00000fd while writing a workbook for a rebar

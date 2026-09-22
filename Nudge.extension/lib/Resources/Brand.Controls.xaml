@@ -14,13 +14,13 @@
         <Setter Property="Padding" Value="8"/>
     </Style>
 
-    <!-- ===== Primary Button (Ember fill) ===== -->
+    <!-- ===== Primary Button (steel fill) - one per window ===== -->
     <Style x:Key="BrandPrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="Background" Value="{DynamicResource EmberBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="16,8"/>
         <Setter Property="Cursor" Value="Hand"/>
@@ -36,13 +36,15 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource EmberHoverBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource PrimaryHoverBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource EmberPressedBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource PrimaryPressedBrush}"/>
                         </Trigger>
+                        <!-- Disabled stays visible and readable, not faded out. -->
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bg" Property="Opacity" Value="0.5"/>
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource DisabledBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -79,7 +81,8 @@
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource PressedBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bg" Property="Opacity" Value="0.5"/>
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource DisabledBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -98,7 +101,7 @@
           <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
-        <Setter Property="SelectionBrush" Value="{DynamicResource EmberBrush}"/>
+        <Setter Property="SelectionBrush" Value="{DynamicResource PrimaryBrush}"/>
         <Setter Property="SelectionTextBrush" Value="White"/>
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush2}"/>
@@ -109,7 +112,7 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="BorderBrush" Value="{DynamicResource EmberHoverBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHoverBrush}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{DynamicResource DisabledBrush}"/>
@@ -155,11 +158,12 @@
                     </StackPanel>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource EmberBrush}"/>
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
                             <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource EmberHoverBrush}"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource PrimaryHoverBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}"/>
@@ -212,7 +216,7 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource EmberHoverBrush}"/>
+                                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource PrimaryHoverBrush}"/>
                                         </Trigger>
                                         <Trigger Property="IsChecked" Value="True">
                                             <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>
@@ -278,7 +282,7 @@
     <!-- consuming XAML declarations.                       -->
     <!-- ================================================== -->
 
-    <!-- ===== TabItem (implicit: folder-tab with Ember underline) ===== -->
+    <!-- ===== TabItem (implicit: folder tab, rebar-orange accent underline) ===== -->
     <Style TargetType="TabItem">
         <Setter Property="FontFamily" Value="{DynamicResource BrandFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
@@ -303,7 +307,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-                            <Setter TargetName="TabBg" Property="BorderBrush" Value="{DynamicResource EmberBrush}"/>
+                            <Setter TargetName="TabBg" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>

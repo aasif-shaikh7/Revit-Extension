@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.32.1'
+__version__ = '1.33.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.32.1'
+SCRIPT_VERSION = '1.33.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -3094,40 +3094,46 @@ try:
             except:
                 pass
 
+            # v1.33.0: the colours come from the merged theme's own Color
+            # keys, so this box can never drift from the palette. The
+            # fallbacks are the same Steel & Rebar values, used only if a
+            # key cannot be found.
             if theme_name == "Dark":
-                primary_hex = "EDEDED"
-                surface_hex = "2B2B2B"
-                border_hex = "3F3F3F"
+                fallback_hex = {
+                    "TextPrimaryColor": "EDEDED",
+                    "SurfaceColor": "2B2B2B",
+                    "BorderColor": "40454C",
+                    "Primary500Color": "1D4E89",
+                }
             else:
-                primary_hex = "1F1F1F"
-                surface_hex = "FFFFFF"
-                border_hex = "D6D6D6"
+                fallback_hex = {
+                    "TextPrimaryColor": "1E2329",
+                    "SurfaceColor": "FFFFFF",
+                    "BorderColor": "D5DAE1",
+                    "Primary500Color": "1D4E89",
+                }
+
+            def theme_brush(color_key):
+                try:
+                    found = window.TryFindResource(color_key)
+                    if isinstance(found, Color):
+                        return SolidColorBrush(found)
+                except:
+                    pass
+                value = fallback_hex[color_key]
+                return SolidColorBrush(
+                    Color.FromRgb(
+                        int(value[0:2], 16),
+                        int(value[2:4], 16),
+                        int(value[4:6], 16)
+                    )
+                )
 
             try:
-                text_brush = SolidColorBrush(
-                    Color.FromRgb(
-                        int(primary_hex[0:2], 16),
-                        int(primary_hex[2:4], 16),
-                        int(primary_hex[4:6], 16)
-                    )
-                )
-                surface_brush = SolidColorBrush(
-                    Color.FromRgb(
-                        int(surface_hex[0:2], 16),
-                        int(surface_hex[2:4], 16),
-                        int(surface_hex[4:6], 16)
-                    )
-                )
-                border_brush = SolidColorBrush(
-                    Color.FromRgb(
-                        int(border_hex[0:2], 16),
-                        int(border_hex[2:4], 16),
-                        int(border_hex[4:6], 16)
-                    )
-                )
-                ember_brush = SolidColorBrush(
-                    Color.FromRgb(0xF2, 0x99, 0x4A)
-                )
+                text_brush = theme_brush("TextPrimaryColor")
+                surface_brush = theme_brush("SurfaceColor")
+                border_brush = theme_brush("BorderColor")
+                selection_brush = theme_brush("Primary500Color")
                 white_brush = SolidColorBrush(
                     Color.FromRgb(0xFF, 0xFF, 0xFF)
                 )
@@ -3153,7 +3159,7 @@ try:
                 for _prop, _brush in (
                     (_TextBox.ForegroundProperty, text_brush),
                     (_TextBox.CaretBrushProperty, text_brush),
-                    (_TextBox.SelectionBrushProperty, ember_brush),
+                    (_TextBox.SelectionBrushProperty, selection_brush),
                     (_TextBox.SelectionTextBrushProperty, white_brush),
                     (_TextBox.BackgroundProperty, surface_brush),
                     (_TextBox.BorderBrushProperty, border_brush)
