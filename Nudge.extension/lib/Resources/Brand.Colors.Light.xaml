@@ -43,6 +43,14 @@
     <SolidColorBrush x:Key="TextPrimaryBrush"    Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondaryColor}"/>
 
+    <!-- ===== Tab strip: the owner's pick, Excel's "Dark Blue, Text 2,
+         Lighter 90%" (#DAE9F8), the same blue as the workbook header bands.
+         Tab text on it 4.9:1; hover #C5DAF1 with dark text 11.1:1. ===== -->
+    <Color x:Key="TabStripColor">#DAE9F8</Color>
+    <Color x:Key="TabHoverColor">#C5DAF1</Color>
+    <SolidColorBrush x:Key="TabStripBrush" Color="{StaticResource TabStripColor}"/>
+    <SolidColorBrush x:Key="TabHoverBrush" Color="{StaticResource TabHoverColor}"/>
+
     <!-- ===== Interactive states ===== -->
     <Color x:Key="HoverColor">#F1EADF</Color>
     <Color x:Key="PressedColor">#E8DFD2</Color>
