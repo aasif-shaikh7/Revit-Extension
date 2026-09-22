@@ -1481,6 +1481,7 @@ DETAILED_BOQ_SHEET_NAME = "Detailed BOQ"
 
 DETAILED_BOQ_HEADERS = (
     "Item No.", "Description", "Unit", "Quantity", "Rate", "Amount",
+    "Rate Code", "Rate Note",
 )
 
 # Sheet name -> how the category reads inside a BOQ item description.
@@ -1558,7 +1559,8 @@ def _concrete_quantity(data, info_by_sheet, sheet_name, grade):
 
 
 def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
-                             row_offset=0):
+                             row_offset=0, rate_database=None,
+                             project_location="", rate_date=""):
     """Build the itemized BOQ a client or contractor prices.
 
     Item No. / Description / Unit / Quantity / Rate / Amount, in three
@@ -1572,17 +1574,23 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
     has no quantity columns to reference, and a SUMIF on a diameter that
     Revit stores as 11.9999 would silently miss bars.
 
-    Rate is left blank: rates are never invented here (P11 and P12 own
-    them). Amount is a live formula that stays blank until a rate is
-    typed, then shows Quantity x Rate, so the sheet can be priced in Excel
-    without touching a formula. A header-only table means there was
-    nothing to itemize.
+    Rate comes from the P12 rate database: each item is looked up by its
+    codes, most specific first (RCC-M30-BEAM, then RCC-M30), for
+    `project_location` on `rate_date`. Rate Code names the code that
+    priced it - or the codes to add - and Rate Note says where the rate is
+    from or why the item is blank. Nothing is invented: an item with no
+    matching rate keeps a blank Rate. Amount is a live formula that stays
+    blank until there is a rate, then shows Quantity x Rate, so a rate
+    typed in Excel works too. A header-only table means there was nothing
+    to itemize.
 
     `row_offset` is how far below its plain position each row will land:
     the site workbook wraps this table in title bands, pushing every data
     row down five rows, and the Amount and TOTAL formulas must point at
     where the numbers really are.
     """
+    from rate_database_engine import boq_rate_codes, price_boq_item
+
     data = data_result if isinstance(data_result, dict) else {}
     info_by_sheet = summary_info if isinstance(summary_info, dict) else {}
     table = [list(DETAILED_BOQ_HEADERS)]
@@ -1604,7 +1612,9 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
                 description = "Concrete in {0} - grade not recorded".format(label)
             else:
                 description = "Concrete {0} in {1}".format(grade, label)
-            concrete.append((description, "m3", quantity))
+            concrete.append((description, "m3", quantity, boq_rate_codes(
+                "concrete", sheet_name,
+                "" if grade == NO_GRADE_LABEL else grade)))
     if concrete:
         sections.append(("A", "CONCRETE", concrete))
 
@@ -1645,7 +1655,8 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
             quantity = round(total, 2)
 
         formwork.append(("Centering and shuttering to {0}".format(label),
-                         "m2", quantity))
+                         "m2", quantity,
+                         boq_rate_codes("shuttering", sheet_name)))
     if formwork:
         sections.append(("B", "CENTERING AND SHUTTERING", formwork))
 
@@ -1660,34 +1671,59 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
             reinforcement.append((
                 "Reinforcement steel, {0} mm dia".format(
                     _boq_diameter_text(diameter)),
-                "kg", weight_kg))
+                "kg", weight_kg,
+                boq_rate_codes("steel",
+                               diameter=_boq_diameter_text(diameter))))
     if reinforcement:
         sections.append(("C", "REINFORCEMENT", reinforcement))
 
     if not sections:
         return table
 
+    entries = list(rate_database or [])
+    if not rate_date:
+        import datetime
+        rate_date = datetime.date.today().strftime("%Y-%m-%d")
+
     first_item_row = None
+    currencies = []
     for letter, title, items in sections:
-        table.append([letter, title, "", "", "", ""])
-        for index, (description, unit, quantity) in enumerate(items, 1):
+        table.append([letter, title, "", "", "", "", "", ""])
+        for index, (description, unit, quantity, codes) in enumerate(items, 1):
             row_number = len(table) + 1 + row_offset
             if first_item_row is None:
                 first_item_row = row_number
+            if entries:
+                rate, code, note, currency = price_boq_item(
+                    entries, codes, unit, project_location, rate_date)
+            else:
+                rate, code, note, currency = None, " / ".join(codes), "", ""
+            if rate is not None and currency not in currencies:
+                currencies.append(currency)
             table.append([
                 "{0}.{1}".format(letter, index),
                 description,
                 unit,
                 quantity,
-                "",
+                "" if rate is None else rate,
                 ("FORMULA",
                  'IF(E{0}="","",D{0}*E{0})'.format(row_number)),
+                code,
+                note,
             ])
+
+    # Amounts in two currencies do not add up to anything; say so on the
+    # TOTAL rather than print a sum nobody should read.
+    total_note = ""
+    if len(currencies) > 1:
+        total_note = "Mixed currencies ({0}) - this TOTAL is not meaningful".format(
+            ", ".join(c or "none given" for c in currencies))
 
     last_row = len(table) + row_offset
     table.append([
         "", "TOTAL", "", "", "",
         ("FORMULA", "SUM(F{0}:F{1})".format(first_item_row, last_row)),
+        "", total_note,
     ])
     return table
 
@@ -2033,7 +2069,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      project_name="", tool_version="", generated_stamp="", assembly_profile=None,
                      site_format=False, validation_report_path=None,
                      unmapped_report=None, site_items=None,
-                     rate_analysis=None, rate_database=None):
+                     rate_analysis=None, rate_database=None,
+                     project_location=""):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2370,8 +2407,9 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     if len(rate_table) > 1:
         sheet_names.append(RATE_ANALYSIS_SHEET_NAME)
         sheet_rows[RATE_ANALYSIS_SHEET_NAME] = rate_table
-        # Material, Wastage, Labour, Machinery, Overheads, Analysed Rate.
-        quantity_column_map[RATE_ANALYSIS_SHEET_NAME] = [3, 4, 5, 6, 7, 8]
+        # Material, Wastage, Labour, Machinery, Overheads, Analysed Rate
+        # (1-based: columns D to I).
+        quantity_column_map[RATE_ANALYSIS_SHEET_NAME] = [4, 5, 6, 7, 8, 9]
 
     # P12: the rate database, with a status on every entry. Emitted only
     # when rates exist, like the Rate Analysis sheet above.
@@ -2383,7 +2421,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     if len(rate_db_table) > 1:
         sheet_names.append(RATE_DATABASE_SHEET_NAME)
         sheet_rows[RATE_DATABASE_SHEET_NAME] = rate_db_table
-        quantity_column_map[RATE_DATABASE_SHEET_NAME] = [3]
+        quantity_column_map[RATE_DATABASE_SHEET_NAME] = [4]    # Rate (D)
 
     # P2: level-wise grouping. One row per Level x Category with live SUMIF
     # formulas against the category sheets, placed between BOQ Summary and
@@ -2448,7 +2486,10 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     detailed_boq = build_detailed_boq_table(
         data_result,
         summary_info,
-        data_result.get("Rebar") or []
+        data_result.get("Rebar") or [],
+        rate_database=rate_database,
+        project_location=project_location,
+        rate_date=str(generated_stamp or "")[:10]
     )
 
     if len(detailed_boq) > 1:
@@ -3159,7 +3200,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     include_formwork=True, selected_parameters=None,
                     assembly_profile=None, validation_report_path=None,
                     unmapped_report=None, site_items=None,
-                    rate_analysis=None, rate_database=None):
+                    rate_analysis=None, rate_database=None,
+                    project_location=""):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -3332,7 +3374,10 @@ def write_site_xlsx(file_path, data_result, project_name="",
          "RCC - DETAILED BOQ",
          build_detailed_boq_table(data_result, {},
                                   data_result.get("Rebar") or [],
-                                  site_band_offset)),
+                                  site_band_offset,
+                                  rate_database=rate_database,
+                                  project_location=project_location,
+                                  rate_date=str(generated_stamp or "")[:10])),
     ):
         # A summary is header + at least one row + TOTAL; the Detailed BOQ
         # is header + at least one section row.

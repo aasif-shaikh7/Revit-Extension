@@ -267,6 +267,119 @@ def load_rate_database(settings):
     return [normalize_rate_entry(item) for item in raw if isinstance(item, dict)]
 
 
+# ------------------------------------------------------------------
+# Pricing BOQ items from the database
+# ------------------------------------------------------------------
+
+# How a category is written inside a rate code: RCC-M30-BEAM, SHUT-SLAB.
+BOQ_CODE_CATEGORY = {
+    "Beam": "BEAM",
+    "Column": "COLUMN",
+    "Structure Wall": "WALL",
+    "Slab": "SLAB",
+    "Foundation": "FOUNDATION",
+}
+
+# Spellings of one unit that a rate schedule may use. Anything else is
+# compared as typed, so an unknown unit never matches a known one by luck.
+_UNIT_ALIASES = {
+    "m3": ("m3", "cum", "cu.m", "cu m", "cu.m.", u"m³", "cbm"),
+    "m2": ("m2", "sqm", "sq.m", "sq m", "sq.m.", u"m²"),
+    "kg": ("kg", "kgs", "kilogram", "kilograms"),
+}
+
+
+def normalize_unit(unit):
+    """'Cum' -> 'm3', 'SQM' -> 'm2', 'Kgs' -> 'kg'; otherwise as typed."""
+    try:
+        text = str(unit or "").strip().lower()
+    except Exception:
+        return ""
+    for canonical, spellings in _UNIT_ALIASES.items():
+        if text in spellings:
+            return canonical
+    return text
+
+
+def boq_rate_codes(kind, category="", grade="", diameter=""):
+    """The codes a BOQ item is priced by, most specific first.
+
+    concrete:   RCC-M30-BEAM, then RCC-M30
+    shuttering: SHUT-BEAM, then SHUT
+    steel:      STEEL-12, then STEEL
+    Concrete whose grade was not recorded has no code: it must not be
+    priced until someone says what it is.
+    """
+    cat = BOQ_CODE_CATEGORY.get(category, "")
+    if kind == "concrete":
+        grade = str(grade or "").strip().upper()
+        if not grade or grade.startswith("("):
+            return []
+        return (["RCC-{0}-{1}".format(grade, cat)] if cat else []) + [
+            "RCC-{0}".format(grade)]
+    if kind == "shuttering":
+        return (["SHUT-{0}".format(cat)] if cat else []) + ["SHUT"]
+    if kind == "steel":
+        dia = str(diameter or "").strip()
+        return (["STEEL-{0}".format(dia)] if dia else []) + ["STEEL"]
+    return []
+
+
+def price_boq_item(entries, codes, unit, location="", on_date=""):
+    """Find the rate for one BOQ item: (rate, code, note, currency).
+
+    Each code is tried in turn; the first that has a rate in force here,
+    in the item's own unit, prices it. A rate in another unit is skipped
+    and said so - a per-m2 figure on a per-m3 item is not a rate for it.
+    rate is None when nothing prices the item, and the note says what to
+    add.
+    """
+    codes = [code for code in (codes or []) if code]
+    if not codes:
+        return None, "", "Not priced - grade not recorded", ""
+
+    wanted = normalize_unit(unit)
+    skipped = []
+    for code in codes:
+        entry = find_rate(entries, code, location, on_date)
+        if entry is None:
+            continue
+        if wanted and normalize_unit(entry.get("unit")) != wanted:
+            skipped.append("{0} is per {1}".format(
+                code, entry.get("unit") or "no unit"))
+            continue
+        parts = [entry.get("location") or "any location"]
+        if entry.get("effective_date"):
+            parts.append("from " + entry["effective_date"])
+        if entry.get("currency"):
+            parts.append(entry["currency"])
+        if is_sample_entry(entry):
+            parts.append("SAMPLE - not a real rate")
+        return entry["rate"], code, " | ".join(parts), entry.get("currency") or ""
+
+    note = "No rate - add {0}".format(" or ".join(codes))
+    if skipped:
+        note += " ({0}, item is per {1})".format("; ".join(skipped), unit)
+    return None, " / ".join(codes), note, ""
+
+
+def unmatched_places(entries, project_location):
+    """Places that have rates but are not one of this project's levels.
+
+    Not an error - a Dubai rate is simply not for a Navsari job - but a
+    misspelt place ('Gujrat') lands here too, so the tab lists them.
+    """
+    levels = [level.upper() for level in location_levels(project_location)]
+    places = []
+    for raw in list(entries or []):
+        if not isinstance(raw, dict):
+            continue
+        place = _entry_place(normalize_rate_entry(raw))
+        if place and place.upper() not in levels and place not in places:
+            places.append(place)
+    return places
+
+
 PROJECT_LOCATION_SETTINGS_KEY = "project_location"
 
 

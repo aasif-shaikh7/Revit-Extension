@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.31.0'
+__version__ = '1.32.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -66,7 +66,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.31.0'
+SCRIPT_VERSION = '1.32.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -4596,6 +4596,20 @@ try:
                     text += " | {0} sample - not real rates".format(samples)
                 if pending:
                     text += " | {0} need input".format(pending)
+
+                # Rates for a place that is not one of this project's
+                # levels never price it - right for a Dubai rate on a
+                # Navsari job, wrong for a misspelt 'Gujrat'. Say which.
+                from rate_database_engine import unmatched_places
+                location_box = window.FindName("RateDbProjectLocation")
+                project_location = (
+                    location_box.Text if location_box is not None else "")
+                others = unmatched_places(rate_db_state, project_location)
+                if others:
+                    text += (
+                        u" | Not used for this project: {0} - check the "
+                        u"spelling if one should apply here".format(
+                            ", ".join(others)))
                 summary_box.Text = text
             except:
                 pass
@@ -4780,6 +4794,13 @@ try:
                 list_box = window.FindName("RateDbList")
                 if list_box is not None:
                     list_box.SelectionChanged += rate_db_selection_changed
+
+                # Re-check which rates apply once the location is edited.
+                location_box = window.FindName("RateDbProjectLocation")
+                if location_box is not None:
+                    location_box.LostFocus += (
+                        lambda sender, args: rate_db_refresh(
+                            rate_db_selected_index()))
             except:
                 pass
 
@@ -6048,15 +6069,21 @@ try:
                     except:
                         rate_analysis = []
 
-                    # P12: the saved rate database, guarded the same way.
+                    # P12: the saved rate database and this project's
+                    # location, which the Detailed BOQ prices by. Guarded
+                    # the same way.
                     rate_database = []
+                    project_location = ""
                     try:
-                        from rate_database_engine import load_rate_database
-                        rate_database = load_rate_database(
-                            load_app_settings()
-                        )
+                        from rate_database_engine import (
+                            get_project_location, load_rate_database)
+                        rate_settings = load_app_settings()
+                        rate_database = load_rate_database(rate_settings)
+                        project_location = get_project_location(
+                            rate_settings, safe_text(doc.Title, ""))
                     except:
                         rate_database = []
+                        project_location = ""
                     unmapped_count = len(unmapped_report) - 1
 
                     # P9: severity and a compact summary of exactly those
@@ -6112,6 +6139,7 @@ try:
                             unmapped_report=unmapped_report,
                             rate_analysis=rate_analysis,
                             rate_database=rate_database,
+                            project_location=project_location,
                             site_items=site_items
                         )
 
@@ -6135,6 +6163,7 @@ try:
                             unmapped_report=unmapped_report,
                             rate_analysis=rate_analysis,
                             rate_database=rate_database,
+                            project_location=project_location,
                             site_items=site_items
                         )
 

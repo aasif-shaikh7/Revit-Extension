@@ -4464,6 +4464,156 @@ def main():
         shutil.rmtree(db_dir, ignore_errors=True)
 
     # ------------------------------------------------------------
+    # P12 Detailed BOQ priced from the rate database (v1.32.0)
+    #
+    # The expected rates below are worked out by hand from the rules, one
+    # case per rule: a specific code beats a general one, a unit alias
+    # still matches, a rate in the wrong unit is skipped, a future rate
+    # waits, an unrecorded grade is never priced, and two currencies make
+    # the TOTAL meaningless.
+    # ------------------------------------------------------------
+    check(
+        ratedb.boq_rate_codes("concrete", "Beam", "m30")
+        == ["RCC-M30-BEAM", "RCC-M30"]
+        and ratedb.boq_rate_codes("concrete", "Beam", "") == []
+        and ratedb.boq_rate_codes("concrete", "Beam", "(No Grade)") == []
+        and ratedb.boq_rate_codes("shuttering", "Structure Wall")
+        == ["SHUT-WALL", "SHUT"]
+        and ratedb.boq_rate_codes("steel", diameter="12") == ["STEEL-12", "STEEL"],
+        "P12 BOQ items are priced by codes, most specific first"
+    )
+    check(
+        ratedb.normalize_unit("Cum") == "m3"
+        and ratedb.normalize_unit(u"m³") == "m3"
+        and ratedb.normalize_unit("SQM") == "m2"
+        and ratedb.normalize_unit("Kgs") == "kg"
+        and ratedb.normalize_unit("MT") == "mt",
+        "P12 unit spellings a schedule uses are recognised; unknown ones "
+        "are kept as typed"
+    )
+
+    boq_rates = [
+        {"item_code": "RCC-M30", "unit": "m3", "rate": 6500, "currency": "INR",
+         "source": "SAMPLE"},
+        {"item_code": "RCC-M30-BEAM", "unit": "cum", "rate": 7000,
+         "currency": "INR", "location": "Gujarat", "source": "SAMPLE"},
+        {"item_code": "RCC-M40", "unit": "m2", "rate": 99, "currency": "INR",
+         "source": "SAMPLE"},
+        {"item_code": "RCC-M10", "unit": "m3", "rate": 4000, "currency": "INR",
+         "effective_date": "2027-01-01", "source": "SAMPLE"},
+        {"item_code": "SHUT", "unit": "sqm", "rate": 450, "currency": "INR",
+         "source": "SAMPLE"},
+        {"item_code": "STEEL-12", "unit": "kg", "rate": 75, "currency": "INR",
+         "source": "SAMPLE"},
+        {"item_code": "STEEL", "unit": "kg", "rate": 70, "currency": "INR",
+         "source": "SAMPLE"},
+    ]
+    priced = boq_engine.build_detailed_boq_table(
+        boq_fixture, {}, boq_fixture.get("Rebar") or [],
+        rate_database=boq_rates, project_location="Navsari, Gujarat, India",
+        rate_date="2026-09-22")
+    by_item = dict((row[0], row) for row in priced if "." in str(row[0])
+                   and row[0] != "Item No.")
+    check(
+        priced[0] == list(boq_engine.DETAILED_BOQ_HEADERS)
+        and all(len(row) == 8 for row in priced),
+        "P12 Detailed BOQ carries Rate Code and Rate Note on every row"
+    )
+    check(
+        by_item["A.1"][1] == "Concrete M10 in Beams"
+        and by_item["A.1"][4] == ""
+        and by_item["A.1"][7] == "No rate - add RCC-M10-BEAM or RCC-M10"
+        and by_item["A.2"][4] == 7000.0 and by_item["A.2"][6] == "RCC-M30-BEAM"
+        and "Gujarat" in by_item["A.2"][7] and "SAMPLE" in by_item["A.2"][7],
+        "P12 the city's state rate for the specific code wins; a rate not yet "
+        "in force leaves the item blank"
+    )
+    check(
+        by_item["A.3"][1] == "Concrete in Beams - grade not recorded"
+        and by_item["A.3"][4] == "" and by_item["A.3"][6] == ""
+        and by_item["A.3"][7] == "Not priced - grade not recorded"
+        and by_item["A.4"][1] == "Concrete M40 in Columns"
+        and by_item["A.4"][4] == ""
+        and "RCC-M40 is per m2" in by_item["A.4"][7],
+        "P12 an unrecorded grade is never priced, and a rate in the wrong "
+        "unit is refused and named"
+    )
+    check(
+        by_item["B.1"][4] == 450.0 and by_item["B.1"][6] == "SHUT"
+        and by_item["B.2"][4] == 450.0
+        and by_item["C.1"][1] == "Reinforcement steel, 8 mm dia"
+        and by_item["C.1"][4] == 70.0 and by_item["C.1"][6] == "STEEL"
+        and by_item["C.2"][4] == 75.0 and by_item["C.2"][6] == "STEEL-12",
+        "P12 shuttering falls back to SHUT; steel uses its diameter rate, "
+        "else STEEL"
+    )
+    # Amount = Quantity x Rate, evaluated: 3.5*7000 + 17*450 + 4*450
+    # + 20*70 + 150*75 = 24500 + 7650 + 1800 + 1400 + 11250 = 46600.
+    amount_total = 0.0
+    for row_index, row in enumerate(priced, 1):
+        if "." in str(row[0]) and row[0] != "Item No.":
+            check_formula = 'IF(E{0}="","",D{0}*E{0})'.format(row_index)
+            if row[5] != ("FORMULA", check_formula):
+                amount_total = None
+                break
+            if row[4] != "":
+                amount_total += float(row[3]) * float(row[4])
+    check(
+        amount_total == 46600.0 and priced[-1][7] == "",
+        "P12 priced Amounts add up to the hand-worked 46,600 and one currency "
+        "leaves the TOTAL unflagged (got {0})".format(amount_total)
+    )
+
+    mixed = boq_engine.build_detailed_boq_table(
+        boq_fixture, {}, boq_fixture.get("Rebar") or [],
+        rate_database=boq_rates + [
+            {"item_code": "STEEL-8", "unit": "kg", "rate": 3, "currency": "AED",
+             "source": "SAMPLE"}],
+        project_location="Navsari, Gujarat, India", rate_date="2026-09-22")
+    check(
+        mixed[-1][1] == "TOTAL"
+        and mixed[-1][7] == "Mixed currencies (INR, AED) - this TOTAL is not "
+        "meaningful",
+        "P12 two currencies in one BOQ flag the TOTAL"
+    )
+    unpriced = boq_engine.build_detailed_boq_table(
+        boq_fixture, {}, boq_fixture.get("Rebar") or [])
+    check(
+        all(row[4] == "" and row[7] == "" for row in unpriced[1:])
+        and [row[6] for row in unpriced if row[0] == "A.2"]
+        == ["RCC-M30-BEAM / RCC-M30"],
+        "P12 with no rate database nothing is priced, and Rate Code still "
+        "names the codes to add"
+    )
+    check(
+        ratedb.price_boq_item(boq_rates, ["RCC-M30-BEAM", "RCC-M30"], "m3",
+                              "Dubai, UAE", "2026-09-22")[:2]
+        == (6500.0, "RCC-M30"),
+        "P12 a job outside Gujarat skips the Gujarat rate and takes the "
+        "general one"
+    )
+    check(
+        ratedb.unmatched_places(
+            [{"item_code": "X", "location": "Gujrat"},
+             {"item_code": "Y", "location": "Gujarat, India"},
+             {"item_code": "Z", "location": "UAE"},
+             {"item_code": "W"}],
+            "Navsari, Gujarat, India") == ["Gujrat", "UAE"],
+        "P12 the tab names rates whose place is not one of the project's "
+        "levels - a misspelling shows up here"
+    )
+    refresh_block = nested_handler_source("rate_db_refresh")
+    check(
+        "unmatched_places(rate_db_state, project_location)" in refresh_block
+        and "LostFocus" in nested_handler_source("rate_db_wire_controls")
+        and export_handler_source.count(
+            "project_location=project_location,") == 2
+        and "get_project_location(" in export_handler_source,
+        "P12 the tab warns about unmatched places, and the export passes the "
+        "project location to both formats"
+    )
+
+    # ------------------------------------------------------------
     # Saved selections survive a document that has none of them (v1.26.1)
     #
     # Found live: an export run on an architectural model with no

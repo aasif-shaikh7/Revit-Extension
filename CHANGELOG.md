@@ -22,6 +22,61 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.32.0] - 2026-09-22
+
+### Added (P12 third slice: the Detailed BOQ priced from the rate database)
+- **Rate lookup:** the Detailed BOQ Rate column is now filled from the rate database, for this
+  project's location on the export date. Each item is looked up by codes, most specific first:
+  - concrete: `RCC-M30-BEAM`, then `RCC-M30`;
+  - shuttering: `SHUT-SLAB`, then `SHUT`;
+  - reinforcement: `STEEL-12`, then `STEEL`.
+
+  Amount stays the live `Quantity x Rate` formula, so a rate typed in Excel still works.
+- **Two new columns:**
+  - **Rate Code** names the code that priced the item, or the codes to add.
+  - **Rate Note** says where the rate is from (location, from-date, currency, and SAMPLE when it
+    is one) or why the item is blank ("No rate - add RCC-M40-COLUMN or RCC-M40").
+- **Rules:**
+  - Concrete whose grade was not recorded is never priced.
+  - A rate in another unit is refused and named ("RCC-M40 is per m2"). Common spellings match:
+    Cum / m3, SQM / m2, Kgs / kg.
+  - If the priced items use more than one currency, the TOTAL row is flagged "Mixed currencies -
+    this TOTAL is not meaningful".
+- **Unmatched places in the tab:** the Rate Database tab's summary lists places that have rates but
+  are not one of this project's levels. A Dubai rate on a Navsari job belongs there. A misspelt
+  "Gujrat" shows up there too. The list is re-checked when the location box loses focus.
+- The tab's intro text lists the code patterns.
+
+### Fixed
+- Number styling in the classic workbook: the Rate Analysis sheet styled Unit through Overheads
+  instead of Material through Analysed Rate. The `quantity_column_map` is 1-based and the list was
+  0-based. The Rate Database sheet from v1.31.0 had the same slip, on Unit instead of Rate. Both are
+  corrected.
+
+### Verified
+- Harness: `python test_xlsx_writer.py` passes **362 checks**, up from 350. Every expected rate is
+  worked out by hand, and the priced Amounts add up to a hand-worked 46,600. A mutation run broke
+  the pricing eight ways and every one is caught:
+  - general code tried before the specific one;
+  - unit check off;
+  - no unit aliases;
+  - unrecorded grade priced;
+  - export date ignored;
+  - location ignored;
+  - mixed currency not flagged;
+  - rate not written.
+- Live, owner's own Revit 2025 on UMA NIWAS (site export, Primary bridge; 11 sheets, 13,277 cells, 0
+  mismatches):
+  - Concrete M30 in Beams and in Slabs were priced at the SAMPLE Gujarat rate 6,500 (code
+    `RCC-M30`, noted as SAMPLE). Their Amounts evaluate to 15,13,050.50 and 14,42,876.50, and the
+    TOTAL to 29,55,927.00, each matching quantity x rate by hand.
+  - Every unpriced item names the code to add.
+  - The P13 figures are unchanged (873.6960 m3, no problems).
+  - The headless export left the saved rate in place.
+- Not verified live: the tab's unmatched-places line (the dialog was not reopened for this slice).
+
+---
+
 ## [v1.31.0] - 2026-09-22
 
 ### Added (P12 second slice: Rate Database tab and sheet)
