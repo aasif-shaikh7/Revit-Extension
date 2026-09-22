@@ -24,15 +24,15 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ## [v1.34.1] - 2026-09-22
 
-### Changed (dialog tab strip in the owner's blue)
+### Changed (dialog tab strip in gold)
 - **Light theme:** the strip behind the dialog's tabs (Beam, Column, Structure Wall, Rebar, Slab,
-  ...) is now `#DAE9F8`, Excel's "Dark Blue, Text 2, Lighter 90%". That is the same blue the
-  owner chose for the workbook header bands, so the dialog and the file match.
-  - Tab text on it is 4.9:1.
-  - Hover is `#C5DAF1`, with dark text at 11.1:1.
+  ...) is now Excel's **Gold, Accent 4, Lighter 60%** (`#FFE699`). The owner first tried the
+  workbook's blue `#DAE9F8`, then asked for gold.
+  - Hover is Gold Lighter 40% (`#FFD966`).
+  - Tab text on the strip is 4.9:1, and dark text on hover is 11.6:1.
   - The open tab stays on the page colour, bold, with the black accent underline.
-- **Dark theme:** the strip is the deep blue `#22303F` (tab text 5.1:1, hover `#2C3E52`). A light
-  strip there would glare against Revit's dark greys.
+- **Dark theme:** the strip is a deep gold `#3D3317` (tab text 4.8:1, hover `#4D4020`). A light
+  gold strip there would glare against Revit's dark greys.
 - **Tokens:** new `TabStripBrush` and `TabHoverBrush`, in both themes.
 
 ### Verified

@@ -45,11 +45,11 @@
     <SolidColorBrush x:Key="TextPrimaryBrush"    Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondaryColor}"/>
 
-    <!-- ===== Tab strip: the same blue family, deep enough for Revit's
-         dark greys (a light #DAE9F8 strip would glare here). Tab text on
-         it 5.1:1; hover #2C3E52 with light text 9.4:1. ===== -->
-    <Color x:Key="TabStripColor">#22303F</Color>
-    <Color x:Key="TabHoverColor">#2C3E52</Color>
+    <!-- ===== Tab strip: a deep gold for Revit's dark greys (a light
+         gold strip would glare here). Tab text on it 4.8:1; hover #4D4020
+         with light text 8.7:1. ===== -->
+    <Color x:Key="TabStripColor">#3D3317</Color>
+    <Color x:Key="TabHoverColor">#4D4020</Color>
     <SolidColorBrush x:Key="TabStripBrush" Color="{StaticResource TabStripColor}"/>
     <SolidColorBrush x:Key="TabHoverBrush" Color="{StaticResource TabHoverColor}"/>
 
