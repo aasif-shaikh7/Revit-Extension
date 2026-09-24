@@ -1548,6 +1548,13 @@ def _grades_in(rows):
     return grades
 
 
+# The BOQ's item vocabulary, shared with revision_engine: a snapshot has
+# to name and order its items exactly as the Detailed BOQ does, or a
+# revision would compare two different descriptions of the same concrete.
+grades_in = _grades_in
+boq_diameter_text = _boq_diameter_text
+
+
 def _concrete_quantity(data, info_by_sheet, sheet_name, grade):
     """Concrete of one grade in one category: live where possible.
 
