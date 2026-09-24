@@ -22,6 +22,63 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.35.0] - 2026-09-24
+
+### Added
+- **P14 BOQ Revision - the sheet that says what changed.** `Previous Qty`, `Current Qty`,
+  `Difference`, `% Difference` and a status for every BOQ item, banded like the Detailed BOQ, in
+  both workbook formats. It appears from the second export of a model onwards; the first has
+  nothing to compare against and writes no sheet.
+- **`lib/revision_engine.py`** (new, the 20th engine module). A revision is a **snapshot** against a
+  snapshot, not a workbook against a workbook: the exported quantity cells hold live `SUMIF`
+  formulas, so a workbook-to-workbook diff would compare formulas, not concrete. Each export files
+  the plain numbers behind it as `rev_NN.json` under
+  `%LOCALAPPDATA%\RCC_BOQ\revisions\<document>\`.
+
+### Decisions inside it
+- The item vocabulary stays in `export_engine` (two new public aliases, `grades_in` and
+  `boq_diameter_text`). A snapshot words and orders its items exactly as the Detailed BOQ does, so
+  the two sheets can never describe the same concrete two ways.
+- A difference under **0.005 m3** is rounding, not a change - five litres is not a revision.
+- An item that vanished is listed at **zero**, not dropped. A vanished item is what a revision sheet
+  exists to show.
+- **No percentage** where the previous quantity was zero, and **no TOTAL row**: m3, m2 and kg do not
+  add up to anything a reader should see.
+- An export that measures exactly what the last one measured **does not file a new revision**. On
+  2026-09-22 one debugging session ran thirteen exports of the same model; without this rule that
+  would now read Rev 00 to Rev 12 for one building.
+- The snapshot is filed **after** the workbook validates, so a failed export does not use up a
+  revision number, and a document title cannot walk out of its own folder.
+- The whole path is guarded: a revision is a convenience, and it must never be the reason a BOQ
+  fails to come out.
+
+### Fixed
+- `write_basic_xlsx(site_format=True)` forwarded only six of its arguments to `write_site_xlsx`: a
+  direct caller asking for the site format silently lost its rate database, rate analysis, project
+  location and assembly profile. All of them are passed on now. The export handler calls the two
+  writers directly, so the shipped tool was never affected.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 404 checks passed** (21 new). Thirteen mutations are each
+  caught by name: the tolerance removed, removed items dropped, a percentage invented from zero,
+  `row_offset` ignored, the document title left unsanitised, a formula stored in a snapshot, the
+  sections reordered, either format not writing the sheet, the heading rows not shifting the
+  formulas, the site table keeping its heading rows, the pair not passed to a writer, and the
+  snapshot filed before validation.
+- **Real Excel 16, both formats:** opened with no repair prompt, `BOQ Revision` present, landscape
+  and one page wide, and the live cells computed - `3.50 -> 4.10` reads `0.60` and `17.14`,
+  `0.75 -> 0.50` reads `-0.25` and `-33.33`, and a new item shows its quantity with the percentage
+  blank.
+- `revision_engine` imports clean on Python 3.12.10 alongside `export_engine`. It has **not** been
+  measured on pyRevit's CP3123 engine, unlike the other 19 modules (2026-09-24), and no export has
+  yet run inside Revit with this code.
+
+### Not built yet
+- There is no dialog tab for revisions. Every export compares against the latest filed snapshot;
+  choosing *which* issue to compare against, and naming an issue, is the remaining P14 slice.
+
+---
+
 ## [v1.34.3] - 2026-09-24
 
 ### Added

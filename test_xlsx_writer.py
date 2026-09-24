@@ -5780,6 +5780,109 @@ def main():
         and revision.snapshot_filename("Rev 7") == "rev_07.json",
         "P14 a document title cannot walk out of its own revisions folder"
     )
+    # The sheet in both workbooks, and the export that files it.
+    rev_book_dir = tempfile.mkdtemp()
+    try:
+        classic_sheets = boq_engine.write_basic_xlsx(
+            os.path.join(rev_book_dir, "classic.xlsx"), boq_fixture,
+            generated_stamp="2026-09-24 10:00",
+            revision_snapshots=(rev_previous, rev_current))
+        site_sheets = boq_engine.write_site_xlsx(
+            os.path.join(rev_book_dir, "site.xlsx"), boq_fixture,
+            project_name="UMA NIWAS", generated_stamp="2026-09-24 10:00",
+            revision_snapshots=(rev_previous, rev_current))
+        first_export = boq_engine.write_basic_xlsx(
+            os.path.join(rev_book_dir, "first.xlsx"), boq_fixture,
+            generated_stamp="2026-09-24 10:00")
+    finally:
+        shutil.rmtree(rev_book_dir, ignore_errors=True)
+
+    classic_revision = classic_sheets.get(revision.REVISION_SHEET_NAME) or []
+    site_revision = site_sheets.get(revision.REVISION_SHEET_NAME) or []
+    classic_formula_rows = [(index, row) for index, row
+                            in enumerate(classic_revision, 1)
+                            if isinstance(row[5], tuple)]
+    # The site header row holds MERGE_V tuples, so a formula row is one
+    # whose Difference cell is a FORMULA tuple.
+    site_formula_rows = [(index, row) for index, row
+                         in enumerate(site_revision, 1)
+                         if len(row) > 5 and isinstance(row[5], tuple)
+                         and row[5][0] == "FORMULA"]
+    check(
+        revision.REVISION_SHEET_NAME not in first_export
+        and classic_formula_rows
+        and site_revision,
+        "P14 both workbooks write the BOQ Revision sheet, and a first export "
+        "with nothing to compare against writes none"
+    )
+    def rev_cell(table, row_index, column=0):
+        """One cell, or None - a sheet the writer skipped must fail a
+        check rather than crash the harness with an IndexError."""
+        try:
+            return table[row_index][column]
+        except Exception:
+            return None
+
+    check(
+        str(rev_cell(classic_revision, 0)).startswith("Previous: Rev 00")
+        and str(rev_cell(classic_revision, 1)).startswith("Current: Rev 01")
+        and list(classic_revision[2:3] and classic_revision[2] or [])
+        == list(revision.REVISION_HEADERS)
+        and all(row[5] == ("FORMULA", "E{0}-D{0}".format(index))
+                for index, row in classic_formula_rows),
+        "P14 the classic sheet names both issues above its header and its "
+        "formulas still point at their own rows"
+    )
+    check(
+        rev_cell(site_revision, 0) == "UMA NIWAS"
+        and rev_cell(site_revision, 1) == "RCC - BOQ REVISION"
+        and rev_cell(site_revision, 2) == "BOQ REVISION - Rev 00 to Rev 01"
+        and rev_cell(site_revision, 4) == ("MERGE_V", "ITEM NO.")
+        and site_formula_rows
+        and all(row[5] == ("FORMULA", "E{0}-D{0}".format(index))
+                for index, row in site_formula_rows),
+        "P14 the site sheet carries the title band and its formulas land five "
+        "rows down"
+    )
+
+    # The export handler: both writers are given the pair, and the
+    # snapshot is filed only after the workbook has validated - a failed
+    # export must not use up a revision number.
+    check(
+        export_handler_source.count("revision_snapshots=revision_snapshots,") == 2
+        and "next_revision_label(" in export_handler_source
+        and "latest_snapshot(" in export_handler_source,
+        "P14 the export passes this issue and the last one to both formats"
+    )
+    save_at = export_handler_source.find("save_snapshot(revision_current)")
+    validated_at = export_handler_source.find(
+        "Canonical XLSX validation did not pass")
+    check(
+        save_at > validated_at > 0
+        and "if revision_current:" in export_handler_source,
+        "P14 a snapshot is filed only after the workbook validates"
+    )
+
+    check(
+        revision.snapshot_is_unchanged(rev_previous, rev_previous) is True
+        and revision.snapshot_is_unchanged(rev_previous, rev_current) is False
+        and revision.snapshot_is_unchanged(
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.5}]},
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.504}]}) is True
+        and revision.snapshot_is_unchanged(
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.5}]},
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.5},
+                       {"code": "B|Beam", "quantity": 1.0}]}) is False,
+        "P14 an issue that measures what the last one measured is not a new "
+        "revision; five litres does not make one either"
+    )
+    check(
+        "snapshot_is_unchanged(" in export_handler_source
+        and export_handler_source.index("snapshot_is_unchanged(")
+        < export_handler_source.index("save_snapshot(revision_current)"),
+        "P14 the export files a revision only when something changed"
+    )
+
     revision_source = io.open(os.path.join(LIB_DIR, "revision_engine.py"),
                               encoding="utf-8-sig").read()
     check(

@@ -2102,7 +2102,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      site_format=False, validation_report_path=None,
                      unmapped_report=None, site_items=None,
                      rate_analysis=None, rate_database=None,
-                     project_location=""):
+                     project_location="", revision_snapshots=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2119,15 +2119,23 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     # dispatch and any direct callers share one behaviour.
     if site_format:
 
+        # Everything this function was given goes on: a direct caller
+        # that asked for the site format used to lose its rates, its rate
+        # analysis and its project location here, silently.
         return write_site_xlsx(
             file_path,
             data_result,
             project_name=project_name,
             tool_version=tool_version,
             generated_stamp=generated_stamp,
+            assembly_profile=assembly_profile,
             validation_report_path=validation_report_path,
             unmapped_report=unmapped_report,
-            site_items=site_items
+            site_items=site_items,
+            rate_analysis=rate_analysis,
+            rate_database=rate_database,
+            project_location=project_location,
+            revision_snapshots=revision_snapshots
         )
 
     # Only categories that actually contain at least one element produce a
@@ -2528,6 +2536,20 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append(DETAILED_BOQ_SHEET_NAME)
         sheet_rows[DETAILED_BOQ_SHEET_NAME] = detailed_boq
         quantity_column_map[DETAILED_BOQ_SHEET_NAME] = [4, 5, 6]
+
+    # P14: what moved since the previous issue, next to the BOQ it
+    # revises. Written only when a snapshot of that issue exists and the
+    # comparison has something in it, so a first export carries no
+    # half-empty revision sheet.
+    if revision_snapshots:
+        from revision_engine import (
+            REVISION_SHEET_NAME, build_revision_sheet)
+        revision_table = build_revision_sheet(
+            revision_snapshots[0], revision_snapshots[1])
+        if len(revision_table) > 1:
+            sheet_names.append(REVISION_SHEET_NAME)
+            sheet_rows[REVISION_SHEET_NAME] = revision_table
+            quantity_column_map[REVISION_SHEET_NAME] = [4, 5, 6, 7]
 
     # Per-element Costing sheet. Each element row carries its primary
     # quantity, its unit rate and a computed amount (quantity x rate).
@@ -3233,7 +3255,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     assembly_profile=None, validation_report_path=None,
                     unmapped_report=None, site_items=None,
                     rate_analysis=None, rate_database=None,
-                    project_location=""):
+                    project_location="", revision_snapshots=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -3441,6 +3463,28 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append(p13_name)
         sheet_rows[p13_name] = p13_table
         sheet_widths[p13_name] = p13_widths
+
+    # P14: the same comparison as the classic workbook, wrapped in the
+    # site title bands. The band names the two issues, so the table
+    # itself needs no heading rows (with_meta=False).
+    if revision_snapshots:
+        from revision_engine import (
+            REVISION_SHEET_NAME, build_revision_sheet, revision_title)
+        revision_plain = build_revision_sheet(
+            revision_snapshots[0], revision_snapshots[1], site_band_offset,
+            with_meta=False)
+        if len(revision_plain) > 2:
+            heading = revision_title(
+                revision_snapshots[0], revision_snapshots[1])
+            revision_table, revision_widths = build_site_tabular_sheet(
+                project_name,
+                "BOQ REVISION" + (" - " + heading if heading else ""),
+                revision_plain, band_title="RCC - BOQ REVISION")
+            if len(revision_widths) > 1:
+                revision_widths[1] = 48     # item descriptions need the room
+            sheet_names.append(REVISION_SHEET_NAME)
+            sheet_rows[REVISION_SHEET_NAME] = revision_table
+            sheet_widths[REVISION_SHEET_NAME] = revision_widths
 
     _trail("site | site items + unmapped")
     # P7: same typed line items as the classic workbook, wrapped in the

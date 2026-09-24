@@ -333,6 +333,58 @@ def revision_meta_lines(previous, current):
     return lines
 
 
+def revision_title(previous, current):
+    """`Rev 00 to Rev 01`, for the sheet's own heading; "" when unlabelled."""
+    labels = []
+    for snapshot in (previous, current):
+        if not isinstance(snapshot, dict):
+            return ""
+        label = str(snapshot.get("revision", "") or "").strip()
+        if not label:
+            return ""
+        labels.append(label)
+    return "{0} to {1}".format(labels[0], labels[1])
+
+
+def build_revision_sheet(previous, current, row_offset=0, with_meta=True):
+    """The revision table with the two issues named above its header.
+
+    The classic workbook's sheets are plain tables, so the heading lines
+    have to be rows of the table itself; they push the header down, and
+    the formulas are built knowing that. The site workbook has its own
+    title band and passes with_meta=False. A comparison with nothing in
+    it returns the header alone, so the caller can skip the sheet.
+    """
+    meta = revision_meta_lines(previous, current) if with_meta else []
+    table = build_revision_table(previous, current, row_offset + len(meta))
+    if len(table) <= 1:
+        return table
+    width = len(REVISION_HEADERS)
+    heading = [[line] + [""] * (width - 1) for line in meta]
+    return heading + table
+
+
+def snapshot_is_unchanged(previous, current):
+    """True when this issue measures exactly what the last one measured.
+
+    A revision number should mean something changed. On 2026-09-22 a
+    single debugging session ran thirteen exports of one model; filing a
+    revision for each would have left Rev 00 to Rev 12 describing the
+    same building. The quantities are compared at the tolerance the
+    sheet uses, so rounding does not create an issue either.
+    """
+    old_items = snapshot_items(previous)
+    new_items = snapshot_items(current)
+    if set(old_items) != set(new_items):
+        return False
+    for code, item in new_items.items():
+        before = _number(old_items[code].get("quantity")) or 0.0
+        after = _number(item.get("quantity")) or 0.0
+        if abs(after - before) >= QUANTITY_TOLERANCE:
+            return False
+    return True
+
+
 def revision_change_counts(previous, current):
     """{status: how many items} - the one-line story of this revision."""
     counts = {}

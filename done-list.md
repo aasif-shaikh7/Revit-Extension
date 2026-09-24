@@ -1430,6 +1430,34 @@ missing, empty or corrupt.
 survives, a real empty choice is still saved), and the settings round-trip runs on a temporary
 profile folder. Mutations that drop the backup or the fallback fail those checks by name.
 
+## P14-01 - BOQ Revision: the sheet that says what changed (`v1.35.0`, 2026-09-24)
+
+**Built:** `lib/revision_engine.py` (the 20th engine module) and a `BOQ Revision` sheet in both
+workbook formats - `Previous Qty`, `Current Qty`, `Difference`, `% Difference` and a status per
+item, banded like the Detailed BOQ. A revision is a **snapshot** against a snapshot, not a workbook
+against a workbook: the exported quantity cells hold live `SUMIF` formulas, so a workbook diff would
+compare formulas rather than concrete. Each export files its own plain numbers as `rev_NN.json`
+under `%LOCALAPPDATA%\RCC_BOQ\revisions\<document>\`, after the workbook validates, and only when
+they differ from the last issue - one debugging session on 2026-09-22 ran thirteen exports of one
+model, which would otherwise read Rev 00 to Rev 12 for one building. Items keep the Detailed BOQ's
+own wording and order (`export_engine` gained two public aliases for that). A vanished item is
+listed at zero, an item with no previous quantity gets no percentage, and there is no TOTAL row
+because m3, m2 and kg do not add up.
+
+**Also fixed here:** `write_basic_xlsx(site_format=True)` forwarded six of its arguments and dropped
+the rest, so a direct caller asking for the site format lost its rate database, rate analysis,
+project location and assembly profile. The shipped tool calls both writers directly, so it was
+never affected.
+
+**Known to work:** Tested (harness) - 404 checks, 21 of them new, and thirteen mutations each caught
+by name. Verified in **real Excel 16** in both formats: no repair prompt, landscape one page wide,
+and the live cells computed (`3.50 -> 4.10` reads `0.60` / `17.14`; `0.75 -> 0.50` reads `-0.25` /
+`-33.33`; a new item shows its quantity with the percentage blank). **Not yet run inside Revit** -
+no export has produced this sheet from a live model, and `revision_engine` has not been measured on
+CP3123. Remaining slice: a dialog tab to choose which issue to compare against.
+
+---
+
 ---
 
 ## Standing conventions

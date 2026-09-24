@@ -54,7 +54,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | **built, waiting on real rates** (`v1.30.0` engine: entries, lookup by city/state/country and date, store, sheet builder; `v1.31.0` Rate Database tab, per-project location, sheet in both formats; `v1.32.0` the Detailed BOQ priced from it, live-verified on UMA NIWAS. The owner has no real rates yet; nothing is left to build until they do) |
 | P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | **done** (`v1.27.0` Detailed BOQ, `v1.28.0` Concrete Summary + Formwork Summary, `v1.29.0` all three in the site workbook; live-verified on UMA NIWAS in both formats, the site format also in the owner's own Revit 2026-09-22) |
-| P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
+| P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | **engine + both sheets done** (`v1.35.0` `lib/revision_engine.py`, a snapshot filed per export, `BOQ Revision` in the classic and site workbooks, verified in real Excel; **not yet run inside Revit**). Remaining: a dialog tab to choose which issue to compare against |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
 | INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `done` (`v1.19.0`) |
@@ -64,8 +64,10 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus (2026-09-24):** **P14 BOQ Revision** is the next phase to build. Everything
-before it has shipped:
+**Current product focus (2026-09-24):** **P14's first slice shipped in `v1.35.0`** - the engine, the
+snapshot store and the `BOQ Revision` sheet in both formats. The next thing to do is run an export
+twice inside Revit and read the sheet; after that, either P14's dialog tab or **P15**.
+Everything before P14 has shipped:
 
 - **P1-P7, P9-P11, P13 are done** and owner-confirmed; see the table above and `CHANGELOG.md`.
 - **P12** is built end to end - engine, dialog tab, workbook sheet and the Detailed BOQ priced from
@@ -73,7 +75,8 @@ before it has shipped:
 - **P8** is the one that is still open in code: `script.py` is **6,577 lines**, larger than when
   the split started, because P11-P13 and the theme all landed in it. The next useful slice is
   moving the dialog's tab handlers out of `script.py`.
-- **P14**, **P15** and **P16** have no code yet.
+- **P14** has its engine and sheets; only the dialog tab is left. **P15** and **P16** have no
+  code yet.
 
 The theme work (v1.33.0-v1.34.1) and the settings-safety fix (v1.34.2) sit outside the phase
 numbering; both are recorded in `CHANGELOG.md`.
