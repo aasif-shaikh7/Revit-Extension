@@ -109,6 +109,10 @@ Nudge.extension/
     ├── rule_engine.py       <- P8 host-free RCC classification/audit + grade rules (pure Python)
     ├── parameter_engine.py  <- P8 host-free parameter readers + ParameterItem (pure Python)
     ├── site_items_engine.py <- P7 non-model line items: rules, pricing, table (pure Python)
+    ├── assembly_engine.py   <- P6 concrete/rebar/formwork assembly table (pure Python)
+    ├── rate_database_engine.py <- P12 rates by code, place and date + BOQ pricing (pure Python)
+    ├── stack_runner.py      <- runs the workbook writers on a 64 MB-stack thread (pure Python)
+    ├── crash_trail.py       <- one flushed line per step, so a hard crash names its step
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
     ├── agent_export_job.py  <- fixed-path headless export job contract (pure Python)
     └── Resources/
@@ -124,10 +128,13 @@ Nudge.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. Since P4 it also hosts six
-  **pure-Python engine modules** (`settings_engine`, `quantity_engine`,
-  `formwork_engine`, `rebar_engine`, `costing_engine`, `export_engine`, `export_validation`,
-  `agent_export_job`, `validation_engine`) that the BOQ
+  dictionaries. It also hosts the **19 pure-Python modules** listed in the
+  tree above (`settings_engine`, `quantity_engine`, `formwork_engine`,
+  `rebar_engine`, `assembly_engine`, `costing_engine`, `rate_database_engine`,
+  `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
+  `parameter_engine`, `site_items_engine`, `stack_runner`, `crash_trail`,
+  `authoring_spec`, `agent_export_job`, `rest_api`, and `theme_manager` on the
+  UI side) that the BOQ
   pushbutton imports by plain module name — pyRevit puts the extension
   `lib/` folder on `sys.path` (the mechanism `theme_manager` already
   relied on). The engines must stay dependency-free: stdlib only, no
@@ -168,7 +175,7 @@ The single Python file pyRevit executes when BOQ is clicked. It contains, in ord
    live in `lib/quantity_engine.py` and `lib/formwork_engine.py`.
 7. **Export adapter** — output path selection and dispatch to the dependency-free Open XML writer
    in `lib/export_engine.py`; costing formulas live in `lib/costing_engine.py`.
-8. **Document + category definitions** — `CATEGORY_INFO` mapping the five tabs to Revit
+8. **Document + category definitions** — `CATEGORY_INFO` mapping the six category tabs to Revit
    `BuiltInCategory` values.
 9. **Collection / classification** — Structure Wall filters `OST_Walls` by the Revit Structural
    flag; raw Floor/Foundation collections remain separate; `classify_rcc_element` reads one element
@@ -212,7 +219,7 @@ this extension, and must not drive decisions here.
 `test_rest_api.py` and `test_xlsx_writer.py` live at the repository root and import nothing from
 Revit. The REST harness validates the Python client contract and bounded serialization. The .NET
 Core test executable validates Bearer-token handling and pipe framing. The XLSX harness runs
-with a plain `python test_xlsx_writer.py`; it extracts the source of the XLSX engine
+with a plain `python test_xlsx_writer.py`, which prints its own count (`RESULT: all N checks passed`); it resolves each function from `lib/` first and falls back to `script.py`, extracting the source of the XLSX engine
 functions from the real `script.py` and validates the generated workbook by unzipping it.
 
 ---
@@ -243,10 +250,25 @@ together:
 
 ## Revit / pyRevit gating
 
-The docstring declares `__min_revit_ver__ = '2025'` (Revit **2025 and above**). CP3123
-(CPython 3.12.3) is the product target; IP27 is best-effort. On the currently inspected pyRevit
-build the forms backend is available only through IP27. The guard remains, but known CP3123/IP27
-runs are silent from `v1.9.3`; only an unexpected engine raises a warning.
+The docstring declares `__min_revit_ver__ = '2025'` (Revit **2025 and above**).
+
+**The engine in practice is IP27 (IronPython 2.7.12).** `script.py` carries no `#! python3` first
+line, so pyRevit selects its default engine, and the default is IronPython — confirmed on
+2026-09-22 and 2026-09-24 from the crash trail, whose first line prints the live engine. CP3123
+(CPython 3.12.3) stays the stated target, and the `lib/` engines are already CPython-clean: all 19
+import and write a workbook on CP3123 (measured 2026-09-24). Only `script.py`'s pyRevit/WPF layer
+holds the tool on IP27, so moving the button is a deliberate, separately verified change.
+
+Two IP27 consequences are load-bearing for the code as it stands:
+
+- IronPython does not enforce `sys.recursionlimit`, so deep recursion is a hard process crash
+  (`0xc00000fd`) rather than a `RecursionError`. The workbook writers therefore run on a
+  large-stack thread (`lib/stack_runner.py`, `v1.32.1`).
+- The engine is reused between button presses, so module state and `+=` subscriptions survive a
+  run.
+
+The engine guard remains, but known CP3123/IP27 runs are silent from `v1.9.3`; only an unexpected
+engine raises a warning.
 
 ## Bump rules (semver)
 
@@ -262,7 +284,9 @@ compatible. From `1.0.0` onward the normal rules apply.
 
 ## How versions are recorded
 
-- Every release commit is tagged `vMAJOR.MINOR.PATCH`.
+- Every release commit is tagged `vMAJOR.MINOR.PATCH`. **Lapsed in practice:** the last tag
+  in the repository is `v1.7.7`; releases since then (through `v1.34.2`) are recorded in
+  `CHANGELOG.md` but not tagged. Tagging is to resume from the next release.
 - Development commits that predate the first semantic release are tagged `v0.x.y` so history is
   visible (`v0.1.0` … `v0.3.1`).
 

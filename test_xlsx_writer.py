@@ -18,6 +18,7 @@ import re
 import shutil
 import sys
 import tempfile
+import textwrap
 import zipfile
 from xml.dom import minidom
 
@@ -4499,6 +4500,50 @@ def main():
         shutil.rmtree(db_dir, ignore_errors=True)
 
     # ------------------------------------------------------------
+    # Each category tab carries this model's element count (v1.34.3)
+    #
+    # The owner opened the dialog on a model with no structural elements
+    # and read the empty lists as a fault. The tab now says "Beam (519)",
+    # "Rebar (0)". Re-running on a filter change must not stack suffixes.
+    # ------------------------------------------------------------
+    counts_block = nested_handler_source("show_category_counts")
+    check(
+        'header.split(" (")[0]' in counts_block
+        and "category_elements" in counts_block
+        and "show_category_counts()" in script_text,
+        "Tab counts are derived from the tab's own header and the model's "
+        "elements, and are applied when the dialog opens"
+    )
+    counts_body = textwrap.dedent(
+        counts_block[counts_block.index("            tabs = window"):])
+    counts_source = ("def _apply_counts():\n"
+                     + textwrap.indent(counts_body, "    ")
+                     + "\n_apply_counts()\n")
+
+    class FakeTab(object):
+        def __init__(self, header):
+            self.Header = header
+
+    class FakeTabs(object):
+        def __init__(self, items):
+            self.Items = items
+
+    fake_tabs = FakeTabs([FakeTab("Beam"), FakeTab("Rebar"), FakeTab("Rate Database")])
+    counts_scope = {
+        "window": type("W", (), {"FindName": staticmethod(lambda name: fake_tabs)})(),
+        "category_elements": {"Beam": ["a"] * 519, "Rebar": [], "Slab": ["s"]},
+        "safe_text": lambda value, default: value if isinstance(value, str) else default,
+    }
+    exec(counts_source, counts_scope)
+    exec(counts_source, counts_scope)      # a filter change re-runs it
+    check(
+        [tab.Header for tab in fake_tabs.Items]
+        == ["Beam (519)", "Rebar (0)", "Rate Database"],
+        "Counts show on category tabs only, and re-running does not stack "
+        "suffixes (got {0})".format([tab.Header for tab in fake_tabs.Items])
+    )
+
+    # ------------------------------------------------------------
     # Settings are never left half-written (v1.34.2)
     #
     # On 2026-09-22 a saved list was overwritten and there was no copy to
@@ -4895,7 +4940,6 @@ def main():
     # derived fields, so "no parameters discovered" was never true for
     # them and a model without rebar erased the saved Rebar selection.
     # Replay the guard itself on that case.
-    import textwrap
     guard_start = capture_block.rfind(
         "\n", 0, capture_block.index("previous_selected = {}")) + 1
     guard_end = capture_block.index(

@@ -183,6 +183,12 @@ pending; `v1.3.0`/`v1.4.0` tags withheld until then.
 
 ### BOQ-9 — Brand UI system: shared theme resources + Brand Showcase — code in place (`b1f3c38` + cleanup)
 
+> **Palette superseded (v1.33.0-v1.34.1).** This entry is the receipt for the Ember
+> palette as it stood then. The token names (`Ember*`) and every colour in it were
+> replaced by the owner's own theme - see "Theme - the owner's own palette" below.
+> The structure described here (Light/Dark dictionaries, typography, control
+> templates, the theme selector) is still how the system works.
+
 **Asked for.** Make `docs/reference/brand-guidelines.md` real: shared Light/Dark theme resources
 for the toolkit's WPF dialogs, plus a live visual QA surface for them.
 
@@ -241,6 +247,12 @@ decision (T-03) is not yet reflected by the installed build.
 ---
 
 ### BOQ-10 — BOQ Parameter Manager dialog consumes the brand theme — code in place (`v1.4.2`)
+
+> **Palette superseded (v1.33.0-v1.34.1).** This entry is the receipt for the Ember
+> palette as it stood then. The token names (`Ember*`) and every colour in it were
+> replaced by the owner's own theme - see "Theme - the owner's own palette" below.
+> The structure described here (Light/Dark dictionaries, typography, control
+> templates, the theme selector) is still how the system works.
 
 **Asked for.** The Brand UI system's written next step: "apply the same dictionaries to the BOQ
 Parameter Manager dialog (`Generate.panel/BOQ.pushbutton/ui.xaml`), which today applies the Ember
@@ -330,6 +342,12 @@ Revit 2025.
 ---
 
 ## Theme selector + full-control brand theming — code in place (`v1.5.0`)
+
+> **Palette superseded (v1.33.0-v1.34.1).** This entry is the receipt for the Ember
+> palette as it stood then. The token names (`Ember*`) and every colour in it were
+> replaced by the owner's own theme - see "Theme - the owner's own palette" below.
+> The structure described here (Light/Dark dictionaries, typography, control
+> templates, the theme selector) is still how the system works.
 
 **Asked for.** A professional centralized Light/Dark theme with an in-dialog selector,
 persistence through the existing settings file, and every control (tabs, group boxes, parameter
@@ -1288,6 +1306,129 @@ model-derived figures.
 quantity is priced exactly as typed. The engine's only defence is to refuse to price an incomplete
 line rather than price it at zero. The default list is a convenience seed, not a shared library:
 once a project has its own list, the default can no longer reach it.
+
+---
+
+## P11 - Structural Rate Analysis - **done** (`v1.26.0`-`v1.26.3`, owner-confirmed 2026-09-21)
+
+**Asked for:** where a rate comes from - material, labour, machinery, wastage, overheads - not just
+a rate typed into a cell.
+
+**Built:** `lib/costing_engine.py` gained the build-up: `normalize_rate_analysis`,
+`compute_analysed_rate` (wastage on the material only, overheads on everything under them),
+`build_rate_analysis_sheet`, the settings store and `find_rate_code_conflict`. `v1.26.2` added the
+workbook sheet in both formats, `v1.26.3` the dialog tab.
+
+**Known to work:** Tested (harness) - the arithmetic is checked by hand (5200 + 3% + 1400 + 350,
++12% = 7958.72), every one of the five components missing in turn leaves the rate blank rather than
+zero, and both writers are executed, not just read. Owner-confirmed in the dialog on 2026-09-21.
+
+**Cost:** an item missing any component exports with a blank rate and a status naming what is
+missing. That is deliberate - a zero would price work nobody costed.
+
+---
+
+## P13 - Professional Excel BOQ - **done** (`v1.27.0`-`v1.29.0`, live-verified on UMA NIWAS)
+
+**Asked for:** the sheets a client or contractor actually prices from.
+
+**Built:** `lib/export_engine.py` gained `build_detailed_boq_table` (`v1.27.0`: concrete by category
+and grade, centering and shuttering, reinforcement by diameter, live quantities, an Amount formula
+that fills in when a rate appears), `build_concrete_summary_table` and `build_formwork_summary_table`
+(`v1.28.0`), and `v1.29.0` put all three into the **site** workbook inside its title bands, with a
+`row_offset` so every Amount and TOTAL points at the row it really lands on.
+
+**Known to work:** Tested (harness) - the sheets are evaluated, not read: every SUMIF and SUM is
+computed and compared with sums taken from the fixture, and with the offset deliberately set to 0
+the site checks fail. Live on the owner's model, in both formats: concrete 873.6960 m3, shuttering
+6,563.07 m2, 12 levels, zero mismatches; the site format was also exported from the owner's own
+Revit.
+
+---
+
+## P12 - Structural Rate Database - **built** (`v1.30.0`-`v1.32.0`), waiting on the owner's rates
+
+**Asked for:** configurable rates, never hard-coded, usable across cities and countries.
+
+**Built:** `lib/rate_database_engine.py` - entries (item code, description, unit, rate, currency,
+location, vendor, effective date, source), `find_rate` (the latest rate in force on the day; a
+city's own rate, else its state, else its country, else a general rate; a clash prices nothing),
+the settings store, `build_rate_database_sheet` and `find_rate_entry_conflict`. `v1.31.0` added the
+Rate Database tab and the per-project location; `v1.32.0` prices the Detailed BOQ from it by codes
+(`RCC-M30-BEAM` then `RCC-M30`, `SHUT-SLAB` then `SHUT`, `STEEL-12` then `STEEL`) and adds the Rate
+Code and Rate Note columns.
+
+**Known to work:** Tested (harness) - every expected rate worked out by hand; mutation runs broke
+the engine eight ways and the pricing eight more, and every one was caught. Live on UMA NIWAS: M30
+beams and slabs priced at a SAMPLE rate, amounts matching by hand, and the headless export left the
+saved rates in place.
+
+**Cost:** no rate lives in the code. Until the owner enters real rates the BOQ shows the codes to
+add, which is the intended behaviour.
+
+---
+
+## Revit crash on BBS exports - **fixed** (`v1.32.1`)
+
+**Found:** exporting the owner's `R-25 BBS BEAM` model crashed Revit with a stack overflow
+(`0xc00000fd`), once in the owner's session and repeatedly in an isolated test Revit.
+
+**Diagnosed:** `lib/crash_trail.py` writes one flushed line per step. The model read always
+finished; the crash was always inside the workbook writer, at a different sheet each time. There is
+no recursion in the Python code, and replayed outside the live pipeline the writers run on a 128 KB
+stack. The cause is the engine: the button runs on IronPython 2.7.12, where the writers sit at the
+bottom of a very deep main-thread call chain.
+
+**Built:** `lib/stack_runner.py` runs both writers on a thread with a 64 MB stack, passing results,
+exceptions and culture through. The writers touch no Revit API; reading the model stays on Revit's
+main thread.
+
+**Known to work:** before the fix, four sessions out of four crashed on the first or second export.
+After it, 13 exports in one session with no crash, and a pre-fix and post-fix workbook are identical
+cell by cell. No crash has been recorded since (checked 2026-09-24).
+
+**Cost:** the root cause inside IronPython is still not identified - only avoided.
+
+---
+
+## Theme - the owner's own palette - **done** (`v1.33.0`-`v1.34.1`)
+
+**Asked for:** "kuch unique" - after thirteen rendered designs were rejected, the owner picked their
+own colours in a Theme Picker page built for it.
+
+**Built:** the `Ember*` tokens became `Primary*` / `Accent*` / `HeaderBand*` / `TabStrip*` in both
+theme dictionaries. Dialog: red `#C8102E` header band, peach `#F4A582` button with black text, lime
+`#C6F432` selection, gold `#FFE699` tab strip, Consolas, a two-row footer that cannot overlap.
+Workbook (`v1.34.0`-`v1.34.1`): red title and header rows, `#DAE9F8` band rows (Excel's "Dark Blue,
+Text 2, Lighter 90%", read from the owner's own Excel), lime-tint TOTAL rows, Indian digit grouping
+on every number, and A4 landscape fitted one page wide.
+
+**Known to work:** Tested (harness) - key parity between the themes, every used key defined, and
+WCAG AA contrast measured for every text pair, including the header band and the tab strip; the old
+Ember orange failed that check at 2.23:1, which is why it went. `ui.xaml` renders in Light and Dark
+through WPF's own `XamlReader`. Real Excel 16 opens both workbooks with no repair, every sheet
+landscape and one page wide. The owner confirmed the dialog in Revit.
+
+**Cost:** the header red sits close to the error red; errors are distinguished by where they appear
+and by their words.
+
+---
+
+## Saved selections and settings - **fixed** (`v1.33.0`, `v1.34.2`)
+
+**Found:** opening the dialog on a model with no rebar erased the owner's six saved Rebar
+parameters.
+
+**Built:** the guard that keeps a saved list now asks whether the document has **elements** in the
+category, not whether it listed parameters - Rebar and Structure Wall always list their derived
+fields, so the old test never applied to them (`v1.33.0`). `v1.34.2` added the second line of
+defence: `save_app_settings` writes a temporary file, keeps the previous settings as `.bak` and
+renames into place, and `load_app_settings` falls back to that backup when the live file is
+missing, empty or corrupt.
+
+**Known to work:** Tested (harness) - the guard is replayed on a model with no rebar (the saved list
+survives, a real empty choice is still saved), and the settings round-trip runs on a temporary
+profile folder. Mutations that drop the backup or the fallback fail those checks by name.
 
 ---
 
