@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.35.2'
+__version__ = '1.36.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.35.2'
+SCRIPT_VERSION = '1.36.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -3313,6 +3313,179 @@ try:
                     theme_selector.SelectedIndex = 0
             except:
                 pass
+
+
+        # ====================================================
+        # HEADER COLOUR (v1.36.0)
+        # Footer combo beside Theme: the owner's red, a few
+        # other presets, or Custom... with a hex box. The colour
+        # is a direct entry in window.Resources - apply_theme()
+        # only clears MergedDictionaries, so the choice survives
+        # every Light/Dark switch. The title turns white or
+        # black, whichever reads better (lib/header_colour.py).
+        # Saved at once, like the theme. Cosmetic: any failure
+        # leaves the theme's own header.
+        # ====================================================
+
+        _header_state = {"ready": False}
+
+        _HEADER_KEYS = (
+            "HeaderBandBrush",
+            "HeaderBandTextBrush",
+            "HeaderBandSubTextBrush",
+        )
+
+        def _apply_header_colour(hex_colour):
+            """Paint the header band; the default red hands back to the theme."""
+            try:
+                import header_colour as _hc
+                from System.Windows.Media import (
+                    SolidColorBrush, ColorConverter)
+
+                colour = _hc.resolve_header_colour(hex_colour)
+                resources = window.Resources
+
+                if _hc.is_default(colour):
+                    for key in _HEADER_KEYS:
+                        if resources.Contains(key):
+                            resources.Remove(key)
+                    return colour
+
+                title, subtitle = _hc.header_text_colours(colour)
+                for key, value in zip(_HEADER_KEYS, (colour, title, subtitle)):
+                    brush = SolidColorBrush(
+                        ColorConverter.ConvertFromString(value))
+                    brush.Freeze()
+                    resources[key] = brush
+                return colour
+            except:
+                return None
+
+        def _save_header_colour(colour):
+            try:
+                import header_colour as _hc
+                header_settings = load_app_settings()
+                header_settings[_hc.SETTINGS_KEY] = colour
+                save_app_settings(header_settings)
+            except:
+                pass
+
+        header_selector = window.FindName("HeaderColourSelector")
+        header_custom = window.FindName("HeaderColourCustom")
+
+        if header_selector:
+
+            try:
+                import header_colour as _hc
+                from System.Windows import Thickness, Visibility
+                from System.Windows.Controls import (
+                    Border, ComboBoxItem, Orientation, StackPanel, TextBlock)
+                from System.Windows.Media import (
+                    SolidColorBrush, ColorConverter)
+
+                def _swatch_item(label, tag, hex_colour):
+                    row = StackPanel()
+                    row.Orientation = Orientation.Horizontal
+                    if hex_colour:
+                        swatch = Border()
+                        swatch.Width = 14
+                        swatch.Height = 14
+                        swatch.Margin = Thickness(0, 0, 6, 0)
+                        swatch.BorderThickness = Thickness(1)
+                        swatch.BorderBrush = SolidColorBrush(
+                            ColorConverter.ConvertFromString("#80808080"))
+                        swatch.Background = SolidColorBrush(
+                            ColorConverter.ConvertFromString(hex_colour))
+                        row.Children.Add(swatch)
+                    text = TextBlock()
+                    text.Text = label
+                    row.Children.Add(text)
+                    item = ComboBoxItem()
+                    item.Content = row
+                    item.Tag = tag
+                    return item
+
+                for preset_label, preset_hex in _hc.HEADER_PRESETS:
+                    header_selector.Items.Add(
+                        _swatch_item(preset_label, preset_hex, preset_hex))
+                header_selector.Items.Add(
+                    _swatch_item(_hc.CUSTOM_LABEL, "custom", None))
+
+                def _commit_custom_colour():
+                    colour = _hc.normalize_hex(header_custom.Text)
+                    if colour is None:
+                        set_status(
+                            "Header colour: type a hex colour such as #1F3864",
+                            "warning")
+                        return
+                    header_custom.Text = colour
+                    if _apply_header_colour(colour):
+                        _save_header_colour(colour)
+                        set_status("Header colour set to {0}".format(colour),
+                                   "success")
+
+                def on_header_colour_changed(sender, args):
+                    try:
+                        item = sender.SelectedItem
+                        tag = str(item.Tag) if item is not None else ""
+                    except:
+                        return
+                    if not tag:
+                        return
+                    if tag == "custom":
+                        if header_custom:
+                            header_custom.Visibility = Visibility.Visible
+                            if not _hc.normalize_hex(header_custom.Text):
+                                header_custom.Text = _hc.resolve_header_colour(
+                                    load_app_settings().get(_hc.SETTINGS_KEY))
+                            if _header_state["ready"]:
+                                header_custom.Focus()
+                                header_custom.SelectAll()
+                        return
+                    if header_custom:
+                        header_custom.Visibility = Visibility.Collapsed
+                    colour = _apply_header_colour(tag)
+                    if colour and _header_state["ready"]:
+                        _save_header_colour(colour)
+
+                header_selector.SelectionChanged += on_header_colour_changed
+
+                if header_custom:
+
+                    def on_header_custom_key(sender, args):
+                        try:
+                            if str(args.Key) == "Return":
+                                _commit_custom_colour()
+                                args.Handled = True
+                        except:
+                            pass
+
+                    def on_header_custom_lost_focus(sender, args):
+                        try:
+                            _commit_custom_colour()
+                        except:
+                            pass
+
+                    header_custom.KeyDown += on_header_custom_key
+                    header_custom.LostFocus += on_header_custom_lost_focus
+
+                # Reflect the saved colour. A colour that is not a preset
+                # opens with Custom selected and the hex in its box.
+                saved_header = _hc.resolve_header_colour(
+                    load_app_settings().get(_hc.SETTINGS_KEY))
+                saved_index = _hc.preset_index(saved_header)
+                if saved_index is None:
+                    if header_custom:
+                        header_custom.Text = saved_header
+                    header_selector.SelectedIndex = len(_hc.HEADER_PRESETS)
+                    _apply_header_colour(saved_header)
+                else:
+                    header_selector.SelectedIndex = saved_index
+
+            except:
+                pass
+
+            _header_state["ready"] = True
 
 
         # ====================================================

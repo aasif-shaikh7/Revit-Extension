@@ -9,8 +9,8 @@
 today; **CP3123 (CPython 3.12.3) remains the target engine**
 > **Engine caveat (T-03):** `script.py` carries no `#! python3` first line, so pyRevit loads it on
 > its default engine, IP27. The modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 20 import and write a workbook on CP3123 (measured 2026-09-24), the 20th
-> (`revision_engine.py`, `v1.35.0`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
+> 21 import and write a workbook on CP3123 (measured 2026-09-24), the other two
+> (`revision_engine.py`, `header_colour.py`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython. pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
 > is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
 > `PyRevitCPythonNotSupported`), on the currently-installed build (`6.5.3`) and upstream
@@ -494,6 +494,7 @@ Nudge.extension/
     ├── costing_engine.py
     ├── rate_database_engine.py
     ├── revision_engine.py
+    ├── header_colour.py
     ├── assembly_engine.py
     ├── site_items_engine.py
     ├── export_engine.py
@@ -535,7 +536,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 409 checks passed`.
+`RESULT: all 414 checks passed`.
 
 ---
 

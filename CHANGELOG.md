@@ -22,6 +22,49 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.36.0] - 2026-09-24
+
+### Added
+- **The header colour is now the owner's to choose, from inside the dialog.** A `Header:` dropdown
+  sits in the footer beside `Theme:`. It lists eight colours with a swatch each - Red (the shipped
+  `#C8102E`, default), Maroon, Navy, Teal, Forest, Plum, Brown, Charcoal - and `Custom...`, which
+  opens a small box for any hex colour (`#0e5a8a`, `0E5A8A` and `#0E5` all work; Enter or leaving
+  the box applies it). The colour applies at once and is saved at once, like the theme.
+- **The title can never become unreadable.** On every background the title and subtitle turn white
+  or black, whichever reads better, so no colour has to be refused. Measured across 4,096 colours of
+  the RGB cube: every one gets both lines at WCAG AA 4.5:1 or better. The worst case is a mid tone,
+  which still reaches 4.58:1.
+- **`lib/header_colour.py`** (new, the 21st engine module): presets, hex parsing, WCAG contrast and
+  the text-colour choice. Pure Python - no Revit, no WPF - so the harness tests it directly.
+
+### How it holds
+- The colour is written as a **direct entry in the window's resources**, not into the theme
+  dictionaries. `apply_theme()` only clears the merged dictionaries, so a chosen colour survives
+  every Light/Dark/Auto switch. Choosing Red again removes the override and hands the header back
+  to the theme.
+- Opening the dialog shows the saved colour without saving it again, and a typo in the custom box
+  leaves the current colour alone and says so in the status line.
+
+### Found while building it
+- The first design used `#111111` for dark text. Measured over the colour cube, that left a mid
+  tone like `#877850` at only **4.35:1**. Pure black fixes it (4.58:1 worst case). The harness check
+  over the cube fails if that is ever reverted - it names `#0077DD`, `#008866` and others.
+
+### Verified
+- **In WPF on IronPython 2.7.12** (pyRevit's own engine, hosted outside Revit) with the real
+  `ui.xaml` and the real handler code taken from `script.py`: the dropdown fills with nine items;
+  a saved Plum opens selected without re-saving; Navy applies and saves; Custom opens the hex box
+  pre-filled, `#0e5a8a` applies as `#0E5A8A` and saves, `blue-ish` warns and changes nothing; Red
+  removes the override. Rendered screenshots show Navy with white text, a light gold with black
+  text, and Navy staying Navy after a switch to the Dark theme.
+- `python test_xlsx_writer.py` prints **all 414 checks passed** (five new).
+- Not yet opened inside Revit itself.
+
+### Not changed
+- The **workbook** header keeps its red (`THEME_HEADER`). This option is for the dialog.
+
+---
+
 ## [v1.35.2] - 2026-09-24
 
 ### Fixed

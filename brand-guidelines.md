@@ -77,7 +77,7 @@ if any pair falls below it.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `HeaderBandBrush` | `#C8102E` | `#C8102E` | The header band behind the title; white text on it, 5.9:1 |
+| `HeaderBandBrush` | `#C8102E` | `#C8102E` | The header band behind the title; white text on it, 5.9:1. **Default only** - since v1.36.0 the owner picks the header colour in the dialog footer (eight presets or any hex), and the title turns white or black to stay at 4.5:1 or better (`lib/header_colour.py`) |
 | `PrimaryBrush` | `#F4A582` | `#F4A582` | Export button, ticked boxes. Text and tick are **black** (9.5:1); white would be 2.0:1 |
 | `PrimaryHoverBrush` / `PrimaryPressedBrush` | `#E98E68` / `#DB7B54` | same | Hover and pressed |
 | `SelectedBrush` | `#C6F432` | `#C6F432` | Selected list item, black text, 14.7:1 |

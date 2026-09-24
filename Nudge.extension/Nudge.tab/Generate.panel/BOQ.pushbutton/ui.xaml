@@ -1194,6 +1194,29 @@
                         ToolTip="Choose Light or Dark, or follow Revit's own theme (Auto). The choice is saved automatically."/>
 
                     <TextBlock
+                        Text="Header:"
+                        Style="{DynamicResource BrandLabelText}"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0"/>
+
+                    <ComboBox
+                        x:Name="HeaderColourSelector"
+                        Style="{DynamicResource BrandComboBox}"
+                        MinWidth="140"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0"
+                        ToolTip="Colour of the header band. The title text turns white or black, whichever reads better. Saved automatically."/>
+
+                    <TextBox
+                        x:Name="HeaderColourCustom"
+                        Style="{DynamicResource BrandTextBox}"
+                        Width="84"
+                        VerticalAlignment="Center"
+                        Margin="0,0,20,0"
+                        Visibility="Collapsed"
+                        ToolTip="Any colour as hex, e.g. #1F3864. Press Enter to apply."/>
+
+                    <TextBlock
                         Text="Options:"
                         Style="{DynamicResource BrandLabelText}"
                         VerticalAlignment="Center"

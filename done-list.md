@@ -1471,6 +1471,18 @@ pyRevit's own IronPython 2.7.12 hosted outside Revit: every old one that crashed
 value, and every good input answers the same. Harness: 409 checks; the new check names all
 seventeen sites on the old code. No Revit export was run for this change.
 
+## UI-01 - Header colour chosen in the dialog (`v1.36.0`, 2026-09-24)
+
+**Built:** a `Header:` dropdown in the footer - eight swatched presets (Red default, Maroon, Navy,
+Teal, Forest, Plum, Brown, Charcoal) and `Custom...` with a hex box. The colour is a direct window
+resource, so it survives every theme switch; the title and subtitle turn white or black to stay at
+4.5:1 or better on any colour. Saved on change, restored on open. Logic in `lib/header_colour.py`.
+
+**Known to work:** Tested in WPF on IronPython 2.7.12 with the real `ui.xaml` and the real handlers
+from `script.py` (presets, custom hex, bad hex, back to default, survival across a Dark switch), with
+rendered screenshots. Harness: 414 checks, including contrast over 4,096 colours. Not yet opened
+inside Revit.
+
 ---
 
 ## Standing conventions

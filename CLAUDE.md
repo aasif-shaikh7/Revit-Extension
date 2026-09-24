@@ -35,9 +35,9 @@ first line pyRevit picks its default engine, and the default is IronPython. Conf
 - If `script.py` does not compile, pyRevit shows an error window titled `BOQ` and every queued
   bridge export waits forever. The harness now compiles every file whole.
 
-The **engines in `lib/` are CPython-clean**: 19 of the 20 import and write a workbook on
-CP3123 (measured 2026-09-24); `revision_engine.py` (v1.35.0) has so far only been measured on
-Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
+The **engines in `lib/` are CPython-clean**: 19 of the 21 import and write a workbook on
+CP3123 (measured 2026-09-24); `revision_engine.py` (v1.35.0) and `header_colour.py` (v1.36.0)
+have so far only been measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
 button to CP3123 is a deliberate, separately verified change, not a one-line edit.
 
 **Current state: one working tool pushbutton plus brand infrastructure.**
@@ -58,7 +58,7 @@ the shared brand/theme system
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
-  `lib/` (20 engine modules + brand resource dictionaries + theme manager). No CI.
+  `lib/` (21 engine modules + brand resource dictionaries + theme manager). No CI.
 - `RccBoq.RestBridge/` — the .NET Agent Bridge add-in and gateway that lets an agent read the live
   document and run a headless export, and `scripts/rcc_boq_rest_client.py`, its client.
 - Pure-Python dependency-free engines under `Nudge.extension/lib/`, deliberately free of Revit
