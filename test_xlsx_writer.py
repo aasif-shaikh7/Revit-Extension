@@ -5976,6 +5976,63 @@ def main():
             "" if not uncompiled else " (" + "; ".join(uncompiled) + ")")
     )
 
+    # ------------------------------------------------------------
+    # IronPython float() guards (v1.35.2)
+    #
+    # Measured on pyRevit's own IronPython 2.7.12 engine: float(None)
+    # raises SystemError ("Object reference not set to an instance of an
+    # object") and float([]) raises AttributeError. Neither is a TypeError
+    # or ValueError, so a try that guards float() with those two lets the
+    # error through - it crashed a live export in v1.35.0. A Python 3
+    # harness cannot raise either error, so the rule is read from the
+    # code: a try that guards a float() must catch Exception (or both
+    # SystemError and AttributeError). A float() with no try at all is a
+    # separate, deliberate choice and is not flagged.
+    # ------------------------------------------------------------
+    import ast as _ast
+
+    def _handler_names(handler):
+        if handler.type is None:
+            return set(["<bare>"])
+        nodes = (handler.type.elts if isinstance(handler.type, _ast.Tuple)
+                 else [handler.type])
+        return set(node.id if isinstance(node, _ast.Name)
+                   else getattr(node, "attr", "?") for node in nodes)
+
+    narrow_float_guards = []
+    for guard_path in [SCRIPT_PATH] + sorted(
+            os.path.join(LIB_DIR, name) for name in os.listdir(LIB_DIR)
+            if name.endswith(".py")):
+        guard_tree = _ast.parse(io.open(guard_path, encoding="utf-8-sig").read())
+        for node in _ast.walk(guard_tree):
+            if not isinstance(node, _ast.Try):
+                continue
+            guards_float = any(
+                isinstance(inner, _ast.Call)
+                and isinstance(inner.func, _ast.Name)
+                and inner.func.id == "float"
+                for statement in node.body
+                if not isinstance(statement, _ast.FunctionDef)
+                for inner in _ast.walk(statement))
+            if not guards_float:
+                continue
+            caught = set()
+            for handler in node.handlers:
+                caught |= _handler_names(handler)
+            if caught & set(["<bare>", "Exception", "BaseException"]):
+                continue
+            if set(["SystemError", "AttributeError"]) <= caught:
+                continue
+            narrow_float_guards.append("{0}:{1}".format(
+                os.path.basename(guard_path), node.lineno))
+    check(
+        not narrow_float_guards,
+        "Every try that guards a float() also catches what IronPython "
+        "raises for float(None){0}".format(
+            "" if not narrow_float_guards
+            else " (" + ", ".join(narrow_float_guards) + ")")
+    )
+
     print("")
 
     if failures:

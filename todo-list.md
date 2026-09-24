@@ -76,10 +76,9 @@ Everything before P14 has shipped:
   the split started, because P11-P13 and the theme all landed in it. The next useful slice is
   moving the dialog's tab handlers out of `script.py`.
 - **P14** has its engine and sheets, run live in `v1.35.1`; only the dialog tab is left.
-- **IronPython `float(None)` sweep (found 2026-09-24).** IronPython 2.7 raises `SystemError`,
-  not `TypeError`, for `float(None)`, so `except (TypeError, ValueError)` does not catch it.
-  About fifteen such guards remain in the other `lib/` engines; none has failed live. Give them a
-  shared None-safe helper, one engine at a time, each with a check. **P15** and **P16** have no
+- **IronPython `float(None)` sweep - done in `v1.35.2`.** Seventeen guards widened, verified on
+  IronPython 2.7.12 itself, and the harness now fails any new `float()` guard that would let
+  IronPython's `SystemError` / `AttributeError` through. **P15** and **P16** have no
   code yet.
 
 The theme work (v1.33.0-v1.34.1) and the settings-safety fix (v1.34.2) sit outside the phase

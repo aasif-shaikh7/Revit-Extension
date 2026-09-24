@@ -29,8 +29,9 @@ first line pyRevit picks its default engine, and the default is IronPython. Conf
 - `float(None)` raises **`SystemError`** ("Object reference not set to an instance of an
   object"), not `TypeError`, so `except (TypeError, ValueError)` does not catch it, and a
   **dict does not keep insertion order**. Both shipped in `v1.35.0` with a green harness and
-  were found only by a live export (`v1.35.1`). Anything order-sensitive reads a list; anything
-  that may be `None` is checked before `float()`.
+  were found only by a live export (`v1.35.1`). Anything order-sensitive reads a list; a `try`
+  around `float()` catches `Exception` - the harness enforces that since `v1.35.2`
+  (`float([])` raises `AttributeError` there, too).
 - If `script.py` does not compile, pyRevit shows an error window titled `BOQ` and every queued
   bridge export waits forever. The harness now compiles every file whole.
 

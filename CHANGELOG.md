@@ -22,6 +22,43 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.35.2] - 2026-09-24
+
+### Fixed
+- **Seventeen `float()` guards that IronPython walked straight through.** Measured on pyRevit's own
+  IronPython 2.7.12 engine, hosted outside Revit: `float(None)` raises **`SystemError`** ("Object
+  reference not set to an instance of an object") and `float([])` / `float({})` raise
+  **`AttributeError`**. Neither is a `TypeError` or `ValueError`, so every
+  `except (TypeError, ValueError)` around a `float()` let them through - the same hole that crashed a
+  live P14 export in `v1.35.0`. All seventeen handlers now read `except Exception:`; nothing else in
+  those files changed. They were in `assembly_engine` (3), `authoring_spec` (4), `costing_engine`,
+  `export_engine` (4), `rate_database_engine`, `site_items_engine` and `validation_engine` (3).
+- The thirteen `float()` calls with no `try` at all were read one by one and left alone: each is a
+  literal (`float("inf")`), a count, a constant, or already checked for `None` / zero first.
+
+### Verified
+- **On IronPython 2.7.12 itself**, not only in the harness. Seven of the changed functions were
+  taken from `HEAD` and from the fix and run side by side in pyRevit's engine:
+
+  | Function | Input | Before | After |
+  |---|---|---|---|
+  | `_assembly_sum` | a row whose quantity is `None` | **SystemError** | `2.5` (row skipped) |
+  | `_positive_float` | `None` | **SystemError** | `None` |
+  | `_boq_diameter_text` | `None` / `[]` | **SystemError** / **AttributeError** | `'None'` / `'[]'` |
+  | `_rate_value`, `_rate_number` | `[]`, `{}` | **AttributeError** | `None` |
+  | `_is_missing_volume` | `[]` | **AttributeError** | `True` |
+
+  Every good input (`12.0`, `'6500'`, `'1.5'`, ...) gives the same answer before and after.
+  `_assembly_sum` is the one that mattered: a single element whose quantity came back empty would
+  have taken down the Structural Assembly sheet, and with it the export.
+- `python test_xlsx_writer.py` prints **all 409 checks passed**. The new check reads every `try`
+  in `script.py` and `lib/` that guards a `float()` and fails unless it catches `Exception` (or both
+  `SystemError` and `AttributeError`); run against the code before this fix it names all seventeen.
+- No export was run in Revit for this change: it touches only exception handlers, and the replay
+  above ran the changed functions on the engine Revit uses.
+
+---
+
 ## [v1.35.1] - 2026-09-24
 
 The first run of P14 inside Revit. Seven exports of a copy of `RUDRSKSH-BHOPAL BLOCK-M-STR` in an

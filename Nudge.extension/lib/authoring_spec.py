@@ -70,7 +70,7 @@ def _positive_float(value, fallback=None):
     """Return value as a positive float, else fallback (None when invalid)."""
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except Exception:
         return fallback
     if number <= 0.0:
         return fallback
@@ -92,7 +92,7 @@ def _coordinate(value):
     """Return a placement coordinate as a float; non-numeric becomes 0.0."""
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except Exception:
         return 0.0
 
 
@@ -102,7 +102,7 @@ def normalize_level_spec(raw, index=0):
     name = _clean_text(raw.get("name"), "Level {0}".format(index + 1))
     try:
         elevation = float(raw.get("elevation_mm", 0.0))
-    except (TypeError, ValueError):
+    except Exception:
         elevation = 0.0
     return {"name": name, "elevation_mm": elevation}
 
@@ -356,7 +356,7 @@ def compare_actual_to_expected(spec, actual_rows,
 
         try:
             actual = float(actual_by_name[label].get("volume_m3"))
-        except (TypeError, ValueError):
+        except Exception:
             findings.append("{0}: built volume is not readable".format(label))
             continue
 

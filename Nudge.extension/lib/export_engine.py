@@ -1525,7 +1525,7 @@ def _boq_diameter_text(diameter):
     """12.0 -> "12", 12.5 -> "12.5": a dia as it is written in a BOQ."""
     try:
         number = float(diameter)
-    except (TypeError, ValueError):
+    except Exception:
         return str(diameter)
     if number == int(number):
         return str(int(number))
@@ -1585,7 +1585,7 @@ def _concrete_quantity(data, info_by_sheet, sheet_name, grade):
                 continue
             total += float(row.get("Qty: Volume (m3)", ""))
             found = True
-        except (TypeError, ValueError, AttributeError):
+        except Exception:
             continue
     return round(total, 4) if found else None
 
@@ -1678,7 +1678,7 @@ def build_detailed_boq_table(data_result, summary_info, rebar_rows=None,
             for row in rows:
                 try:
                     value = float(row.get("Qty: Shuttering (m2)", ""))
-                except (TypeError, ValueError, AttributeError):
+                except Exception:
                     continue
                 total += value
                 found = True
@@ -1870,7 +1870,7 @@ def build_formwork_summary_table(data_result, row_offset=0):
             try:
                 area = float(row.get("Qty: Shuttering (m2)", ""))
                 level = str(row.get("Level", "") or "").strip() or "(No Level)"
-            except (TypeError, ValueError, AttributeError):
+            except Exception:
                 continue
             key = (level, sheet_name)
             sums[key] = sums.get(key, 0.0) + area
