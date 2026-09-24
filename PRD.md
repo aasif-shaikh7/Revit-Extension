@@ -535,7 +535,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 408 checks passed`.
+`RESULT: all 409 checks passed`.
 
 ---
 

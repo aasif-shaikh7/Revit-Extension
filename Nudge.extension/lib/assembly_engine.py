@@ -28,7 +28,7 @@ def normalize_assembly_profile(raw_profile=None):
         try:
             value = float(raw.get(key, DEFAULT_ASSEMBLY_PROFILE[key]))
             result[key] = value if value >= 0 else None
-        except (TypeError, ValueError, SystemError, OverflowError):
+        except Exception:
             result[key] = None
     return result
 
@@ -41,7 +41,7 @@ def _assembly_sum(rows, key):
             value = float(row.get(key, ""))
             total += value
             found = True
-        except (TypeError, ValueError, AttributeError):
+        except Exception:
             pass
     return round(total, 6) if found else ""
 
@@ -61,7 +61,7 @@ def build_structural_assembly_table(data_result, profile=None):
             try:
                 rebar_by_host[mapped] = rebar_by_host.get(mapped, 0.0) + float(
                     row.get("Rebar: Total Weight (kg)", ""))
-            except (TypeError, ValueError):
+            except Exception:
                 pass
     for category in ("Beam", "Column", "Structure Wall", "Slab", "Foundation"):
         rows = data_result.get(category, []) or []

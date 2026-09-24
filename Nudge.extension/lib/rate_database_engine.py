@@ -52,7 +52,7 @@ def _rate_value(value):
         return None
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except Exception:
         return None
     if number != number or number in (float("inf"), float("-inf")):
         return None

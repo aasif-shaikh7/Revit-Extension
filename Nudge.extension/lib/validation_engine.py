@@ -93,7 +93,7 @@ def _is_missing_volume(value):
         return True
     try:
         return float(value) <= 0
-    except (TypeError, ValueError):
+    except Exception:
         return True
 
 
@@ -180,7 +180,7 @@ def collect_missing_parameter_findings(data_result, min_fill=MIN_PARAMETER_FILL)
 
     try:
         threshold = float(min_fill)
-    except (TypeError, ValueError):
+    except Exception:
         threshold = MIN_PARAMETER_FILL
 
     for category in CONCRETE_CATEGORIES:
@@ -277,7 +277,7 @@ def collect_missing_rebar_findings(data_result, unreinforced_ids=None,
     skip = set(_text(value) for value in (unreinforced_ids or []))
     try:
         threshold = float(min_coverage)
-    except (TypeError, ValueError):
+    except Exception:
         threshold = MIN_REBAR_COVERAGE
 
     findings = []

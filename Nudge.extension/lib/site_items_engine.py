@@ -68,7 +68,7 @@ def _positive_number(value):
         return None
     try:
         number = float(u"{0}".format(value).strip())
-    except (TypeError, ValueError, AttributeError):
+    except Exception:
         return None
     if number != number:          # NaN
         return None

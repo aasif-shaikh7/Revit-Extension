@@ -1458,6 +1458,19 @@ CP3123. Remaining slice: a dialog tab to choose which issue to compare against.
 
 ---
 
+## IP27-01 - IronPython `float()` guards (`v1.35.2`, 2026-09-24)
+
+**Built:** seventeen `except (TypeError, ValueError)` handlers around `float()` across seven engines
+widened to `except Exception:`. On IronPython 2.7.12 `float(None)` raises `SystemError` and
+`float([])` raises `AttributeError`, which those handlers never caught; the same hole crashed a live
+P14 export in `v1.35.0`. A harness check now reads every `try` that guards a `float()` and fails on
+a narrow one.
+
+**Known to work:** Tested on the real engine - the changed functions, old and new, were replayed in
+pyRevit's own IronPython 2.7.12 hosted outside Revit: every old one that crashed now returns a safe
+value, and every good input answers the same. Harness: 409 checks; the new check names all
+seventeen sites on the old code. No Revit export was run for this change.
+
 ---
 
 ## Standing conventions
