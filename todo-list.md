@@ -48,11 +48,11 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | **done** (`v1.25.6`) — engine, store, sheet + Costing and dialog tab; owner-confirmed 2026-09-21 |
-| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` 5,931 -> 5,688) |
+| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` is back up to **6,577 lines** after P11-P13 and the theme, so the split is not finished) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | **done** (`v1.21.0` foundation, `v1.25.8` severity + compact report, `v1.25.11` parameters + rebar, `v1.26.5` rebar rule measured on the BBS files; findings warn, not block) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
-| P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | `building` (`v1.30.0` engine: entries, lookup by city/state/country and date, store, sheet builder; `v1.31.0` Rate Database tab, per-project location, sheet in both formats; `v1.32.0` the Detailed BOQ priced from it, live-verified on UMA NIWAS; waiting on the owner's real rates) |
+| P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | **built, waiting on real rates** (`v1.30.0` engine: entries, lookup by city/state/country and date, store, sheet builder; `v1.31.0` Rate Database tab, per-project location, sheet in both formats; `v1.32.0` the Detailed BOQ priced from it, live-verified on UMA NIWAS. The owner has no real rates yet; nothing is left to build until they do) |
 | P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | **done** (`v1.27.0` Detailed BOQ, `v1.28.0` Concrete Summary + Formwork Summary, `v1.29.0` all three in the site workbook; live-verified on UMA NIWAS in both formats, the site format also in the owner's own Revit 2026-09-22) |
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | `todo` |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
@@ -64,21 +64,19 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 
 ## Active roadmap phase
 
-**Current product focus:** **P12 Rate Database** is next - P11 closed on 2026-09-21 with its engine,
-store, workbook sheet and dialog tab all live-verified and owner-confirmed, and its build-ups are
-still typed per project. Before that: **P9**, the validation report (`v1.25.8` added severity and the
-compact summary; see P9 below for what is left). PRD section 12 gates **P11 Structural Rate
-Analysis** on quantities being stable, which is what P9 is for, so P11 waits. **P8**, the
-`script.py` split, is paid down to the point where more splitting would be splitting for its own
-sake
-(`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` the routing core;
-5,931 -> 5,688 lines). **P9** sits on its `v1.21.0` foundation and **P11 Structural Rate Analysis**
-is the next unstarted phase. P7 closed
-on 2026-09-21 (`v1.25.6`) once the owner confirmed the Site Items tab layout on their own screen —
-see `done-list.md`. P10 closed in `v1.24.0`, owner-confirmed through the dialog. P4 and P5 native
-Rebar/BBS QA are complete through `v1.19.1`. Agent Bridge `v2.5.0` controlled Structural Material
-assignment is done after isolated Secondary rollback, assignment, export and save/reopen
-persistence QA (`v1.23.0`).
+**Current product focus (2026-09-24):** **P14 BOQ Revision** is the next phase to build. Everything
+before it has shipped:
+
+- **P1-P7, P9-P11, P13 are done** and owner-confirmed; see the table above and `CHANGELOG.md`.
+- **P12** is built end to end - engine, dialog tab, workbook sheet and the Detailed BOQ priced from
+  it - and only waits on the owner's real rates. Nothing to code there.
+- **P8** is the one that is still open in code: `script.py` is **6,577 lines**, larger than when
+  the split started, because P11-P13 and the theme all landed in it. The next useful slice is
+  moving the dialog's tab handlers out of `script.py`.
+- **P14**, **P15** and **P16** have no code yet.
+
+The theme work (v1.33.0-v1.34.1) and the settings-safety fix (v1.34.2) sit outside the phase
+numbering; both are recorded in `CHANGELOG.md`.
 
 ### P9 — Validation Engine — **done** (`v1.26.5`)
 
@@ -531,10 +529,12 @@ analysis (current deduction is a configurable percentage, not intersection-aware
 
 **Reference read & applied** to the code surface the guidelines actually reach:
 
-- **Color — Ember accent replaces Revit blue.** The exported workbook's bold
-  header fill is now `F2994A` (Ember 500), light band `FCE8D5` (Ember 100),
-  sub-band `FFF0E3` — declared as `EMBER_500 / EMBER_100 / EMBER_200 /`
-  `GRAY_TOTALS_FILL` constants beside the site-format style indexes. This
+- **Color — superseded by v1.33.0-v1.34.1.** The workbook once used the Ember
+  ramp (`F2994A` header, `FCE8D5` band). It now carries the owner's own theme:
+  header `C8102E`, band and sub-band `DAE9F8` (Excel's "Dark Blue, Text 2,
+  Lighter 90%"), totals `EEF9CC` — declared as `THEME_HEADER / THEME_BAND /
+  THEME_SUBBAND / THEME_TOTALS` in place of `EMBER_500 / EMBER_100 /`
+  `EMBER_200 / GRAY_TOTALS_FILL`, beside the site-format style indexes. This
   follows the guideline literally: *"Don't use Revit's own blue as an accent."*
 - **Typography — Segoe UI.** styles.xml fonts switched Calibri → **Segoe UI**
   (Windows-native, matches Revit exactly per §4.3).
@@ -543,7 +543,7 @@ analysis (current deduction is a configurable percentage, not intersection-aware
   the empty-workbook summary cell is one friendly line plus the next step,
   not an all-caps "NO DATA EXPORTED - ...".
 
-**Tested (harness):** style assertions updated to the Ember fills and the full
+**Tested (harness):** style assertions now pin the v1.34.x theme fills and the full
 suite is green (`RESULT: all checks passed`); `script.py` compiles clean.
 
 **Toolkit naming:** **Nudge** is the active repository and Revit-tab name
@@ -552,7 +552,8 @@ active project documentation follows the implemented Nudge layout.
 
 ### Brand UI system — shared theme resources + Brand Showcase — **confirmed live** (2026-08-28 code, 2026-08-31 owner QA)
 **Built:** the guidelines became the actual UI surface — `lib/Resources/` carries
-`Brand.Colors.Light/Dark.xaml` (Ember accent + Light/Dark surface neutrals + system colors),
+`Brand.Colors.Light/Dark.xaml` (since v1.33.0: `Primary*` / `Accent*` / `HeaderBand*` /
+`TabStrip*` tokens - no `Ember*` key survives - plus Light/Dark surface neutrals and system colors),
 `Brand.Typography.xaml` (Sora → Segoe UI fallback type scale) and `Brand.Controls.xaml` (buttons,
 inputs, chips, containers); `lib/theme_manager.py` detects Revit's active Light/Dark theme
 (guarded `UIThemeManager` → Windows app-theme registry → Light), merges the dictionaries into any
@@ -577,7 +578,7 @@ it can become real.
 **Next step — applied (2026-08-29, code v1.4.2, live QA pending):** the BOQ Parameter Manager
 dialog (`Generate.panel/BOQ.pushbutton/ui.xaml`) now consumes the same dictionaries — `ui.xaml`
 restyled via `DynamicResource` brand keys (surfaces, type scale, inputs, outline buttons + the
-Ember primary Export, brand list/footer brushes) and `script.py` calls
+themed primary Export, brand list/footer brushes) and `script.py` calls
 `theme_manager.apply_theme(window)` right after building the window (guarded; the dialog is
 modal, so no `keep_alive` is needed) with a `watch_theme_changes` + `Closed` → `stop_watching`
 pair. **Confirmed live (2026-08-31):** dialog opens styled, both themes readable, export
@@ -621,8 +622,11 @@ remain hard-coded in several coordinated locations.
 and export ordering; do not refactor the now live-proven five-category path without dedicated tests.
 
 ### T-06 — Rate database (supersedes the simple rate parameter) — `draft`
-**State:** Rates come from a single recognized parameter.
-**Plan:** becomes Phase 12 (P12) work; keep current behaviour until then.
+**State:** **done (v1.30.0-v1.32.0).** `lib/rate_database_engine.py` holds the entries
+(item code, description, unit, rate, currency, location, vendor, effective date, source), the
+dialog has a Rate Database tab, both workbooks carry a Rate Database sheet, and the Detailed BOQ
+is priced from it by code, place and date. The single rate parameter still feeds the older
+Costing sheet.
 
 ---
 

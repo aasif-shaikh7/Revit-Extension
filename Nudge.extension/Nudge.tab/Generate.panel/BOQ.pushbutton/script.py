@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.34.1'
+__version__ = '1.34.3'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.34.1'
+SCRIPT_VERSION = '1.34.3'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -3614,6 +3614,13 @@ try:
             except:
                 pass
 
+            # A subtype filter changes how many elements the tab holds, so
+            # the count on the tab follows it (v1.34.3).
+            try:
+                show_category_counts()
+            except:
+                pass
+
             try:
                 if status:
                     set_status(
@@ -4777,6 +4784,36 @@ try:
             index = rate_db_selected_index()
             if 0 <= index < len(rate_db_state):
                 rate_db_fill_fields(rate_db_state[index])
+
+        def show_category_counts():
+            """Write this model's element count onto each category tab.
+
+            "Beam (519)", "Rebar (0)": the count answers, before anything is
+            clicked, why a list is empty. Guarded and header-driven, so a
+            renamed or reordered tab simply keeps its own header.
+            """
+            tabs = window.FindName("MainTabs")
+
+            if tabs is None:
+                return
+
+            for tab in tabs.Items:
+                try:
+                    header = safe_text(tab.Header, "")
+                except:
+                    continue
+
+                # Re-running (a filter change) must not stack suffixes.
+                base = header.split(" (")[0].strip()
+
+                if base not in category_elements:
+                    continue
+
+                try:
+                    tab.Header = "{0} ({1})".format(
+                        base, len(category_elements.get(base) or []))
+                except:
+                    pass
 
         def rate_db_load_saved():
             """Load the saved rates and this project's location."""
@@ -6543,6 +6580,15 @@ try:
             try:
                 rate_db_wire_controls()
                 rate_db_load_saved()
+            except:
+                pass
+
+            # v1.34.3: each category tab says how many elements this model
+            # has - "Beam (519)", "Rebar (0)". On 2026-09-22 the owner
+            # opened the dialog on a model with no structural elements and
+            # read the empty lists as a fault in the tool.
+            try:
+                show_category_counts()
             except:
                 pass
 

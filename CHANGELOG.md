@@ -22,6 +22,70 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.34.3] - 2026-09-24
+
+### Added
+- **Each category tab says how many elements the model has** - `Beam (519)`, `Rebar (0)`. On
+  2026-09-22 the owner opened the dialog on a model with no structural elements and read the empty
+  lists as a fault in the tool; the count answers that before anything is clicked. The count
+  follows a Slab or Foundation subtype filter, and re-running never stacks suffixes.
+
+### Changed (documentation caught up with the code)
+The docs had drifted far enough to mislead. Audited and corrected:
+- **`CLAUDE.md`** - stated CP3123 as the single runtime. The button in fact runs **IronPython
+  2.7.12**, because `script.py` has no `#! python3` line; the two consequences that have cost real
+  time (a hard crash instead of `RecursionError`, and engine state surviving between presses) are
+  written down, along with the measurement that all 19 `lib/` engines are CPython-clean. The sheet
+  list, the ten dialog tabs, the Agent Bridge, the second runnable check and the open phases are
+  now right.
+- **`PROJECT_STRUCTURE.md`** - four modules were missing from the `lib/` tree
+  (`assembly_engine`, `rate_database_engine`, `stack_runner`, `crash_trail`); "six engine modules"
+  then listed nine; `CATEGORY_INFO` was said to map five tabs; the harness resolution order and the
+  engine section were corrected; the tagging rule now records that tagging lapsed after `v1.7.7`.
+- **`todo-list.md`** - one "current focus" instead of three contradictory ones, P8 measured again
+  (`script.py` is 6,577 lines, larger than when the split began), P12 marked built and waiting on
+  real rates, and the Ember palette notes dated.
+- **`done-list.md`** - receipts for everything from `v1.26.0` to `v1.34.2` (P11, P13, P12, the BBS
+  crash fix, the theme, the settings fixes), and the three old brand entries marked superseded.
+- **`brand-guidelines.md`** - the palette it documents is now the palette the code ships, with the
+  measured contrast for each pair and the reason the Ember orange was dropped (2.23:1).
+- **`README.md`** / **`PRD.md`** - status, sheet list, module layout and phase states brought up to
+  `v1.34.x`.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 383 checks passed** (two new for the tab counts; the
+  count logic is extracted from `script.py` and replayed against fake tabs, including a second run).
+- Docs were checked against the code file by file, not from memory.
+
+---
+
+## [v1.34.2] - 2026-09-24
+
+### Fixed (settings can no longer be lost)
+- **Saving is atomic and keeps a backup.** `save_app_settings` writes a temporary file, moves the
+  previous settings to `.rcc_boq_settings.json.bak`, then puts the new file in place. A crash in
+  the middle of a write can no longer leave a truncated settings file.
+- **Loading falls back to that backup** when the live file is missing, empty or corrupt.
+- **Why:** on 2026-09-22 a wiped Rebar selection had no copy to go back to. The guard that caused
+  it was fixed in v1.33.0; this is the second line of defence.
+
+### Changed
+- **The harness prints its own count:** `RESULT: all 381 checks passed`, and on a failure it lists
+  every failed check by name. Until now every "N checks" figure in the docs was hand-maintained and
+  could not be reproduced from the tool's output.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 381 checks passed** (five new ones for settings). They
+  run on a temporary profile folder, never the owner's own settings file, and put the real path
+  back afterwards.
+- Two mutations were re-run against the new checks: dropping the backup step fails 2 checks, and
+  dropping the fallback read fails 1 - both by name in the new failure list.
+- Removed 2.2 MB of the agent's own leftover diagnostics from
+  `%LOCALAPPDATA%\RCC_BOQ\logs` (the row dump and three crash-trail copies from the 22 Sep
+  investigation). The tool's own trail and its one rotation are untouched.
+
+---
+
 ## [v1.34.1] - 2026-09-22
 
 ### Changed (dialog tab strip in gold)

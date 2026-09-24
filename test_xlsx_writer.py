@@ -18,6 +18,7 @@ import re
 import shutil
 import sys
 import tempfile
+import textwrap
 import zipfile
 from xml.dom import minidom
 
@@ -193,8 +194,11 @@ def extract_constant_from_sources(texts, name):
 def main():
     failures = []
 
+    passed = [0]
+
     def check(condition, message):
         if condition:
+            passed[0] += 1
             print("PASS: {}".format(message))
         else:
             failures.append(message)
@@ -4496,6 +4500,110 @@ def main():
         shutil.rmtree(db_dir, ignore_errors=True)
 
     # ------------------------------------------------------------
+    # Each category tab carries this model's element count (v1.34.3)
+    #
+    # The owner opened the dialog on a model with no structural elements
+    # and read the empty lists as a fault. The tab now says "Beam (519)",
+    # "Rebar (0)". Re-running on a filter change must not stack suffixes.
+    # ------------------------------------------------------------
+    counts_block = nested_handler_source("show_category_counts")
+    check(
+        'header.split(" (")[0]' in counts_block
+        and "category_elements" in counts_block
+        and "show_category_counts()" in script_text,
+        "Tab counts are derived from the tab's own header and the model's "
+        "elements, and are applied when the dialog opens"
+    )
+    counts_body = textwrap.dedent(
+        counts_block[counts_block.index("            tabs = window"):])
+    counts_source = ("def _apply_counts():\n"
+                     + textwrap.indent(counts_body, "    ")
+                     + "\n_apply_counts()\n")
+
+    class FakeTab(object):
+        def __init__(self, header):
+            self.Header = header
+
+    class FakeTabs(object):
+        def __init__(self, items):
+            self.Items = items
+
+    fake_tabs = FakeTabs([FakeTab("Beam"), FakeTab("Rebar"), FakeTab("Rate Database")])
+    counts_scope = {
+        "window": type("W", (), {"FindName": staticmethod(lambda name: fake_tabs)})(),
+        "category_elements": {"Beam": ["a"] * 519, "Rebar": [], "Slab": ["s"]},
+        "safe_text": lambda value, default: value if isinstance(value, str) else default,
+    }
+    exec(counts_source, counts_scope)
+    exec(counts_source, counts_scope)      # a filter change re-runs it
+    check(
+        [tab.Header for tab in fake_tabs.Items]
+        == ["Beam (519)", "Rebar (0)", "Rate Database"],
+        "Counts show on category tabs only, and re-running does not stack "
+        "suffixes (got {0})".format([tab.Header for tab in fake_tabs.Items])
+    )
+
+    # ------------------------------------------------------------
+    # Settings are never left half-written (v1.34.2)
+    #
+    # On 2026-09-22 a saved list was overwritten and there was no copy to
+    # go back to. Saving now writes through a temporary file and keeps
+    # the previous file as .bak; loading falls back to that backup when
+    # the live file is corrupt. Exercised on a temporary profile folder,
+    # never the owner's own settings.
+    # ------------------------------------------------------------
+    import settings_engine
+
+    settings_home = tempfile.mkdtemp()
+    saved_profile = (os.environ.get("USERPROFILE"), os.environ.get("HOME"))
+    try:
+        os.environ["USERPROFILE"] = settings_home
+        os.environ["HOME"] = settings_home
+        settings_path = settings_engine.get_settings_path()
+        backup_path = settings_engine.get_backup_path()
+        check(
+            os.path.dirname(settings_path) == settings_home,
+            "Settings test runs on a temporary profile, not the owner's file"
+        )
+
+        settings_engine.save_app_settings({"selected": {"Rebar": ["ID_LIC"]}})
+        settings_engine.save_app_settings({"selected": {"Rebar": []}})
+        check(
+            settings_engine.load_app_settings() == {"selected": {"Rebar": []}}
+            and settings_engine._read_settings_file(backup_path)
+            == {"selected": {"Rebar": ["ID_LIC"]}}
+            and not os.path.exists(settings_path + ".tmp"),
+            "Saving keeps the previous settings as .bak and leaves no temp file"
+        )
+
+        io.open(settings_path, "w", encoding="utf-8").write(u'{"selected": {"Rebar"')
+        check(
+            settings_engine.load_app_settings()
+            == {"selected": {"Rebar": ["ID_LIC"]}},
+            "A truncated settings file loads the backup instead of nothing"
+        )
+
+        io.open(settings_path, "w", encoding="utf-8").write(u"")
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+        check(
+            settings_engine.load_app_settings() == {},
+            "With no readable file and no backup, settings load as empty"
+        )
+    finally:
+        for name, value in zip(("USERPROFILE", "HOME"), saved_profile):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        shutil.rmtree(settings_home, ignore_errors=True)
+    check(
+        os.path.dirname(settings_engine.get_settings_path())
+        == os.path.expanduser("~"),
+        "The settings path points back at the real profile afterwards"
+    )
+
+    # ------------------------------------------------------------
     # Steel & Rebar theme (v1.33.0)
     #
     # The palette lives in two colour dictionaries. They must define the
@@ -4832,7 +4940,6 @@ def main():
     # derived fields, so "no parameters discovered" was never true for
     # them and a model without rebar erased the saved Rebar selection.
     # Replay the guard itself on that case.
-    import textwrap
     guard_start = capture_block.rfind(
         "\n", 0, capture_block.index("previous_selected = {}")) + 1
     guard_end = capture_block.index(
@@ -5474,10 +5581,15 @@ def main():
     print("")
 
     if failures:
-        print("RESULT: {} failure(s)".format(len(failures)))
+        print("RESULT: {0} of {1} checks failed".format(
+            len(failures), passed[0] + len(failures)))
+        for message in failures:
+            print("  FAILED: {0}".format(message))
         sys.exit(1)
 
-    print("RESULT: all checks passed")
+    # The count is printed, not hand-maintained: every "N checks" figure
+    # in the docs is meant to be this number.
+    print("RESULT: all {0} checks passed".format(passed[0]))
 
 
 if __name__ == "__main__":

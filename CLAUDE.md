@@ -12,15 +12,35 @@ Guidance for Claude Code and other AI coding agents working in this repository.
 **Revit-Extension** — a **pyRevit** extension that generates **RCC (Reinforced Cement Concrete) BOQ**
 workbooks from Autodesk Revit.
 
-**Target env:** Revit **2025+**; pyRevit **6.10.0+** on the **CP3123** (CPython 3.12.3) engine — the
-single supported runtime. IP27 (IronPython 2.7) is best-effort/untested.
+**Target env:** Revit **2025+**, pyRevit **6.10.0+**.
+
+**Runtime — read this before reasoning about engine behaviour.** The BOQ button actually runs on
+**IronPython 2.7.12 (IP27)**, because `script.py` carries **no `#! python3` line**: without that
+first line pyRevit picks its default engine, and the default is IronPython. Confirmed on
+2026-09-22 and again on 2026-09-24 — the crash trail's first line prints the live engine
+(`engine 2.7.12`). Consequences that have already cost real time:
+
+- IronPython does not enforce `sys.recursionlimit`. Deep recursion is a **hard process crash**
+  (`0xc00000fd`, no Python traceback) rather than a `RecursionError`, and it takes Revit with it.
+  A BBS export died this way until the workbook writers were moved onto a 64 MB-stack thread
+  (`lib/stack_runner.py`).
+- The engine is reused between button presses, so module state in `sys.modules` and `+=` event
+  subscriptions survive.
+
+The **engines in `lib/` are CPython-clean**: all 19 import and write a workbook on CP3123
+(measured 2026-09-24). Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
+button to CP3123 is a deliberate, separately verified change, not a one-line edit.
 
 **Current state: one working tool pushbutton plus brand infrastructure.**
 `Nudge.extension/Nudge.tab/Generate.panel/BOQ.pushbutton`
 contains `script.py` (the Revit/UI orchestration), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
 BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation/Rebar, discovers real parameters, classifies slab/
-foundation subtypes, collects concrete/formwork/rebar quantities, and writes a dependency-free XLSX workbook with a
-BOQ Summary and a Costing sheet. `Nudge.extension/lib/` contains the split pure-Python engines and
+foundation subtypes, collects concrete/formwork/rebar quantities, and writes a dependency-free XLSX workbook.
+The dialog has **ten tabs**: the six categories plus Assembly Profile, Site Items, Rate Analysis
+and Rate Database. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
+Rebar BBS, Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
+Grade, Concrete Summary, Formwork Summary, Detailed BOQ, Site Items, Unmapped Elements and Costing.
+`Nudge.extension/lib/` contains the split pure-Python engines and
 the shared brand/theme system
 (`theme_manager.py` + `lib/Resources/*.xaml` resource dictionaries), previewed live by the
 `Nudge.tab/Brand.panel/BrandShowcase.pushbutton` QA window.
@@ -28,7 +48,9 @@ the shared brand/theme system
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
-  `lib/` (brand resource dictionaries + theme manager). No CI.
+  `lib/` (19 engine modules + brand resource dictionaries + theme manager). No CI.
+- `RccBoq.RestBridge/` — the .NET Agent Bridge add-in and gateway that lets an agent read the live
+  document and run a headless export, and `scripts/rcc_boq_rest_client.py`, its client.
 - Pure-Python dependency-free engines under `Nudge.extension/lib/`, deliberately free of Revit
   symbols so they can be tested outside Revit.
 - A standalone regression harness, `test_xlsx_writer.py`, that extracts production functions from
@@ -37,8 +59,12 @@ What exists:
 What an agent can actually verify here:
 
 ```bash
-python test_xlsx_writer.py     # pure Python; the only runnable check in this repo
+python test_xlsx_writer.py     # pure Python, ~1 s; prints "RESULT: all N checks passed"
+python test_rest_api.py        # the bridge's own Python-side checks
 ```
+
+The harness prints its own count, so quote that number rather than a hand-maintained one. The
+`.NET` bridge has `dotnet` tests as well (see `README.md`).
 
 The harness runs in any Python 3.x, no Revit or SDK needed. Nothing else in this repository can be
 executed without a live Revit session (which is not available to the agent). `test_xlsx_writer.py`
@@ -66,6 +92,8 @@ reference only and does not describe this extension.
 | `test_xlsx_writer.py` | The runnable regression harness |
 | `CHANGELOG.md` | What has actually been established, by build/commit |
 | `done-list.md` / `todo-list.md` | Finished work vs the open queue |
+| `brand-guidelines.md` | The brand/theme reference for the dialog and the workbook |
+| `RccBoq.RestBridge/` + `scripts/` | The Agent Bridge add-in, gateway and its Python client |
 | `docs/reference/` | Older Kestrel docs, historical only |
 
 ---
@@ -85,9 +113,12 @@ Column→`OST_StructuralColumns`, Structure Wall→structural-only `OST_Walls`, 
 Foundation→`OST_StructuralFoundation`), plus a
 single logical classifier for slab/foundation subtypes. Both Floor and Structural Foundation raw
 collections can route to either logical sheet; code `v1.8.10` audits counts and duplicate IDs before
-export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. P4 `v1.10.2` adds
-`OST_Rebar` detail rows plus `d²/162` steel weight through `lib/rebar_engine.py`. The dependency-free
-engines live in `lib/`.
+export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. Rebar
+(`OST_Rebar`) is the sixth category: detail rows plus `d²/162` steel weight through
+`lib/rebar_engine.py`. The dependency-free engines live in `lib/`; the newest of them are
+`rate_database_engine.py` (P12 rates by code, place and date), `stack_runner.py` (runs the
+workbook writers on a big-stack thread) and `crash_trail.py` (one flushed line per step, so a
+hard crash names its step).
 
 ---
 
@@ -99,8 +130,11 @@ engines live in `lib/`.
 - **`CHANGELOG.md`** is the record and must be updated in the same change it describes.
 - **Source of truth is the code.** `script.py`, `ui.xaml` and `test_xlsx_writer.py` beat any prompt
   or roadmap. Read all three completely before writing code; never invent or remove functionality.
-- **Roadmap phases in `PRD.md` §12.** Work one phase at a time (P1 quantity engine first). Do not
-  jump to rebar / BBS / rate analysis before earlier phases are stable in a live Revit 2025 project.
+- **Roadmap phases in `PRD.md` §12, live status in `todo-list.md`.** P1-P13 have shipped; P12's
+  engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. The open
+  phases are **P8** (keep splitting `script.py`, still 6,500+ lines), **P14** (BOQ revision
+  comparison), **P15** (model change detection) and **P16** (dashboard). Work one at a time, and
+  check `todo-list.md` rather than any older "next phase" sentence.
 
 ---
 
@@ -113,7 +147,8 @@ These come from `AI_DEVELOPMENT_GUIDE.md`.
   `Tested` / `Supported`.
 - **Inspect before editing.** Read the existing script, XAML, and harness first.
 - **Smallest reasonable change.** Keep the engine dependency-free; no unrelated reformatting.
-- **Report engine-specific facts** for Revit claims (version, CP3123 vs IP27, guarded/fallback).
+- **Report engine-specific facts** for Revit claims (Revit version, IP27 - the live engine - vs
+  CP3123, guarded/fallback).
 - **Say when uncertain.**
 
 ### Task format worth requesting or restating
