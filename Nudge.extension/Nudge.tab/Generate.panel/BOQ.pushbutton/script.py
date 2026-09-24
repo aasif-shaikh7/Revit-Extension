@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.35.0'
+__version__ = '1.35.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.35.0'
+SCRIPT_VERSION = '1.35.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -6478,9 +6478,20 @@ try:
                     if _headless_export_job is not None:
                         try:
                             import traceback as _headless_traceback
+                            # A writer that failed on the large-stack
+                            # thread only leaves this frame behind, so
+                            # its own traceback - the one that names the
+                            # line - is attached to the exception.
+                            _headless_detail = _headless_traceback.format_exc()
+                            _worker_detail = getattr(
+                                export_error, "worker_traceback", "")
+                            if _worker_detail:
+                                _headless_detail = "\n".join([
+                                    _headless_detail, "writer thread:",
+                                    _worker_detail])
                             fail_export_job(
                                 _headless_export_job,
-                                _headless_traceback.format_exc()
+                                _headless_detail
                             )
                         except:
                             pass

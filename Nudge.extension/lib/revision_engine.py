@@ -59,10 +59,20 @@ REVISION_SECTIONS = (
 
 
 def _number(value):
-    """The float in this cell, or None when there is not one."""
+    """The float in this cell, or None when there is not one.
+
+    None is turned away before float() ever sees it. CPython answers
+    float(None) with a TypeError; IronPython 2.7 - the engine the button
+    runs on - answers with SystemError ("Object reference not set to an
+    instance of an object"), which an except (TypeError, ValueError)
+    never catches. On 2026-09-24 that killed a live export the moment an
+    item was Removed, because a removed item has no current quantity.
+    """
+    if value is None:
+        return None
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except Exception:
         return None
 
 

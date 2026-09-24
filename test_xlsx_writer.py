@@ -5924,12 +5924,56 @@ def main():
         "section"
     )
 
+    # IronPython 2.7 raises SystemError, not TypeError, for float(None);
+    # a live export died on it the moment an item was Removed. A Python 3
+    # harness cannot raise that error, so the guard is pinned in source.
+    number_start = revision_source.index("def _number(")
+    number_block = revision_source[number_start:revision_source.index(
+        "def _sum_field(", number_start)]
+    check(
+        "if value is None:" in number_block
+        and number_block.index("if value is None:")
+        < number_block.index("float(value)")
+        and "except (TypeError, ValueError):" not in number_block
+        and revision._number(None) is None
+        and revision._number("") is None
+        and revision._number("2.5") == 2.5,
+        "P14 a missing quantity never reaches float() - IronPython answers "
+        "float(None) with an error nothing here would catch"
+    )
+
     check(
         "import Autodesk" not in revision_source
         and "from Autodesk" not in revision_source
         and "from pyrevit" not in revision_source
         and "import pyrevit" not in revision_source,
         "P14 revision engine imports no Revit or pyRevit symbol"
+    )
+
+    # ------------------------------------------------------------
+    # Every file the button loads must compile as a whole (v1.35.1)
+    #
+    # The checks above extract single functions, so a syntax error
+    # anywhere else in script.py passed all of them. On 2026-09-24 an
+    # unterminated string in the export's error handler did exactly that:
+    # the harness reported every check green while pyRevit could not load
+    # the button at all, and each queued export sat waiting forever.
+    # ------------------------------------------------------------
+    uncompiled = []
+    for compile_path in [SCRIPT_PATH] + sorted(
+            os.path.join(LIB_DIR, name) for name in os.listdir(LIB_DIR)
+            if name.endswith(".py")):
+        try:
+            compile(io.open(compile_path, encoding="utf-8-sig").read(),
+                    compile_path, "exec")
+        except SyntaxError as compile_error:
+            uncompiled.append("{0}:{1} {2}".format(
+                os.path.basename(compile_path), compile_error.lineno,
+                compile_error.msg))
+    check(
+        not uncompiled,
+        "script.py and every lib module compile as whole files{0}".format(
+            "" if not uncompiled else " (" + "; ".join(uncompiled) + ")")
     )
 
     print("")
