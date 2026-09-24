@@ -22,6 +22,56 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.35.1] - 2026-09-24
+
+The first run of P14 inside Revit. Seven exports of a copy of `RUDRSKSH-BHOPAL BLOCK-M-STR` in an
+isolated test Revit 2025 (Secondary bridge; the owner's own Revit was not touched). The harness had
+passed 404 checks on `v1.35.0`; the live run found two real bugs in it, both specific to
+IronPython 2.7, the engine the button actually runs on.
+
+### Fixed
+- **A live export crashed as soon as an item was `Removed`.** A removed item has no current
+  quantity, so `float(None)` was called. CPython raises `TypeError` there, which the engine caught;
+  **IronPython 2.7 raises `SystemError: Object reference not set to an instance of an object`**,
+  which `except (TypeError, ValueError)` does not catch. `_number` now turns `None` away before
+  `float()` sees it. Found by exporting once with formwork and once without; an A/B run of the same
+  export on `v1.34.3` passed, which pinned it on P14.
+- **The sheet came out in the wrong order** - Slab, Beam, Foundation, Wall, Column. The order came
+  from a dict, and IronPython 2.7's dict does not keep insertion order. It now comes from the
+  snapshot's items list, and the live sheet reads Beam, Column, Structure Wall, Slab, Foundation,
+  exactly as the Detailed BOQ does.
+- **A failed headless export now reports the writer's own traceback.** The writers run on a
+  large-stack thread, so the job error used to name only the call site (`script.py` line 6270) and
+  never the line that failed. The worker traceback, which `stack_runner` already attached, is now
+  written into the job - that is how the `float(None)` line above was found.
+
+### Added to the harness
+- **Every file the button loads must compile as a whole.** The harness extracts single functions,
+  so a syntax error anywhere else in `script.py` passed every check. It happened during this very
+  test: an unterminated string in the error handler above left the harness green while pyRevit could
+  not load the button, and each queued export waited forever behind pyRevit's error window.
+- Source-level checks for both IronPython findings, because a Python 3 harness can raise neither
+  error. Each fails when the fix is reverted.
+
+### Verified live (test Revit 2025, IronPython 2.7.12, `QA-P14-REV`)
+| Export | Expected | Seen |
+|---|---|---|
+| 1st, classic | no revision sheet, `rev_00.json` filed | 15 sheets, `rev_00` with 10 items |
+| 2nd, nothing changed | sheet, all `Unchanged`, **no** new revision | 16 sheets, 10 x `Unchanged`, still only `rev_00` |
+| classic, formwork off | shuttering `Removed`, `rev_01` filed | 5 x `Removed` at `0.0`, `rev_01.json` |
+| site, formwork on | shuttering `New`, `rev_02` filed, band + 5-row offset | `Rev 01 to Rev 02`, 5 x `New`, first item's formula `E8-D8` on row 8 |
+
+- `python test_xlsx_writer.py` prints **all 408 checks passed**.
+- Still not measured on CP3123, and there is still no dialog tab.
+
+### Known, not fixed here
+- The same `except (TypeError, ValueError)` around `float()` appears in about fifteen places across
+  `assembly_engine`, `costing_engine`, `export_engine`, `rate_database_engine`, `site_items_engine`,
+  `validation_engine` and `authoring_spec`. Most read a value with a `""` default, and none has
+  failed live, so they were left alone rather than changed untested. Recorded in `todo-list.md`.
+
+---
+
 ## [v1.35.0] - 2026-09-24
 
 ### Added

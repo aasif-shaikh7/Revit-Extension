@@ -5885,12 +5885,95 @@ def main():
 
     revision_source = io.open(os.path.join(LIB_DIR, "revision_engine.py"),
                               encoding="utf-8-sig").read()
+
+    # Order must come from the items LIST, not from a dict. The button
+    # runs on IronPython 2.7, whose dict does not keep insertion order; a
+    # live export on 2026-09-24 laid the sheet out Slab, Beam, Foundation,
+    # Wall, Column instead of the Detailed BOQ's order. Python 3 keeps
+    # insertion order, so only reading the source can catch this here.
+    check(
+        "def snapshot_codes(" in revision_source
+        and "order = snapshot_codes(current)" in revision_source
+        and "list(new_items.keys())" not in revision_source,
+        "P14 the sheet's order is read from the snapshot's item list, which "
+        "IronPython keeps, not from a dict, which it does not"
+    )
+    shuffled_previous = {"items": [
+        {"code": "B|Slab", "description": "shuttering slab", "unit": "m2",
+         "quantity": 10.0},
+        {"code": "A|Beam|M30", "description": "concrete beam", "unit": "m3",
+         "quantity": 1.0},
+    ]}
+    shuffled_current = {"items": [
+        {"code": "A|Slab|M25", "description": "concrete slab", "unit": "m3",
+         "quantity": 2.0},
+        {"code": "A|Beam|M30", "description": "concrete beam", "unit": "m3",
+         "quantity": 3.0},
+        {"code": "B|Slab", "description": "shuttering slab", "unit": "m2",
+         "quantity": 10.0},
+    ]}
+    check(
+        revision.snapshot_codes(shuffled_current)
+        == ["A|Slab|M25", "A|Beam|M30", "B|Slab"]
+        and [record["code"] for record in revision.compare_snapshots(
+            shuffled_previous, shuffled_current)]
+        == ["A|Slab|M25", "A|Beam|M30", "B|Slab"]
+        and revision.snapshot_codes({"items": [{"code": "X"}, {"code": "X"}]})
+        == ["X"],
+        "P14 items keep the order the snapshot lists them in, section by "
+        "section"
+    )
+
+    # IronPython 2.7 raises SystemError, not TypeError, for float(None);
+    # a live export died on it the moment an item was Removed. A Python 3
+    # harness cannot raise that error, so the guard is pinned in source.
+    number_start = revision_source.index("def _number(")
+    number_block = revision_source[number_start:revision_source.index(
+        "def _sum_field(", number_start)]
+    check(
+        "if value is None:" in number_block
+        and number_block.index("if value is None:")
+        < number_block.index("float(value)")
+        and "except (TypeError, ValueError):" not in number_block
+        and revision._number(None) is None
+        and revision._number("") is None
+        and revision._number("2.5") == 2.5,
+        "P14 a missing quantity never reaches float() - IronPython answers "
+        "float(None) with an error nothing here would catch"
+    )
+
     check(
         "import Autodesk" not in revision_source
         and "from Autodesk" not in revision_source
         and "from pyrevit" not in revision_source
         and "import pyrevit" not in revision_source,
         "P14 revision engine imports no Revit or pyRevit symbol"
+    )
+
+    # ------------------------------------------------------------
+    # Every file the button loads must compile as a whole (v1.35.1)
+    #
+    # The checks above extract single functions, so a syntax error
+    # anywhere else in script.py passed all of them. On 2026-09-24 an
+    # unterminated string in the export's error handler did exactly that:
+    # the harness reported every check green while pyRevit could not load
+    # the button at all, and each queued export sat waiting forever.
+    # ------------------------------------------------------------
+    uncompiled = []
+    for compile_path in [SCRIPT_PATH] + sorted(
+            os.path.join(LIB_DIR, name) for name in os.listdir(LIB_DIR)
+            if name.endswith(".py")):
+        try:
+            compile(io.open(compile_path, encoding="utf-8-sig").read(),
+                    compile_path, "exec")
+        except SyntaxError as compile_error:
+            uncompiled.append("{0}:{1} {2}".format(
+                os.path.basename(compile_path), compile_error.lineno,
+                compile_error.msg))
+    check(
+        not uncompiled,
+        "script.py and every lib module compile as whole files{0}".format(
+            "" if not uncompiled else " (" + "; ".join(uncompiled) + ")")
     )
 
     print("")

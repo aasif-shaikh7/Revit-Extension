@@ -59,10 +59,20 @@ REVISION_SECTIONS = (
 
 
 def _number(value):
-    """The float in this cell, or None when there is not one."""
+    """The float in this cell, or None when there is not one.
+
+    None is turned away before float() ever sees it. CPython answers
+    float(None) with a TypeError; IronPython 2.7 - the engine the button
+    runs on - answers with SystemError ("Object reference not set to an
+    instance of an object"), which an except (TypeError, ValueError)
+    never catches. On 2026-09-24 that killed a live export the moment an
+    item was Removed, because a removed item has no current quantity.
+    """
+    if value is None:
+        return None
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except Exception:
         return None
 
 
@@ -171,8 +181,34 @@ def build_snapshot(data_result, rebar_rows=None, revision="",
     }
 
 
+def snapshot_codes(snapshot):
+    """The codes in a snapshot, in the order the snapshot lists them.
+
+    Read from the items **list**, never from a dict: under IronPython
+    2.7 - the engine the button actually runs on - a dict does not keep
+    insertion order, and on 2026-09-24 a live export proved it, laying
+    the sheet out Slab, Beam, Foundation, Wall, Column instead of the
+    Detailed BOQ's own order. Python 3 keeps that order, so the harness
+    could not have found this on its own.
+    """
+    codes = []
+    if not isinstance(snapshot, dict):
+        return codes
+    for item in snapshot.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("code", "") or "").strip()
+        if code and code not in codes:
+            codes.append(code)
+    return codes
+
+
 def snapshot_items(snapshot):
-    """{code: item} for a snapshot, tolerant of a file written by hand."""
+    """{code: item} for a snapshot, tolerant of a file written by hand.
+
+    A lookup only - for anything that has to come out in order, ask
+    snapshot_codes.
+    """
     result = {}
     if not isinstance(snapshot, dict):
         return result
@@ -209,8 +245,8 @@ def compare_snapshots(previous, current):
     old_items = snapshot_items(previous)
     new_items = snapshot_items(current)
 
-    order = list(new_items.keys())
-    for code in old_items:
+    order = snapshot_codes(current)
+    for code in snapshot_codes(previous):
         if code not in new_items:
             order.append(code)
 
