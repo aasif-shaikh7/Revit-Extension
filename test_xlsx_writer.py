@@ -5885,6 +5885,45 @@ def main():
 
     revision_source = io.open(os.path.join(LIB_DIR, "revision_engine.py"),
                               encoding="utf-8-sig").read()
+
+    # Order must come from the items LIST, not from a dict. The button
+    # runs on IronPython 2.7, whose dict does not keep insertion order; a
+    # live export on 2026-09-24 laid the sheet out Slab, Beam, Foundation,
+    # Wall, Column instead of the Detailed BOQ's order. Python 3 keeps
+    # insertion order, so only reading the source can catch this here.
+    check(
+        "def snapshot_codes(" in revision_source
+        and "order = snapshot_codes(current)" in revision_source
+        and "list(new_items.keys())" not in revision_source,
+        "P14 the sheet's order is read from the snapshot's item list, which "
+        "IronPython keeps, not from a dict, which it does not"
+    )
+    shuffled_previous = {"items": [
+        {"code": "B|Slab", "description": "shuttering slab", "unit": "m2",
+         "quantity": 10.0},
+        {"code": "A|Beam|M30", "description": "concrete beam", "unit": "m3",
+         "quantity": 1.0},
+    ]}
+    shuffled_current = {"items": [
+        {"code": "A|Slab|M25", "description": "concrete slab", "unit": "m3",
+         "quantity": 2.0},
+        {"code": "A|Beam|M30", "description": "concrete beam", "unit": "m3",
+         "quantity": 3.0},
+        {"code": "B|Slab", "description": "shuttering slab", "unit": "m2",
+         "quantity": 10.0},
+    ]}
+    check(
+        revision.snapshot_codes(shuffled_current)
+        == ["A|Slab|M25", "A|Beam|M30", "B|Slab"]
+        and [record["code"] for record in revision.compare_snapshots(
+            shuffled_previous, shuffled_current)]
+        == ["A|Slab|M25", "A|Beam|M30", "B|Slab"]
+        and revision.snapshot_codes({"items": [{"code": "X"}, {"code": "X"}]})
+        == ["X"],
+        "P14 items keep the order the snapshot lists them in, section by "
+        "section"
+    )
+
     check(
         "import Autodesk" not in revision_source
         and "from Autodesk" not in revision_source
