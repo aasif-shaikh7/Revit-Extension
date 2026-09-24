@@ -6033,6 +6033,90 @@ def main():
             else " (" + ", ".join(narrow_float_guards) + ")")
     )
 
+    # ------------------------------------------------------------
+    # Header colour chosen in the dialog (v1.36.0)
+    #
+    # The owner picks the header band's colour from the footer: a preset
+    # or any hex. The title must stay readable on whatever is chosen, so
+    # the promise is checked across the colour cube, not only on the
+    # presets. The WPF side was run on IronPython 2.7.12 with the real
+    # ui.xaml (recorded in CHANGELOG); here the wiring is read from source.
+    # ------------------------------------------------------------
+    import header_colour as hc
+
+    check(
+        hc.HEADER_PRESETS[0] == ("Red (default)", "#C8102E")
+        and hc.DEFAULT_HEADER_COLOUR == "#C8102E"
+        and len(set(hex_value for _label, hex_value in hc.HEADER_PRESETS))
+        == len(hc.HEADER_PRESETS)
+        and all(hc.normalize_hex(hex_value) == hex_value
+                for _label, hex_value in hc.HEADER_PRESETS),
+        "Header presets start with the owner's red and are distinct, valid "
+        "colours"
+    )
+    check(
+        hc.normalize_hex("c8102e") == "#C8102E"
+        and hc.normalize_hex(" #1f3864 ") == "#1F3864"
+        and hc.normalize_hex("#C12") == "#CC1122"
+        and hc.normalize_hex("blue") is None
+        and hc.normalize_hex("#12345") is None
+        and hc.normalize_hex(None) is None
+        and hc.resolve_header_colour("junk") == "#C8102E"
+        and hc.resolve_header_colour("#0e5a8a") == "#0E5A8A"
+        and hc.preset_index("#1f3864") == 2
+        and hc.preset_index("#0E5A8A") is None
+        and hc.is_default("#c8102e") and not hc.is_default("#1F3864"),
+        "Header colour hex is normalised, and a bad saved value falls back "
+        "to the red"
+    )
+
+    header_failures = []
+    for red in range(0, 256, 17):
+        for green in range(0, 256, 17):
+            for blue in range(0, 256, 17):
+                background = "#{0:02X}{1:02X}{2:02X}".format(red, green, blue)
+                title, subtitle = hc.header_text_colours(background)
+                if (hc.contrast_ratio(background, title) < 4.5
+                        or hc.contrast_ratio(background, subtitle) < 4.5):
+                    header_failures.append(background)
+    check(
+        not header_failures
+        and hc.header_text_colours("#FFE699")[0] == "#000000"
+        and hc.header_text_colours("#1F3864")[0] == "#FFFFFF",
+        "Any header colour gets title and subtitle text at 4.5:1 or better - "
+        "4,096 colours measured{0}".format(
+            "" if not header_failures
+            else " (fails: " + ", ".join(header_failures[:5]) + ")")
+    )
+
+    header_xaml = io.open(UI_PATH, encoding="utf-8-sig").read()
+    header_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
+    header_block_start = header_script.index("# HEADER COLOUR (v1.36.0)")
+    header_block = header_script[header_block_start:header_script.index(
+        "# PROJECT NAME", header_block_start)]
+    check(
+        'x:Name="HeaderColourSelector"' in header_xaml
+        and 'x:Name="HeaderColourCustom"' in header_xaml
+        and "resources[key] = brush" in header_block
+        and ".MergedDictionaries" not in header_block
+        and "resources.Remove(key)" in header_block
+        and "header_settings[_hc.SETTINGS_KEY] = colour" in header_block
+        and "header_custom.KeyDown +=" in header_block
+        and "header_custom.LostFocus +=" in header_block
+        and 'if colour and _header_state["ready"]:' in header_block,
+        "The header colour is a direct window resource (it survives theme "
+        "switches), saved on change but not on open, with Enter and "
+        "focus-out applying a custom hex"
+    )
+    header_source = io.open(os.path.join(LIB_DIR, "header_colour.py"),
+                            encoding="utf-8-sig").read()
+    check(
+        "import clr" not in header_source
+        and "import Autodesk" not in header_source
+        and "from pyrevit" not in header_source,
+        "header_colour imports no Revit, pyRevit or .NET symbol"
+    )
+
     print("")
 
     if failures:

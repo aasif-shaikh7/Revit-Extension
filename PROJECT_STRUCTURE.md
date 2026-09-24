@@ -112,6 +112,7 @@ Nudge.extension/
     ├── assembly_engine.py   <- P6 concrete/rebar/formwork assembly table (pure Python)
     ├── rate_database_engine.py <- P12 rates by code, place and date + BOQ pricing (pure Python)
     ├── revision_engine.py   <- P14 snapshot per issue + Previous/Current comparison (pure Python)
+    ├── header_colour.py     <- dialog header colour: presets, hex, readable text (pure Python)
     ├── stack_runner.py      <- runs the workbook writers on a 64 MB-stack thread (pure Python)
     ├── crash_trail.py       <- one flushed line per step, so a hard crash names its step
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
@@ -129,10 +130,10 @@ Nudge.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. It also hosts the **20 pure-Python modules** listed in the
+  dictionaries. It also hosts the **21 pure-Python modules** listed in the
   tree above (`settings_engine`, `quantity_engine`, `formwork_engine`,
   `rebar_engine`, `assembly_engine`, `costing_engine`, `rate_database_engine`,
-  `revision_engine`, `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
+  `revision_engine`, `header_colour`, `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
   `parameter_engine`, `site_items_engine`, `stack_runner`, `crash_trail`,
   `authoring_spec`, `agent_export_job`, `rest_api`, and `theme_manager` on the
   UI side) that the BOQ
@@ -257,8 +258,9 @@ The docstring declares `__min_revit_ver__ = '2025'` (Revit **2025 and above**).
 line, so pyRevit selects its default engine, and the default is IronPython — confirmed on
 2026-09-22 and 2026-09-24 from the crash trail, whose first line prints the live engine. CP3123
 (CPython 3.12.3) stays the stated target, and the `lib/` engines are already CPython-clean: 19 of
-the 20 import and write a workbook on CP3123 (measured 2026-09-24). `revision_engine.py`
-(v1.35.0) has so far only been measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF layer
+the 21 import and write a workbook on CP3123 (measured 2026-09-24). `revision_engine.py`
+(v1.35.0) and `header_colour.py` (v1.36.0) have so far only been measured on Python 3.12.10 in
+the harness. Only `script.py`'s pyRevit/WPF layer
 holds the tool on IP27, so moving the button is a deliberate, separately verified change.
 
 Two IP27 consequences are load-bearing for the code as it stands:

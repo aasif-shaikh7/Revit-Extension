@@ -19,8 +19,9 @@ bridge state and granting or revoking short controlled-write sessions.
   2.7.12)**: `script.py` carries no `#! python3` first line, so pyRevit loads it on its default
   engine. **CP3123 (CPython 3.12.3)** stays the target engine.
 > **Engine note:** the engine modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 20 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`
-> (`v1.35.0`) has so far only been measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF
+> 21 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`
+> (`v1.35.0`) and `header_colour.py` (`v1.36.0`) have so far only been measured on Python 3.12.10
+> in the harness. Only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython, because pyRevit still ships `pyrevit.forms` for IronPython
 > only — upstream master `6.5.5` carries the same CPython stub as the installed build (`6.5.3`).
 > From `v1.9.3`, the known IP27 fallback is silent so a healthy run does not force-open pyRevit
@@ -306,6 +307,7 @@ Revit-Extension/
 │       ├── rate_database_engine.py <- P12 rate lookup by location and date
 │       ├── rebar_engine.py       <- P4 rebar length/weight calculations
 │       ├── revision_engine.py    <- P14 snapshots + Previous/Current comparison
+│       ├── header_colour.py      <- dialog header colour presets + readable text
 │       ├── rest_api.py           <- token/authentication + bounded serializers
 │       ├── rule_engine.py        <- P8 structural rules
 │       ├── settings_engine.py    <- persisted selections/options
@@ -360,7 +362,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 409 checks passed`.
+`RESULT: all 414 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
