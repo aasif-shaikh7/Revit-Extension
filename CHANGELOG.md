@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.34.2] - 2026-09-24
+
+### Fixed (settings can no longer be lost)
+- **Saving is atomic and keeps a backup.** `save_app_settings` writes a temporary file, moves the
+  previous settings to `.rcc_boq_settings.json.bak`, then puts the new file in place. A crash in
+  the middle of a write can no longer leave a truncated settings file.
+- **Loading falls back to that backup** when the live file is missing, empty or corrupt.
+- **Why:** on 2026-09-22 a wiped Rebar selection had no copy to go back to. The guard that caused
+  it was fixed in v1.33.0; this is the second line of defence.
+
+### Changed
+- **The harness prints its own count:** `RESULT: all 381 checks passed`, and on a failure it lists
+  every failed check by name. Until now every "N checks" figure in the docs was hand-maintained and
+  could not be reproduced from the tool's output.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 381 checks passed** (five new ones for settings). They
+  run on a temporary profile folder, never the owner's own settings file, and put the real path
+  back afterwards.
+- Two mutations were re-run against the new checks: dropping the backup step fails 2 checks, and
+  dropping the fallback read fails 1 - both by name in the new failure list.
+- Removed 2.2 MB of the agent's own leftover diagnostics from
+  `%LOCALAPPDATA%\RCC_BOQ\logs` (the row dump and three crash-trail copies from the 22 Sep
+  investigation). The tool's own trail and its one rotation are untouched.
+
+---
+
 ## [v1.34.1] - 2026-09-22
 
 ### Changed (dialog tab strip in gold)
