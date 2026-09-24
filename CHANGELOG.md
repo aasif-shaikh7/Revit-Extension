@@ -22,6 +22,33 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.36.1] - 2026-09-24
+
+### Added
+- **The workbook header follows the dialog's header colour.** One saved choice now drives both: the
+  colour picked in the dialog footer (`v1.36.0`) also fills the workbook's header rows - every
+  classic sheet's column-header row, and the project title row at the top of every site sheet. The
+  text on them turns white or black by the dialog's own rule, so a light choice such as gold never
+  leaves white text on a pale band. The blue band rows and the lime TOTAL rows are unchanged.
+- `workbook_header_colours()` in `export_engine` turns the saved choice into the fill and font;
+  `build_xlsx_styles_xml()` and both writers take `header_colour=`, and the export passes the saved
+  setting to both. `write_basic_xlsx(site_format=True)` forwards it too.
+
+### Unchanged on purpose
+- With no colour chosen, or the red chosen, or an unreadable setting, the workbook's `styles.xml` is
+  **byte-for-byte what `v1.36.0` wrote** - the harness pins it by its SHA-256.
+
+### Verified
+- **Real Excel 16:** a classic workbook with Navy reads `#1F3864` fill and white bold text on the
+  Beam and Detailed BOQ headers; a site workbook with gold reads `#FFE699` and black text on the
+  project title row of Summary, Beam and Detailed BOQ, with the blue band rows still `#DAE9F8`; a
+  workbook with no choice still reads `#C8102E` and white. All opened with no repair prompt.
+- `python test_xlsx_writer.py` prints **all 418 checks passed** (four new). Always writing white text
+  fails two of them by name.
+- Not yet exported from inside Revit with a colour chosen.
+
+---
+
 ## [v1.36.0] - 2026-09-24
 
 ### Added
@@ -62,6 +89,7 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ### Not changed
 - The **workbook** header keeps its red (`THEME_HEADER`). This option is for the dialog.
+  *(Superseded by `v1.36.1`: the workbook header now follows the same choice.)*
 
 ---
 

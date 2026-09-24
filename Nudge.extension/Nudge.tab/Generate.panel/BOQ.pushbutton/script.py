@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.36.0'
+__version__ = '1.36.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.36.0'
+SCRIPT_VERSION = '1.36.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -6400,6 +6400,17 @@ try:
                         revision_snapshots = None
                         revision_current = None
 
+                    # The workbook's title and header rows take the same
+                    # colour the owner chose for the dialog header
+                    # (v1.36.1); an unreadable setting falls back to the
+                    # red inside the writer.
+                    workbook_header_colour = None
+                    try:
+                        workbook_header_colour = load_app_settings().get(
+                            "header_colour")
+                    except:
+                        workbook_header_colour = None
+
                     # The writers are pure Python; on a BBS model they
                     # overflowed Revit's main-thread stack (2026-09-22).
                     # Run them on a thread with room to spare.
@@ -6434,6 +6445,7 @@ try:
                             rate_database=rate_database,
                             project_location=project_location,
                             revision_snapshots=revision_snapshots,
+                            header_colour=workbook_header_colour,
                             site_items=site_items
                         )
 
@@ -6461,6 +6473,7 @@ try:
                             rate_database=rate_database,
                             project_location=project_location,
                             revision_snapshots=revision_snapshots,
+                            header_colour=workbook_header_colour,
                             site_items=site_items
                         )
 
