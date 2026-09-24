@@ -403,8 +403,8 @@ pyRevit docstring (`__version__`) and the runtime `SCRIPT_VERSION` constant — 
 Excel export dialog.
 
 The intent is to tag every release with git (`vMAJOR.MINOR.PATCH`), with the pre-release development
-history tagged `v0.x`. In practice tagging lapsed after `v1.7.7` — no later release carries a tag —
-and is to resume. Full bump rules are in `PROJECT_STRUCTURE.md` §Versioning.
+history tagged `v0.x`. Tagging lapsed after `v1.7.7` and resumed at `v1.34.3`; the releases in
+between carry no tag and are reachable only by their commits, with `CHANGELOG.md` as their record. Full bump rules are in `PROJECT_STRUCTURE.md` §Versioning.
 
 ---
 
