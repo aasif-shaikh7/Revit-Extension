@@ -284,9 +284,9 @@ compatible. From `1.0.0` onward the normal rules apply.
 
 ## How versions are recorded
 
-- Every release commit is tagged `vMAJOR.MINOR.PATCH`. **Lapsed in practice:** the last tag
-  in the repository is `v1.7.7`; releases since then (through `v1.34.2`) are recorded in
-  `CHANGELOG.md` but not tagged. Tagging is to resume from the next release.
+- Every release commit is tagged `vMAJOR.MINOR.PATCH`. **There is a gap:** tagging lapsed
+  after `v1.7.7` and resumed at `v1.34.3`. The releases between them (`v1.7.8`-`v1.34.2`) are
+  recorded in `CHANGELOG.md` but carry no tag, so use the changelog to find those commits.
 - Development commits that predate the first semantic release are tagged `v0.x.y` so history is
   visible (`v0.1.0` … `v0.3.1`).
 
