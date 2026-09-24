@@ -2,14 +2,15 @@
 
 **Document:** `PRD.md`
 **Project status:** Product definition / working BOQ tool, actively extended
-**Current version:** `v1.34.3`
+**Current version:** `v1.35.0`
 **Target platform:** Autodesk Revit, structural / RCC (Reinforced Cement Concrete) workspace
 **Minimum Revit version:** 2025 and above
 **Runtime:** pyRevit 6.10.0 and above — the BOQ pushbutton runs on **IP27 (IronPython 2.7.12)**
 today; **CP3123 (CPython 3.12.3) remains the target engine**
 > **Engine caveat (T-03):** `script.py` carries no `#! python3` first line, so pyRevit loads it on
-> its default engine, IP27. Every module under `Nudge.extension/lib/` is CPython-clean — all 19
-> import and write a workbook on CP3123 (measured 2026-09-24) — so only `script.py`'s pyRevit/WPF
+> its default engine, IP27. The modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
+> 20 import and write a workbook on CP3123 (measured 2026-09-24), the 20th
+> (`revision_engine.py`, `v1.35.0`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython. pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
 > is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
 > `PyRevitCPythonNotSupported`), on the currently-installed build (`6.5.3`) and upstream
@@ -200,6 +201,8 @@ The workbook can contain, in order:
   `GRAND TOTAL` row, plus **BOQ by Level** and **BOQ by Grade**,
 - **Concrete Summary** and **Formwork Summary**,
 - **Detailed BOQ**, priced from the rate database,
+- **BOQ Revision** (`Previous Qty`, `Current Qty`, `Difference`, `% Difference`, `Status`),
+  written from the second export of a model onwards,
 - **Site Items**,
 - **Unmapped Elements**,
 - a **Costing** sheet (Category, Element ID, Quantity, Rate, Amount = Quantity × Rate) with a
@@ -328,6 +331,7 @@ BOQ.pushbutton (script.py + ui.xaml)
                ├── BOQ Summary (live SUM, GRAND TOTAL), BOQ by Level, BOQ by Grade
                ├── Concrete Summary, Formwork Summary
                ├── Detailed BOQ
+               ├── BOQ Revision (Previous/Current/Difference/%)
                ├── Site Items
                ├── Unmapped Elements
                └── Costing (Qty × Rate = Amount)
@@ -419,8 +423,11 @@ project.
   Detailed BOQ plus Concrete Summary and Formwork Summary alongside the element, Rebar, assembly,
   grouping and costing sheets in both the Classic and Site formats, using live formulas where
   appropriate.
-- **Phase 14 — BOQ Revision (not started).** Rev 00/01/02 with Previous vs Current Quantity,
-  Difference, and Percentage Difference.
+- **Phase 14 — BOQ Revision (engine and both sheets done, `v1.35.0`; no dialog tab).** Each
+  export files a snapshot of its own numbers under `%LOCALAPPDATA%\RCC_BOQ\revisions\`, and
+  from the second export onwards a `BOQ Revision` sheet gives Previous vs Current Quantity,
+  Difference, Percentage Difference and a status per item. Choosing *which* issue to compare
+  against, rather than always the latest, is the remaining slice.
 - **Phase 15 — Model Change Detection (not started).** Detect added/modified/deleted structural
   elements and BOQ impact. High complexity; only after the core BOQ system is mature.
 - **Phase 16 — Structural Dashboard (not started).** Concrete, Rebar (Ton), Formwork, Elements,
@@ -486,6 +493,7 @@ Nudge.extension/
     ├── export_validation.py
     ├── costing_engine.py
     ├── rate_database_engine.py
+    ├── revision_engine.py
     ├── assembly_engine.py
     ├── site_items_engine.py
     ├── export_engine.py
@@ -527,7 +535,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 383 checks passed`.
+`RESULT: all 404 checks passed`.
 
 ---
 

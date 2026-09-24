@@ -111,6 +111,7 @@ Nudge.extension/
     ├── site_items_engine.py <- P7 non-model line items: rules, pricing, table (pure Python)
     ├── assembly_engine.py   <- P6 concrete/rebar/formwork assembly table (pure Python)
     ├── rate_database_engine.py <- P12 rates by code, place and date + BOQ pricing (pure Python)
+    ├── revision_engine.py   <- P14 snapshot per issue + Previous/Current comparison (pure Python)
     ├── stack_runner.py      <- runs the workbook writers on a 64 MB-stack thread (pure Python)
     ├── crash_trail.py       <- one flushed line per step, so a hard crash names its step
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
@@ -128,10 +129,10 @@ Nudge.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. It also hosts the **19 pure-Python modules** listed in the
+  dictionaries. It also hosts the **20 pure-Python modules** listed in the
   tree above (`settings_engine`, `quantity_engine`, `formwork_engine`,
   `rebar_engine`, `assembly_engine`, `costing_engine`, `rate_database_engine`,
-  `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
+  `revision_engine`, `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
   `parameter_engine`, `site_items_engine`, `stack_runner`, `crash_trail`,
   `authoring_spec`, `agent_export_job`, `rest_api`, and `theme_manager` on the
   UI side) that the BOQ
@@ -255,8 +256,9 @@ The docstring declares `__min_revit_ver__ = '2025'` (Revit **2025 and above**).
 **The engine in practice is IP27 (IronPython 2.7.12).** `script.py` carries no `#! python3` first
 line, so pyRevit selects its default engine, and the default is IronPython — confirmed on
 2026-09-22 and 2026-09-24 from the crash trail, whose first line prints the live engine. CP3123
-(CPython 3.12.3) stays the stated target, and the `lib/` engines are already CPython-clean: all 19
-import and write a workbook on CP3123 (measured 2026-09-24). Only `script.py`'s pyRevit/WPF layer
+(CPython 3.12.3) stays the stated target, and the `lib/` engines are already CPython-clean: 19 of
+the 20 import and write a workbook on CP3123 (measured 2026-09-24). `revision_engine.py`
+(v1.35.0) has so far only been measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF layer
 holds the tool on IP27, so moving the button is a deliberate, separately verified change.
 
 Two IP27 consequences are load-bearing for the code as it stands:
@@ -332,6 +334,7 @@ every phase:
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
 | P12 Rate Database | `lib/rate_database_engine.py` (**since v1.30.0**; entries live in settings) |
+| P14 BOQ Revision | `lib/revision_engine.py` (**since v1.35.0**; snapshots live under `%LOCALAPPDATA%\RCC_BOQ\revisions\`) |
 | P13 Professional Excel BOQ | `lib/export_engine.py` (**exists since v1.8.6**) |
 | P14 Revision | `lib/export_engine.py` |
 | P15 Model change detection | separate diagnostic module |

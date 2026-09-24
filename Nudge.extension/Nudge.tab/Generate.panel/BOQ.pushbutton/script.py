@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.34.3'
+__version__ = '1.35.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.34.3'
+SCRIPT_VERSION = '1.35.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -6197,6 +6197,36 @@ try:
                     except:
                         site_items = []
 
+                    # P14: this issue's own numbers, and the issue
+                    # before it. The snapshot is filed only after the
+                    # workbook validates, further down, so a failed
+                    # export does not use up a revision number. Guarded
+                    # end to end: a revision is a convenience, and it
+                    # must never be the reason a BOQ fails to come out.
+                    revision_snapshots = None
+                    revision_current = None
+                    revision_previous = None
+                    revision_document = safe_text(doc.Title, "")
+                    try:
+                        from revision_engine import (
+                            build_snapshot, latest_snapshot,
+                            list_snapshots, next_revision_label)
+                        revision_previous = latest_snapshot(revision_document)
+                        revision_current = build_snapshot(
+                            element_data,
+                            element_data.get("Rebar") or [],
+                            revision=next_revision_label(
+                                list_snapshots(revision_document)),
+                            document=revision_document,
+                            exported=time.strftime("%Y-%m-%d")
+                        )
+                        if revision_previous and revision_current["items"]:
+                            revision_snapshots = (revision_previous,
+                                                  revision_current)
+                    except:
+                        revision_snapshots = None
+                        revision_current = None
+
                     # The writers are pure Python; on a BBS model they
                     # overflowed Revit's main-thread stack (2026-09-22).
                     # Run them on a thread with room to spare.
@@ -6230,6 +6260,7 @@ try:
                             rate_analysis=rate_analysis,
                             rate_database=rate_database,
                             project_location=project_location,
+                            revision_snapshots=revision_snapshots,
                             site_items=site_items
                         )
 
@@ -6256,6 +6287,7 @@ try:
                             rate_analysis=rate_analysis,
                             rate_database=rate_database,
                             project_location=project_location,
+                            revision_snapshots=revision_snapshots,
                             site_items=site_items
                         )
 
@@ -6268,6 +6300,20 @@ try:
                         raise ValueError(
                             "Canonical XLSX validation did not pass"
                         )
+
+                    # The workbook is real, so this issue becomes a
+                    # revision the next export can compare against -
+                    # unless it measures exactly what the last one did,
+                    # in which case there is no new revision to file.
+                    if revision_current:
+                        try:
+                            from revision_engine import (
+                                save_snapshot, snapshot_is_unchanged)
+                            if not snapshot_is_unchanged(
+                                    revision_previous, revision_current):
+                                save_snapshot(revision_current)
+                        except:
+                            pass
 
                     non_empty_sheets = 0
 

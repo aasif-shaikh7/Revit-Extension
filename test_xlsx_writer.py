@@ -53,6 +53,7 @@ ENGINE_MODULES = [
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "costing_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "export_engine.py"),
     os.path.join(REPO_DIR, "Nudge.extension", "lib", "rule_engine.py"),
+    os.path.join(REPO_DIR, "Nudge.extension", "lib", "revision_engine.py"),
     # Appended last on purpose: export_engine.py carries its own
     # behaviorally identical safe_text, and resolving that name from
     # where it already resolved keeps this split behavior-neutral.
@@ -5576,6 +5577,320 @@ def main():
         and abs(authoring_spec.cubic_feet_to_cubic_meters(1.0)
                 - 0.028316846592) < 1e-15,
         "Authoring spec unit conversions round-trip against Revit internals"
+    )
+
+    # ------------------------------------------------------------
+    # P14 BOQ Revision (v1.35.0)
+    #
+    # A revision is snapshot against snapshot, not workbook against
+    # workbook: the exported quantity cells hold SUMIF formulas, so
+    # reading a workbook back would compare formulas. The cases below are
+    # the ones a revision actually meets - a quantity that grew, one that
+    # shrank, an item that appeared, an item that vanished, one that moved
+    # by less than five litres, and a previous quantity of zero that has
+    # no percentage.
+    # ------------------------------------------------------------
+    import revision_engine as revision
+
+    rev_previous = revision.build_snapshot(
+        boq_fixture, boq_fixture.get("Rebar") or [],
+        revision="Rev 00", document="UMA NIWAS", exported="2026-09-20")
+
+    # Every snapshot item must be worded exactly as the Detailed BOQ words
+    # it, or a revision sheet and a BOQ sheet would name the same concrete
+    # two ways.
+    boq_descriptions = [row[1] for row in boq_engine.build_detailed_boq_table(
+        boq_fixture, {}, boq_fixture.get("Rebar") or [])]
+    check(
+        rev_previous["items"]
+        and all(item["description"] in boq_descriptions
+                for item in rev_previous["items"])
+        and all(isinstance(item["quantity"], float)
+                for item in rev_previous["items"]),
+        "P14 a snapshot words its items as the Detailed BOQ does and stores "
+        "plain numbers, never formulas"
+    )
+    check(
+        [item["code"] for item in rev_previous["items"]
+         if item["code"].startswith("A|Beam")]
+        == ["A|Beam|M10", "A|Beam|M30", "A|Beam|(No Grade)"]
+        and [item["quantity"] for item in rev_previous["items"]
+             if item["code"] == "A|Beam|M30"] == [3.5],
+        "P14 snapshot codes carry category and grade, and the quantity is "
+        "the sum of the rows"
+    )
+
+    # The current issue: M30 beams grew, the M40 column shrank, a wall
+    # appeared, the rebar went away, and M10 moved by four litres.
+    changed_fixture = {
+        "Beam": [
+            {"Grade": "M30", "Qty: Volume (m3)": 4.1,
+             "Qty: Shuttering (m2)": 14.0},
+            {"Grade": "M10", "Qty: Volume (m3)": 0.504,
+             "Qty: Shuttering (m2)": 2.0},
+            {"Grade": "(No Grade)", "Qty: Volume (m3)": 0.25,
+             "Qty: Shuttering (m2)": 1.0},
+        ],
+        "Column": [{"Grade": "M40", "Qty: Volume (m3)": 0.5,
+                    "Qty: Shuttering (m2)": 4.0}],
+        "Structure Wall": [{"Grade": "M30", "Qty: Volume (m3)": 6.0,
+                            "Qty: Shuttering (m2)": 20.0}],
+    }
+    rev_current = revision.build_snapshot(
+        changed_fixture, revision="Rev 01", document="UMA NIWAS",
+        exported="2026-09-24")
+    compared = revision.compare_snapshots(rev_previous, rev_current)
+    # .get, not [code]: an item the engine drops must fail a check, not
+    # crash the harness with a KeyError.
+    records = dict((record["code"], record) for record in compared)
+
+    def rev_record(code):
+        return records.get(code) or {"status": "", "percent": 0, "difference": 0,
+                                     "previous": 0, "current": 0,
+                                     "description": ""}
+
+    check(
+        rev_record("A|Beam|M30")["status"] == "Increased"
+        and rev_record("A|Beam|M30")["difference"] == 0.6
+        and rev_record("A|Beam|M30")["percent"] == 17.14
+        and rev_record("A|Column|M40")["status"] == "Decreased"
+        and rev_record("A|Column|M40")["percent"] == -33.33
+        and rev_record("A|Structure Wall|M30")["status"] == "New"
+        and rev_record("A|Structure Wall|M30")["percent"] is None,
+        "P14 grown, shrunk and new items are told apart, with the percentage "
+        "only where there is something to divide by"
+    )
+    check(
+        rev_record("A|Beam|M10")["status"] == "Unchanged"
+        and rev_record("A|Beam|M10")["difference"] == 0.004
+        and revision.QUANTITY_TOLERANCE == 0.005,
+        "P14 a difference under five litres is rounding, not a change"
+    )
+    check(
+        rev_record("C|12")["status"] == "Removed"
+        and rev_record("C|12")["current"] == 0.0
+        and rev_record("C|12")["previous"] > 0
+        and rev_record("C|12")["percent"] == -100.0
+        and rev_record("C|12")["description"]
+        == "Reinforcement steel, 12 mm dia",
+        "P14 an item that vanished is listed at zero with its old wording, "
+        "not dropped"
+    )
+    check(
+        [record["code"] for record in
+         revision.compare_snapshots(rev_previous, rev_current)]
+        == ["A|Beam|M10", "A|Beam|M30", "A|Beam|(No Grade)", "A|Column|M40",
+            "A|Structure Wall|M30", "B|Beam", "B|Column", "B|Structure Wall",
+            "C|8", "C|12"],
+        "P14 concrete comes before shuttering before steel, and items only "
+        "in the old issue follow the ones still there"
+    )
+    check(
+        revision.revision_change_counts(rev_previous, rev_previous)
+        == {"Unchanged": len(rev_previous["items"])}
+        and revision.compare_snapshots(rev_previous, rev_previous)[0]["percent"]
+        == 0.0,
+        "P14 an unchanged model reports every item unchanged"
+    )
+
+    # The sheet. Difference and % Difference are live, so a quantity
+    # corrected in Excel corrects them - which means their row numbers
+    # must be right in both workbook formats.
+    rev_table = revision.build_revision_table(rev_previous, rev_current)
+    rev_site_table = revision.build_revision_table(
+        rev_previous, rev_current, row_offset=5)
+    rev_item_rows = [(index, row) for index, row in enumerate(rev_table, 1)
+                     if isinstance(row[5], tuple)]
+    check(
+        rev_table[0] == list(revision.REVISION_HEADERS)
+        and rev_item_rows
+        and all(row[5] == ("FORMULA", "E{0}-D{0}".format(index))
+                for index, row in rev_item_rows)
+        and all(row[6] == ("FORMULA",
+                           'IF(D{0}=0,"",(E{0}-D{0})/D{0}*100)'.format(index))
+                for index, row in rev_item_rows),
+        "P14 Difference and % Difference are live formulas on their own row"
+    )
+    check(
+        all(rev_site_table[index - 1][5]
+            == ("FORMULA", "E{0}-D{0}".format(index + 5))
+            for index, _row in rev_item_rows),
+        "P14 the site workbook's title bands shift every revision formula "
+        "down five rows"
+    )
+    check(
+        not any(str(row[1]).strip().upper() == "TOTAL" for row in rev_table)
+        and [row[1] for row in rev_table if row[0] in ("A", "B", "C")]
+        == ["CONCRETE", "CENTERING AND SHUTTERING", "REINFORCEMENT"]
+        and revision.build_revision_table({}, {}) == [
+            list(revision.REVISION_HEADERS)],
+        "P14 the sheet is banded like the Detailed BOQ and has no TOTAL - "
+        "m3, m2 and kg do not add up"
+    )
+
+    # The store. Snapshots are files under the profile, so the numbering
+    # has to survive a deleted revision and a file nobody can read.
+    rev_dir = tempfile.mkdtemp()
+    rev_saved_env = os.environ.get("LOCALAPPDATA")
+    try:
+        os.environ["LOCALAPPDATA"] = rev_dir
+        saved_paths = [revision.save_snapshot(rev_previous),
+                       revision.save_snapshot(rev_current)]
+        filed = revision.list_snapshots("UMA NIWAS")
+        io.open(os.path.join(revision.document_folder("UMA NIWAS"),
+                             "rev_09.json"), "w").write(u"{not json")
+        with_bad_file = revision.list_snapshots("UMA NIWAS")
+        os.remove(saved_paths[1])
+        after_delete = revision.list_snapshots("UMA NIWAS")
+        store_ok = True
+    except Exception:
+        filed, with_bad_file, after_delete, saved_paths = [], [], [], []
+        store_ok = False
+    finally:
+        if rev_saved_env is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = rev_saved_env
+        shutil.rmtree(rev_dir, ignore_errors=True)
+    check(
+        store_ok
+        and [os.path.basename(path) for path in saved_paths]
+        == ["rev_00.json", "rev_01.json"]
+        and [snap["revision"] for snap in filed] == ["Rev 00", "Rev 01"]
+        and filed[0]["items"] == rev_previous["items"],
+        "P14 a snapshot is filed as rev_NN.json under the document and reads "
+        "back with its numbers intact"
+    )
+    check(
+        store_ok
+        and [snap["revision"] for snap in with_bad_file] == ["Rev 00", "Rev 01"]
+        and [snap["revision"] for snap in after_delete] == ["Rev 00"]
+        and revision.next_revision_label(after_delete) == "Rev 01"
+        and revision.next_revision_label(filed) == "Rev 02"
+        and revision.next_revision_label([]) == "Rev 00",
+        "P14 an unreadable file is skipped, and numbering continues from the "
+        "highest label ever filed"
+    )
+    check(
+        revision.safe_folder_name("UMA NIWAS/2026:v2") == "UMA NIWAS_2026_v2"
+        and ".." not in revision.safe_folder_name("../../etc")
+        and revision.safe_folder_name("C:/models/a.rvt") == "C_models_a.rvt"
+        and revision.safe_folder_name("a" + chr(92) + "b") == "a_b"
+        and revision.safe_folder_name("") == "document"
+        and revision.snapshot_filename("Rev 7") == "rev_07.json",
+        "P14 a document title cannot walk out of its own revisions folder"
+    )
+    # The sheet in both workbooks, and the export that files it.
+    rev_book_dir = tempfile.mkdtemp()
+    try:
+        classic_sheets = boq_engine.write_basic_xlsx(
+            os.path.join(rev_book_dir, "classic.xlsx"), boq_fixture,
+            generated_stamp="2026-09-24 10:00",
+            revision_snapshots=(rev_previous, rev_current))
+        site_sheets = boq_engine.write_site_xlsx(
+            os.path.join(rev_book_dir, "site.xlsx"), boq_fixture,
+            project_name="UMA NIWAS", generated_stamp="2026-09-24 10:00",
+            revision_snapshots=(rev_previous, rev_current))
+        first_export = boq_engine.write_basic_xlsx(
+            os.path.join(rev_book_dir, "first.xlsx"), boq_fixture,
+            generated_stamp="2026-09-24 10:00")
+    finally:
+        shutil.rmtree(rev_book_dir, ignore_errors=True)
+
+    classic_revision = classic_sheets.get(revision.REVISION_SHEET_NAME) or []
+    site_revision = site_sheets.get(revision.REVISION_SHEET_NAME) or []
+    classic_formula_rows = [(index, row) for index, row
+                            in enumerate(classic_revision, 1)
+                            if isinstance(row[5], tuple)]
+    # The site header row holds MERGE_V tuples, so a formula row is one
+    # whose Difference cell is a FORMULA tuple.
+    site_formula_rows = [(index, row) for index, row
+                         in enumerate(site_revision, 1)
+                         if len(row) > 5 and isinstance(row[5], tuple)
+                         and row[5][0] == "FORMULA"]
+    check(
+        revision.REVISION_SHEET_NAME not in first_export
+        and classic_formula_rows
+        and site_revision,
+        "P14 both workbooks write the BOQ Revision sheet, and a first export "
+        "with nothing to compare against writes none"
+    )
+    def rev_cell(table, row_index, column=0):
+        """One cell, or None - a sheet the writer skipped must fail a
+        check rather than crash the harness with an IndexError."""
+        try:
+            return table[row_index][column]
+        except Exception:
+            return None
+
+    check(
+        str(rev_cell(classic_revision, 0)).startswith("Previous: Rev 00")
+        and str(rev_cell(classic_revision, 1)).startswith("Current: Rev 01")
+        and list(classic_revision[2:3] and classic_revision[2] or [])
+        == list(revision.REVISION_HEADERS)
+        and all(row[5] == ("FORMULA", "E{0}-D{0}".format(index))
+                for index, row in classic_formula_rows),
+        "P14 the classic sheet names both issues above its header and its "
+        "formulas still point at their own rows"
+    )
+    check(
+        rev_cell(site_revision, 0) == "UMA NIWAS"
+        and rev_cell(site_revision, 1) == "RCC - BOQ REVISION"
+        and rev_cell(site_revision, 2) == "BOQ REVISION - Rev 00 to Rev 01"
+        and rev_cell(site_revision, 4) == ("MERGE_V", "ITEM NO.")
+        and site_formula_rows
+        and all(row[5] == ("FORMULA", "E{0}-D{0}".format(index))
+                for index, row in site_formula_rows),
+        "P14 the site sheet carries the title band and its formulas land five "
+        "rows down"
+    )
+
+    # The export handler: both writers are given the pair, and the
+    # snapshot is filed only after the workbook has validated - a failed
+    # export must not use up a revision number.
+    check(
+        export_handler_source.count("revision_snapshots=revision_snapshots,") == 2
+        and "next_revision_label(" in export_handler_source
+        and "latest_snapshot(" in export_handler_source,
+        "P14 the export passes this issue and the last one to both formats"
+    )
+    save_at = export_handler_source.find("save_snapshot(revision_current)")
+    validated_at = export_handler_source.find(
+        "Canonical XLSX validation did not pass")
+    check(
+        save_at > validated_at > 0
+        and "if revision_current:" in export_handler_source,
+        "P14 a snapshot is filed only after the workbook validates"
+    )
+
+    check(
+        revision.snapshot_is_unchanged(rev_previous, rev_previous) is True
+        and revision.snapshot_is_unchanged(rev_previous, rev_current) is False
+        and revision.snapshot_is_unchanged(
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.5}]},
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.504}]}) is True
+        and revision.snapshot_is_unchanged(
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.5}]},
+            {"items": [{"code": "A|Beam|M30", "quantity": 3.5},
+                       {"code": "B|Beam", "quantity": 1.0}]}) is False,
+        "P14 an issue that measures what the last one measured is not a new "
+        "revision; five litres does not make one either"
+    )
+    check(
+        "snapshot_is_unchanged(" in export_handler_source
+        and export_handler_source.index("snapshot_is_unchanged(")
+        < export_handler_source.index("save_snapshot(revision_current)"),
+        "P14 the export files a revision only when something changed"
+    )
+
+    revision_source = io.open(os.path.join(LIB_DIR, "revision_engine.py"),
+                              encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in revision_source
+        and "from Autodesk" not in revision_source
+        and "from pyrevit" not in revision_source
+        and "import pyrevit" not in revision_source,
+        "P14 revision engine imports no Revit or pyRevit symbol"
     )
 
     print("")

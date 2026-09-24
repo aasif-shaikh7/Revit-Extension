@@ -27,8 +27,9 @@ first line pyRevit picks its default engine, and the default is IronPython. Conf
 - The engine is reused between button presses, so module state in `sys.modules` and `+=` event
   subscriptions survive.
 
-The **engines in `lib/` are CPython-clean**: all 19 import and write a workbook on CP3123
-(measured 2026-09-24). Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
+The **engines in `lib/` are CPython-clean**: 19 of the 20 import and write a workbook on
+CP3123 (measured 2026-09-24); `revision_engine.py` (v1.35.0) has so far only been measured on
+Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
 button to CP3123 is a deliberate, separately verified change, not a one-line edit.
 
 **Current state: one working tool pushbutton plus brand infrastructure.**
@@ -39,7 +40,8 @@ foundation subtypes, collects concrete/formwork/rebar quantities, and writes a d
 The dialog has **ten tabs**: the six categories plus Assembly Profile, Site Items, Rate Analysis
 and Rate Database. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
 Rebar BBS, Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
-Grade, Concrete Summary, Formwork Summary, Detailed BOQ, Site Items, Unmapped Elements and Costing.
+Grade, Concrete Summary, Formwork Summary, Detailed BOQ, BOQ Revision, Site Items, Unmapped
+Elements and Costing.
 `Nudge.extension/lib/` contains the split pure-Python engines and
 the shared brand/theme system
 (`theme_manager.py` + `lib/Resources/*.xaml` resource dictionaries), previewed live by the
@@ -48,7 +50,7 @@ the shared brand/theme system
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
-  `lib/` (19 engine modules + brand resource dictionaries + theme manager). No CI.
+  `lib/` (20 engine modules + brand resource dictionaries + theme manager). No CI.
 - `RccBoq.RestBridge/` — the .NET Agent Bridge add-in and gateway that lets an agent read the live
   document and run a headless export, and `scripts/rcc_boq_rest_client.py`, its client.
 - Pure-Python dependency-free engines under `Nudge.extension/lib/`, deliberately free of Revit
@@ -116,7 +118,8 @@ collections can route to either logical sheet; code `v1.8.10` audits counts and 
 export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. Rebar
 (`OST_Rebar`) is the sixth category: detail rows plus `d²/162` steel weight through
 `lib/rebar_engine.py`. The dependency-free engines live in `lib/`; the newest of them are
-`rate_database_engine.py` (P12 rates by code, place and date), `stack_runner.py` (runs the
+`rate_database_engine.py` (P12 rates by code, place and date), `revision_engine.py` (P14: the
+snapshot behind each issue, and the comparison between two), `stack_runner.py` (runs the
 workbook writers on a big-stack thread) and `crash_trail.py` (one flushed line per step, so a
 hard crash names its step).
 
@@ -131,9 +134,11 @@ hard crash names its step).
 - **Source of truth is the code.** `script.py`, `ui.xaml` and `test_xlsx_writer.py` beat any prompt
   or roadmap. Read all three completely before writing code; never invent or remove functionality.
 - **Roadmap phases in `PRD.md` §12, live status in `todo-list.md`.** P1-P13 have shipped; P12's
-  engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. The open
-  phases are **P8** (keep splitting `script.py`, still 6,500+ lines), **P14** (BOQ revision
-  comparison), **P15** (model change detection) and **P16** (dashboard). Work one at a time, and
+  engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. **P14**'s engine, both
+  workbook sheets and the per-export snapshot shipped in `v1.35.0`, with no dialog tab yet. The
+  open phases are **P8** (keep splitting `script.py`, still 6,500+ lines), the remaining **P14**
+  slice (choose which issue to compare against), **P15** (model change detection) and **P16**
+  (dashboard). Work one at a time, and
   check `todo-list.md` rather than any older "next phase" sentence.
 
 ---
