@@ -1,16 +1,19 @@
 # Revit-Extension — Product Requirements Document v0.1
 
 **Document:** `PRD.md`
-**Project status:** Product definition / working single-tool extension
+**Project status:** Product definition / working BOQ tool, actively extended
+**Current version:** `v1.34.3`
 **Target platform:** Autodesk Revit, structural / RCC (Reinforced Cement Concrete) workspace
 **Minimum Revit version:** 2025 and above
-**Runtime:** pyRevit 6.10.0 and above — **CP3123 (CPython 3.12.3) is the supported engine**; IP27
-(IronPython 2.7) is best-effort/untested
-> **Engine caveat (T-03):** pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
+**Runtime:** pyRevit 6.10.0 and above — the BOQ pushbutton runs on **IP27 (IronPython 2.7.12)**
+today; **CP3123 (CPython 3.12.3) remains the target engine**
+> **Engine caveat (T-03):** `script.py` carries no `#! python3` first line, so pyRevit loads it on
+> its default engine, IP27. Every module under `Nudge.extension/lib/` is CPython-clean — all 19
+> import and write a workbook on CP3123 (measured 2026-09-24) — so only `script.py`'s pyRevit/WPF
+> layer keeps the tool on IronPython. pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
 > is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
-> `PyRevitCPythonNotSupported`**). On the currently-installed build (`6.5.3`) — and upstream
-> master (`6.5.5`) — the BOQ dialog therefore executes on **IP27** until a CPython forms
-> backend ships. See `todo-list.md` T-03.
+> `PyRevitCPythonNotSupported`), on the currently-installed build (`6.5.3`) and upstream
+> master (`6.5.5`) alike. See `todo-list.md` T-03.
 **Technology:** Python (pyRevit API), WPF `ui.xaml` for the dialog, dependency-free Open XML XLSX writer
 **Primary development method:** AI-assisted development with human product direction and testing
 
@@ -70,7 +73,8 @@ This release will not try to:
 
 - Replace native Revit schedules/schemas.
 - Support every Revit category.
-- Implement a costing database or live rate tables (rates come from a single chosen parameter).
+- Implement a costing database beyond the P11 rate analysis and P12 rate database sheets (the
+  Costing sheet itself still takes its rate from a single chosen parameter).
 - Build an installer or bundle a custom UI shell beyond the WPF dialog.
 - Add multi-language or team-shared live settings.
 
@@ -96,8 +100,9 @@ dependency-free engine's tests.
 ### Supported
 
 - Autodesk Revit **2025 and above**.
-- pyRevit **6.10.0 and above** with CP3123 (CPython 3.12.3) as the product target; IP27 remains
-  best-effort while the inspected pyRevit forms backend is IP27-only.
+- pyRevit **6.10.0 and above** with CP3123 (CPython 3.12.3) as the product target. The tool runs on
+  IP27 today because `script.py` has no `#! python3` first line and the inspected pyRevit forms
+  backend is IP27-only; the `lib/` engines are already CPython-clean.
 
 The script targets the Revit `DB` API via pyRevit and the RevitPythonShell-style
 `from pyrevit import revit, forms`, with safe fallbacks where a newer Revit API (e.g.
@@ -128,6 +133,11 @@ elements of that category in the current document and lists them alphabetically 
 | Slab | `OST_Floors` (plus logical slabs stored as foundations) |
 | Foundation | `OST_StructuralFoundation` plus logical foundations stored as floors |
 | Rebar | `OST_Rebar` |
+
+The dialog carries ten tabs in total: the six category tabs above, in the order Beam, Column,
+Structure Wall, Rebar, Slab, Foundation, followed by four configuration tabs — Assembly Profile,
+Site Items, Rate Analysis and Rate Database — which hold user-entered data rather than discovered
+parameters.
 
 ### 5.2 Search and selection
 
@@ -180,13 +190,23 @@ rule-engine work.
 The XLSX is written from Open XML parts directly (`zipfile` + string-built XML), so it needs no
 Excel, `openpyxl`, or other package inside the pyRevit environment.
 
-The workbook contains:
+The workbook can contain, in order:
 
 - one element sheet per **populated** category (empty categories are skipped — no empty tabs),
+- **Rebar Summary** and **Rebar BBS**,
+- **Structural Assembly**,
+- **Rate Analysis** and **Rate Database**,
 - a **BOQ Summary** sheet with live `SUM()` formulas across the element sheets and a
-  `GRAND TOTAL` row,
+  `GRAND TOTAL` row, plus **BOQ by Level** and **BOQ by Grade**,
+- **Concrete Summary** and **Formwork Summary**,
+- **Detailed BOQ**, priced from the rate database,
+- **Site Items**,
+- **Unmapped Elements**,
 - a **Costing** sheet (Category, Element ID, Quantity, Rate, Amount = Quantity × Rate) with a
   `TOTAL` row.
+
+A sheet is written only when it has data. The Site format omits **BOQ Summary**, **BOQ by Level**,
+**BOQ by Grade** and **Costing**; the Classic format omits the site title bands.
 
 Quantity columns are real numbers with the `#,##0.00` number format; an auto-filter ranges over the
 data (excluding the totals row); the workbook requests `fullCalcOnLoad` so Excel recalculates the
@@ -201,8 +221,9 @@ uses the first available quantity metric. Amount is a formula `C<row>*D<row>`; t
 ### 5.8 Settings persistence
 
 The last parameter selection (per category), export flags, filters, and last output folder are saved
-as JSON under the user profile (`.rcc_boq_settings.json`) and restored on the next run. Failures to
-read/write the file are silent and never block the tool.
+as JSON under the user profile (`.rcc_boq_settings.json`) and restored on the next run. The write is
+atomic and keeps a `.bak` copy of the previous file. Failures to read/write the file are silent and
+never block the tool.
 
 ### 5.9 Feedback and safety
 
@@ -229,8 +250,9 @@ read/write the file are silent and never block the tool.
 
 - **Testability:** the pure-Python engine must be extractable and runnable by
   `test_xlsx_writer.py` in any Python 3.x.
-- **Compatibility:** keep syntax and guarded fallbacks IP27-safe while CP3123 remains the single
-  product target; degrade gracefully on unavailable API members and do not claim unverified parity.
+- **Compatibility:** keep syntax and guarded fallbacks IP27-safe, because the tool still runs on
+  IP27, while CP3123 remains the target engine; keep the `lib/` engines CPython-clean; degrade
+  gracefully on unavailable API members and do not claim unverified parity.
 - **Performance:** element/parameter discovery uses `FilteredElementCollector` once per category; no
   per-row Revit API calls beyond parameter reads.
 - **Determinism:** quantity conversion constants are fixed so the same model yields the same numbers
@@ -277,7 +299,7 @@ organised. The AI development guide defines **how coding agents must change the 
 - **Which Revit-2025 APIs are guaranteed on both engines?** Some members (e.g.
   `ParameterUtils.IsBuiltInParameter`, `UnitTypeId`) are guarded; the exact floor of what
   pyRevit 6.10.0 exposes on each engine is a verification item.
-- **Where should categories live going forward?** The five hard-coded tabs are workable for RCC;
+- **Where should categories live going forward?** The six hard-coded category tabs are workable for RCC;
   further expansion should first introduce a data-driven category registry.
 
 ---
@@ -288,7 +310,7 @@ organised. The AI development guide defines **how coding agents must change the 
 Revit 2025+ (host)
        │
        ▼
-pyRevit 6.10.0+ (CP3123 target; IP27 best-effort forms fallback)
+pyRevit 6.10.0+ (runs on IP27 today; CP3123 target)
        │
        ▼
 BOQ.pushbutton (script.py + ui.xaml)
@@ -297,10 +319,18 @@ BOQ.pushbutton (script.py + ui.xaml)
        ├── Logical classification (Slab / Foundation subtypes)
        ├── Parameter discovery + selection
        ├── Metric quantity takeoff
-       └── Dependency-free Open XML XLSX writer
-           ├── Element sheets
-           ├── BOQ Summary (live SUM, GRAND TOTAL)
-           └── Costing (Qty × Rate = Amount)
+       └── Nudge.extension/lib/ engines
+           └── Dependency-free Open XML XLSX writer
+               ├── Element sheets (one per populated category)
+               ├── Rebar Summary, Rebar BBS
+               ├── Structural Assembly
+               ├── Rate Analysis, Rate Database
+               ├── BOQ Summary (live SUM, GRAND TOTAL), BOQ by Level, BOQ by Grade
+               ├── Concrete Summary, Formwork Summary
+               ├── Detailed BOQ
+               ├── Site Items
+               ├── Unmapped Elements
+               └── Costing (Qty × Rate = Amount)
 ```
 
 The design is **dependency-free, data-driven, discoverable, and testable**. The first priority is
@@ -325,12 +355,12 @@ project.
 - **Phase 3 — Formwork Engine.** Dedicated, configurable per-category rules: Beam (bottom, sides,
   ends where applicable), Column (four sides), Slab (bottom, edge where applicable), Foundation
   (sides where applicable). Rules must be configurable — no one universal formula.
-- **Phase 4 — Rebar Quantity Engine (`v1.10.2` testing).** A dedicated `OST_Rebar` tab/sheet extracts
+- **Phase 4 — Rebar Quantity Engine (done, closed at `v1.19.0`).** A dedicated `OST_Rebar` tab/sheet extracts
   Bar Mark, Diameter, Shape, Quantity, Bar Length, Total Length, Host Element/Category/ID and Level.
   All automatic fields are exposed in Rebar's Available Parameters list. The pure engine computes
-  Unit Weight with `d²/162 kg/m` and Total Weight. Initial code/harness is
-  complete; live comparison with a native Revit 2025 rebar schedule is required before closure.
-- **Phase 5 — Rebar Summary / BBS (`v1.12.4` testing).** Diameter-wise summary includes Diameter,
+  Unit Weight with `d²/162 kg/m` and Total Weight. The `v1.19.0` read-only native Revit audit closed
+  the phase.
+- **Phase 5 — Rebar Summary / BBS (done at `v1.19.1`).** Diameter-wise summary includes Diameter,
   Number of Bars, Total Length, Unit Weight and Total Weight in kg/ton. The BBS includes Bar Mark,
   Shape, Diameter, A-H, Bend Diameter, start/end hooks, Quantity, Cutting Length, Total Length,
   Unit/Total Weight, Host and Level. Revit Bar Length is authoritative for cutting length because
@@ -363,36 +393,38 @@ project.
   adapter over the same five read-only calls; `v1.14.1` hardens BOM handling and initialization
   state. A fresh Codex session discovered and invoked the registered status tool, and live Revit QA
   verified document, empty/non-empty selection, element and varying-Rebar calls.
-- **Phase 6 — Structural BOQ Assembly.** Configurable assemblies e.g. RCC Beam → Concrete,
+- **Phase 6 — Structural BOQ Assembly (done).** Configurable assemblies e.g. RCC Beam → Concrete,
   Reinforcement, Formwork, Binding Wire, Cover Blocks, Labour (similarly for columns, slabs,
   foundations), with support for future custom components.
-- **Phase 7 — Site / Non-Model Structural Items.** Items not explicitly modeled (binding wire,
+- **Phase 7 — Site / Non-Model Structural Items (done).** Items not explicitly modeled (binding wire,
   cover blocks, consumables, site items, temporary works) with Item Code, Description, Quantity,
   Unit, Rate, Remarks, coexisting with model-derived quantities.
-- **Phase 8 — Structural Rule Engine.** Configurable rules (`IF Category = Structural Column THEN
+- **Phase 8 — Structural Rule Engine (open).** Configurable rules (`IF Category = Structural Column THEN
   Concrete = Volume`, `THEN Formwork = Column Formwork Rule`, `IF Rebar Exists THEN Rebar Quantity =
   Rebar Weight`). Modular and structural-only; prevents `script.py` becoming a large hard-coded
-  condition pile.
-- **Phase 9 — Validation Engine.** Before export validate missing parameters/materials/concrete
+  condition pile. Still the open phase — `script.py` is 6,577 lines.
+- **Phase 9 — Validation Engine (done).** Before export validate missing parameters/materials/concrete
   grade, zero volume/area/quantity, missing rebar/mapping, invalid/unclassified elements, duplicate
   marks. Compact report (errors/warnings count + short lines) — no huge raw debug in the main dialog.
-- **Phase 10 — Unmapped Element Report.** Identify elements that cannot be processed (Beam B12 →
+- **Phase 10 — Unmapped Element Report (done).** Identify elements that cannot be processed (Beam B12 →
   missing material, Column C08 → missing concrete grade, Foundation F22 → missing BOQ mapping) so
   the user can fix the model.
 
-- **Phase 11 — Structural Rate Analysis.** Only after quantities are stable. Material, Labour,
-  Machinery, Wastage, Overheads. `Quantity × Rate = Amount`.
-- **Phase 12 — Structural Rate Database.** Configurable Item Code, Description, Unit, Rate,
-  Currency, Location, Vendor, Effective Date. Rates are never hard-coded.
-- **Phase 13 — Professional Excel BOQ.** Extend the existing XLSX engine toward Summary, Beam,
-  Column, Slab, Foundation, Concrete Summary, Rebar Summary, Formwork Summary, Rate Analysis,
-  Detailed BOQ, Costing, using live formulas where appropriate.
-- **Phase 14 — BOQ Revision.** Rev 00/01/02 with Previous vs Current Quantity, Difference, and
-  Percentage Difference.
-- **Phase 15 — Model Change Detection.** Detect added/modified/deleted structural elements and BOQ
-  impact. High complexity; only after the core BOQ system is mature.
-- **Phase 16 — Structural Dashboard.** Concrete, Rebar (Ton), Formwork, Elements, Estimated Cost,
-  Warnings.
+- **Phase 11 — Structural Rate Analysis (done, `v1.26.x`).** Only after quantities are stable.
+  Material, Labour, Machinery, Wastage, Overheads. `Quantity × Rate = Amount`.
+- **Phase 12 — Structural Rate Database (built in `v1.30.0`–`v1.32.0`; waiting on the owner's real
+  rates).** Configurable Item Code, Description, Unit, Rate, Currency, Location, Vendor, Effective
+  Date, with lookup by city/state/country and effective date. Rates are never hard-coded.
+- **Phase 13 — Professional Excel BOQ (done, `v1.27.0`–`v1.29.0`).** The XLSX engine now writes the
+  Detailed BOQ plus Concrete Summary and Formwork Summary alongside the element, Rebar, assembly,
+  grouping and costing sheets in both the Classic and Site formats, using live formulas where
+  appropriate.
+- **Phase 14 — BOQ Revision (not started).** Rev 00/01/02 with Previous vs Current Quantity,
+  Difference, and Percentage Difference.
+- **Phase 15 — Model Change Detection (not started).** Detect added/modified/deleted structural
+  elements and BOQ impact. High complexity; only after the core BOQ system is mature.
+- **Phase 16 — Structural Dashboard (not started).** Concrete, Rebar (Ton), Formwork, Elements,
+  Estimated Cost, Warnings.
 
 Only **Structural** scope is in the current roadmap; Architecture / Doors / Windows / Plumbing /
 Electrical / HVAC / MEP are not.
@@ -437,21 +469,35 @@ Every candidate feature is evaluated on four axes with ⭐ ratings (⭐⭐⭐⭐
 
 # 14. Architecture Principle — keep `script.py` modular
 
-Do not turn `script.py` into one giant calculation file. The project may eventually be modularized
-as:
+Do not turn `script.py` into one giant calculation file. The modularization has happened, but the
+engines live in `Nudge.extension/lib/` rather than inside the pushbutton folder:
 
 ```text
-BOQ.pushbutton/
-├── script.py
-├── ui.xaml
-├── quantity_engine.py
-├── rebar_engine.py
-├── formwork_engine.py
-├── rule_engine.py
-├── validation_engine.py
-├── costing_engine.py
-├── export_engine.py
-└── settings_engine.py
+Nudge.extension/
+├── Nudge.tab/Generate.panel/BOQ.pushbutton/
+│   ├── script.py
+│   └── ui.xaml
+└── lib/                       (19 modules)
+    ├── quantity_engine.py
+    ├── rebar_engine.py
+    ├── formwork_engine.py
+    ├── rule_engine.py
+    ├── validation_engine.py
+    ├── export_validation.py
+    ├── costing_engine.py
+    ├── rate_database_engine.py
+    ├── assembly_engine.py
+    ├── site_items_engine.py
+    ├── export_engine.py
+    ├── settings_engine.py
+    ├── parameter_engine.py
+    ├── authoring_spec.py
+    ├── stack_runner.py
+    ├── crash_trail.py
+    ├── agent_export_job.py
+    ├── rest_api.py
+    ├── theme_manager.py
+    └── Resources/             (brand resource dictionaries)
 ```
 
 However, do **not** split files merely for the sake of splitting. Inspect the existing code first
@@ -480,7 +526,8 @@ For every major change:
 6. Only after a successful test does the next major phase begin.
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
-first.
+first; the harness prints its own check count and currently ends with
+`RESULT: all 383 checks passed`.
 
 ---
 

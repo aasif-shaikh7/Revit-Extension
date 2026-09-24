@@ -15,21 +15,21 @@ bridge state and granting or revoking short controlled-write sessions.
 **Target environment:**
 
 - **Revit 2025 and above**
-- **pyRevit 6.10.0 and above** on the **CP3123 (CPython 3.12.3)** engine — the single supported
-  runtime. The legacy **IP27 (IronPython 2.7)** engine is best-effort/untested (code stays
-  2.7-syntax-safe but is not a support target).
-> **Engine caveat (T-03, confirmed 2026-09-01):** pyRevit still ships `pyrevit.forms` only
-> for IronPython — upstream master `6.5.5` carries the same CPython stub as the installed
-> build (`6.5.3`). So today the BOQ dialog **runs on IP27** despite the CP3123-only product
-> decision, until a CPython-capable `pyrevit.forms` ships upstream. From `v1.9.3`, the known IP27
-> fallback is silent so a healthy run does not force-open pyRevit output; only an unexpected engine
-> raises a warning. See `todo-list.md` T-03/T-10.
+- **pyRevit 6.10.0 and above**. The BOQ pushbutton currently runs on **IP27 (IronPython
+  2.7.12)**: `script.py` carries no `#! python3` first line, so pyRevit loads it on its default
+  engine. **CP3123 (CPython 3.12.3)** stays the target engine.
+> **Engine note:** every engine module under `Nudge.extension/lib/` is CPython-clean — all 19
+> import and write a workbook on CP3123 (measured 2026-09-24). Only `script.py`'s pyRevit/WPF
+> layer keeps the tool on IronPython, because pyRevit still ships `pyrevit.forms` for IronPython
+> only — upstream master `6.5.5` carries the same CPython stub as the installed build (`6.5.3`).
+> From `v1.9.3`, the known IP27 fallback is silent so a healthy run does not force-open pyRevit
+> output; only an unexpected engine raises a warning. See `todo-list.md` T-03/T-10.
 
 ---
 
 ## Project Status
 
-**Status: Working single-tool extension, actively extended**
+**Status: Working BOQ tool plus a theme-QA button, actively extended**
 
 The extension is functional and installed under the standard pyRevit extension layout
 (`*.extension` / `*.tab` / `*.panel` / `*.pushbutton`). The core Excel writer is covered by a
@@ -74,13 +74,17 @@ Nudge tab ▶ Generate panel ▶ BOQ pushbutton
       │
       ▼
 RCC BOQ Parameter Manager
-      │  (choose Beam / Column / Structure Wall / Slab / Foundation / Rebar parameters)
+      │  (10 tabs: Beam / Column / Structure Wall / Rebar / Slab / Foundation /
+      │   Assembly Profile / Site Items / Rate Analysis / Rate Database)
       ▼
 Revit element data + metric quantities
       │
       ▼
 Dependency-free XLSX (Open XML):
-      Element sheets  ▶  BOQ Summary  ▶  Costing
+      Element sheets ▶ Rebar Summary ▶ Rebar BBS ▶ Structural Assembly ▶
+      Rate Analysis ▶ Rate Database ▶ BOQ Summary ▶ BOQ by Level ▶ BOQ by Grade ▶
+      Concrete Summary ▶ Formwork Summary ▶ Detailed BOQ ▶ Site Items ▶
+      Unmapped Elements ▶ Costing
 ```
 
 The user opens the manager, picks the columns they want per category, optionally limits the export
@@ -94,7 +98,8 @@ dependencies imported into the pyRevit host.
 
 **RCC BOQ Parameter Manager** (`BOQ.pushbutton`):
 
-- **One dialog, six structural categories** — Beam, Column, Structure Wall, Slab, Foundation, Rebar.
+- **One dialog, ten tabs** — the six structural categories (Beam, Column, Structure Wall, Rebar,
+  Slab, Foundation) plus Assembly Profile, Site Items, Rate Analysis and Rate Database.
 - **Structural-only wall collection.** The Structure Wall tab reads `OST_Walls` whose Revit
   **Structural** flag is enabled; architectural walls are excluded.
 - **P4 Rebar quantity takeoff.** A dedicated Rebar tab/sheet collects `OST_Rebar` and exports Bar
@@ -124,8 +129,19 @@ dependencies imported into the pyRevit host.
 - **BOQ Summary sheet** — live cross-sheet `SUM()` formulas plus a `GRAND TOTAL` row.
 - **Costing sheet** — per-element Quantity × Rate with a `TOTAL` amount, driven from a user
   rate/price parameter on each category.
+- **Grouped, assembled and priced sheets** — `BOQ by Level`, `BOQ by Grade`, `Concrete Summary`,
+  `Formwork Summary`, `Structural Assembly`, `Site Items`, `Rate Analysis`, `Rate Database`,
+  `Detailed BOQ` and `Unmapped Elements` are written when the relevant data exists. The Site
+  format omits `BOQ Summary`, `BOQ by Level`, `BOQ by Grade` and `Costing`; the Classic format
+  omits the site title bands.
+- **Rate database** — the Rate Database tab and sheet resolve a rate by city/state/country and
+  effective date, and the `Detailed BOQ` is priced from it. No rate is hard-coded.
+- **Owner theme** — the dialog uses a red header band, peach buttons with black text, a lime
+  selection colour, a gold tab strip and Consolas; the workbook uses red titles and headers,
+  banded rows, lime-tint totals, Indian digit grouping and A4 landscape one page wide.
 - **Settings persistence** — the last parameter selection, filters, and output folder are stored in
-  a JSON settings file under the user profile and restored on the next run.
+  a JSON settings file under the user profile and restored on the next run. The save is atomic and
+  keeps a `.bak` backup of the previous file.
 
 ---
 
@@ -270,16 +286,28 @@ Revit-Extension/
 │   │   │       └── icon.png       <- pushbutton icon
 │   │   └── Brand.panel/
 │   │       └── BrandShowcase.pushbutton/   <- brand/theme live preview + Light/Dark QA
-│   └── lib/
-│       ├── settings_engine.py    <- persisted selections/options
-│       ├── quantity_engine.py    <- metric dimensions
-│       ├── formwork_engine.py    <- shuttering rules/formulas
-│       ├── rebar_engine.py      <- P4 rebar length/weight calculations
-│       ├── rest_api.py          <- token/authentication + bounded serializers
+│   └── lib/                       <- 19 dependency-free engine modules
+│       ├── agent_export_job.py   <- headless Agent export job state
+│       ├── assembly_engine.py    <- P6 structural assembly components
+│       ├── authoring_spec.py     <- authoring/spec definitions
 │       ├── costing_engine.py     <- costing tables
+│       ├── crash_trail.py        <- export crash breadcrumb trail
 │       ├── export_engine.py      <- dependency-free Open XML XLSX writer
+│       ├── export_validation.py  <- canonical cell-for-cell workbook validation
+│       ├── formwork_engine.py    <- shuttering rules/formulas
+│       ├── parameter_engine.py   <- parameter discovery/normalisation
+│       ├── quantity_engine.py    <- metric dimensions
+│       ├── rate_database_engine.py <- P12 rate lookup by location and date
+│       ├── rebar_engine.py       <- P4 rebar length/weight calculations
+│       ├── rest_api.py           <- token/authentication + bounded serializers
+│       ├── rule_engine.py        <- P8 structural rules
+│       ├── settings_engine.py    <- persisted selections/options
+│       ├── site_items_engine.py  <- P7 site / non-model items
+│       ├── stack_runner.py       <- runs the writers on a 64 MB-stack thread
 │       ├── theme_manager.py      <- Revit Light/Dark theme detection + dictionary merging
-│       └── Resources/            <- brand resource dictionaries (colors/typography/controls)
+│       ├── validation_engine.py  <- P9/P10 validation + unmapped elements
+│       └── Resources/            <- brand resource dictionaries (Brand.Colors.Light/Dark,
+│                                    Brand.Typography, Brand.Controls)
 │
 ├── docs/
 │   └── reference/                 <- older Kestrel docs, kept for study
@@ -308,7 +336,7 @@ detail is in [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
 
 A feature is not *done* because `script.py` is syntactically valid.
 
-The XLSX writer is the only part that runs outside Revit, so it is tested at two levels:
+The `lib/` engines are the parts that run outside Revit, so the project is tested at two levels:
 
 ```text
 Standalone regression (test_xlsx_writer.py)
@@ -324,6 +352,9 @@ formulas, auto-filter range, styles, GRAND TOTAL). It runs in any Python 3.x:
 python test_xlsx_writer.py
 ```
 
+The harness prints its own check count; the current run ends with
+`RESULT: all 383 checks passed`.
+
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
 elements for routing matrices. Forms/UI and real Revit API access still require a live Revit
@@ -338,23 +369,23 @@ The project is evolving from **Parameter Selection + Basic Quantity Export** int
 time, never as a rewrite.
 
 ```text
-P1  Quantity Engine (extend existing)
-P2  BOQ Grouping (level / material / concrete grade)
-P3  Formwork Engine
-P3.5 Structure Wall category integration
-P4  Rebar Quantity Engine
-P5  Rebar Summary / BBS
-P6  Structural BOQ Assembly
-P7  Site / Manual Structural Items
-P8  Structural Rule Engine
-P9  Validation Engine
-P10 Unmapped Element Report
-P11 Rate Analysis
-P12 Rate Database
-P13 Professional Excel BOQ
-P14 BOQ Revision
-P15 Model Change Detection
-P16 Structural Dashboard
+P1  Quantity Engine (extend existing)            done
+P2  BOQ Grouping (level / material / concrete grade)  done
+P3  Formwork Engine                              done
+P3.5 Structure Wall category integration         done
+P4  Rebar Quantity Engine                        done
+P5  Rebar Summary / BBS                          done
+P6  Structural BOQ Assembly                      done
+P7  Site / Manual Structural Items               done
+P8  Structural Rule Engine                       open (script.py is 6,577 lines)
+P9  Validation Engine                            done
+P10 Unmapped Element Report                      done
+P11 Rate Analysis                                done
+P12 Rate Database                                built; waiting on the owner's real rates
+P13 Professional Excel BOQ                       done
+P14 BOQ Revision                                 not started
+P15 Model Change Detection                       not started
+P16 Structural Dashboard                         not started
 ```
 
 Only **structural** scope is in the roadmap (Beam/Column/Structure Wall/Slab/Foundation/Rebar + concrete, reinforcement,
@@ -371,8 +402,9 @@ The extension follows **semantic versioning** (`MAJOR.MINOR.PATCH`) as recommend
 pyRevit docstring (`__version__`) and the runtime `SCRIPT_VERSION` constant — and is shown in the
 Excel export dialog.
 
-Every release is tagged with git (`vMAJOR.MINOR.PATCH`); the pre-release development history is
-tagged `v0.x`. Full bump rules are in `PROJECT_STRUCTURE.md` §Versioning.
+The intent is to tag every release with git (`vMAJOR.MINOR.PATCH`), with the pre-release development
+history tagged `v0.x`. In practice tagging lapsed after `v1.7.7` — no later release carries a tag —
+and is to resume. Full bump rules are in `PROJECT_STRUCTURE.md` §Versioning.
 
 ---
 
@@ -409,7 +441,23 @@ If the extension eventually saves the engineer a workbook every day, that is the
 
 ## Project Status (short)
 
-**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** Version `v1.23.2`
+**Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
+is `v1.34.3`. P1–P7, P9–P11 and P13 are done; P12 is built and waiting only on the owner's real
+rates; P8 is still open (`script.py` is 6,577 lines); P14, P15 and P16 have not started.
+
+Since `v1.23.2` the following shipped. `v1.26.x` added P11 rate analysis (engine, sheet and tab).
+`v1.27.0`–`v1.29.0` added the P13 `Detailed BOQ` plus `Concrete Summary` and `Formwork Summary` in
+both the Classic and Site formats. `v1.30.0`–`v1.32.0` added the P12 rate database: lookup by
+city/state/country and effective date, its own tab and sheet, and a `Detailed BOQ` priced from it.
+`v1.32.1` fixed a Revit stack-overflow crash on BBS exports by running the writers on a 64 MB-stack
+thread (`lib/stack_runner.py`). `v1.33.0`–`v1.34.1` applied the owner's theme — dialog: red header
+band `#C8102E`, peach button `#F4A582` with black text, lime selection `#C6F432`, gold tab strip
+`#FFE699`, Consolas; workbook: red title and header, `#DAE9F8` band rows, lime-tint totals, Indian
+digit grouping, A4 landscape one page wide. `v1.34.2` made the settings save atomic with a `.bak`
+backup and gave the harness its own printed check count; `v1.34.3` put the model's element
+count on each category tab.
+
+Version `v1.23.2`
 routes owner-confirmed footing codes with a variant letter (`F2A`) and wall-footing codes (`WF1`)
 to Foundation / Footing. Version `v1.23.1`
 fixes the Classic `BOQ Summary` GRAND TOTAL, which previously omitted the last category row
