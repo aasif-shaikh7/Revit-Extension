@@ -78,6 +78,7 @@ FUNCTION_NAMES = [
     # Classic workbook parts
     "build_xlsx_sheet_xml",
     "build_xlsx_sheet_xml_site",
+    "workbook_header_colours",
     "build_xlsx_styles_xml",
     "build_xlsx_workbook_xml",
     "build_xlsx_workbook_rels_xml",
@@ -6115,6 +6116,69 @@ def main():
         and "import Autodesk" not in header_source
         and "from pyrevit" not in header_source,
         "header_colour imports no Revit, pyRevit or .NET symbol"
+    )
+
+    # ------------------------------------------------------------
+    # Workbook header follows the dialog's header colour (v1.36.1)
+    #
+    # One saved choice drives both: the colour picked in the dialog footer
+    # also paints the workbook's title and header rows, and their text
+    # turns white or black by the dialog's own rule. Without a choice the
+    # workbook must stay exactly what v1.36.0 wrote - the digest below is
+    # the shipped styles.xml.
+    # ------------------------------------------------------------
+    import hashlib as _hashlib
+    import export_engine as _wb
+
+    default_styles = _wb.build_xlsx_styles_xml()
+    check(
+        _hashlib.sha256(default_styles.encode("utf-8")).hexdigest()
+        == "887a183d3858a1bd6264c746782cf898b76a17d65c574b282cf835c882cfa70c"
+        and _wb.build_xlsx_styles_xml("#C8102E") == default_styles
+        and _wb.build_xlsx_styles_xml("not a colour") == default_styles
+        and _wb.build_xlsx_styles_xml(None) == default_styles,
+        "With no header colour chosen, the workbook styles are byte-for-byte "
+        "what v1.36.0 wrote"
+    )
+    navy_styles = _wb.build_xlsx_styles_xml("#1f3864")
+    gold_styles = _wb.build_xlsx_styles_xml("#FFE699")
+    check(
+        '<fgColor rgb="FF1F3864"/>' in navy_styles
+        and '<color rgb="FFFFFFFF"/>' in navy_styles
+        and '<fgColor rgb="FFFFE699"/>' in gold_styles
+        and '<b/><sz val="11"/><color rgb="FF000000"/>' in gold_styles
+        and "FFC8102E" not in gold_styles
+        and minidom.parseString(gold_styles.encode("utf-8")) is not None,
+        "A chosen header colour fills the workbook header, and a light one "
+        "gets black text"
+    )
+
+    wb_dir = tempfile.mkdtemp()
+    try:
+        _wb.write_basic_xlsx(os.path.join(wb_dir, "classic.xlsx"), boq_fixture,
+                             generated_stamp="2026-09-24 10:00",
+                             header_colour="#1F3864")
+        _wb.write_basic_xlsx(os.path.join(wb_dir, "site.xlsx"), boq_fixture,
+                             generated_stamp="2026-09-24 10:00",
+                             site_format=True, header_colour="#FFE699")
+        with zipfile.ZipFile(os.path.join(wb_dir, "classic.xlsx")) as book:
+            classic_styles = book.read("xl/styles.xml").decode("utf-8")
+        with zipfile.ZipFile(os.path.join(wb_dir, "site.xlsx")) as book:
+            site_styles = book.read("xl/styles.xml").decode("utf-8")
+    finally:
+        shutil.rmtree(wb_dir, ignore_errors=True)
+    check(
+        '<fgColor rgb="FF1F3864"/>' in classic_styles
+        and '<fgColor rgb="FFFFE699"/>' in site_styles
+        and '<color rgb="FF000000"/>' in site_styles,
+        "Both workbook formats carry the chosen header colour, the site one "
+        "through write_basic_xlsx(site_format=True) too"
+    )
+    check(
+        export_handler_source.count("header_colour=workbook_header_colour,") == 2
+        and 'load_app_settings().get(\n                            "header_colour")'
+        in export_handler_source,
+        "The export hands the saved header colour to both workbook writers"
     )
 
     print("")

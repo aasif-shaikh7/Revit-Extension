@@ -852,29 +852,46 @@ def _finish_site_sheet(rows, row_xml, merged_spans, band_rows,
         "".join(row_xml),
         merge_xml
     )
-def build_xlsx_styles_xml():
+def workbook_header_colours(header_colour=None):
+    """(fill, font) as ARGB for the title and header rows.
+
+    The fill is the header colour the owner chose in the dialog (v1.36.0),
+    or the shipped red; the font turns white or black, whichever reads
+    better on it, by the same rule the dialog uses (lib/header_colour.py),
+    so a light choice never leaves white text on a pale band.
+    """
+    from header_colour import resolve_header_colour, header_text_colours
+
+    fill = resolve_header_colour(header_colour)
+    font = header_text_colours(fill)[0]
+    return "FF" + fill[1:], "FF" + font[1:]
+
+
+def build_xlsx_styles_xml(header_colour=None):
     """
     Workbook styles used by the export engine:
 
     xf 0 - default body text
-    xf 1 - header row: bold white on the header red
+    xf 1 - header row: bold, on the chosen header colour (default the red),
+           text white or black - whichever reads better
     xf 2 - numeric quantity cells, Indian grouping (1,23,456.78)
     xf 3 - totals label cells: bold on the lime tint with top border
     xf 4 - totals number cells: bold, Indian grouping, on the lime tint
     """
+    header_fill, header_font = workbook_header_colours(header_colour)
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
         '<numFmts count="1"><numFmt numFmtId="{0}" formatCode="{1}"/></numFmts>'
         '<fonts count="3">'
         '<font><sz val="11"/><name val="Segoe UI"/></font>'
-        '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/></font>'
+        '<font><b/><sz val="11"/><color rgb="{3}"/><name val="Segoe UI"/></font>'
         '<font><b/><sz val="11"/><name val="Segoe UI"/></font>'
         '</fonts>'
         '<fills count="6">'
         '<fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFC8102E"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="{2}"/><bgColor indexed="64"/></patternFill></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFEEF9CC"/><bgColor indexed="64"/></patternFill></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFDAE9F8"/><bgColor indexed="64"/></patternFill></fill>'
         '<fill><patternFill patternType="solid"><fgColor rgb="FFDAE9F8"/><bgColor indexed="64"/></patternFill></fill>'
@@ -908,7 +925,8 @@ def build_xlsx_styles_xml():
         '<cellStyle name="Normal" xfId="0" builtinId="0"/>'
         '</cellStyles>'
         '</styleSheet>'
-    ).format(INDIAN_NUMBER_FORMAT_ID, xml_escape(INDIAN_NUMBER_FORMAT))
+    ).format(INDIAN_NUMBER_FORMAT_ID, xml_escape(INDIAN_NUMBER_FORMAT),
+             header_fill, header_font)
 
 
 def build_xlsx_workbook_xml(sheet_names):
@@ -2102,7 +2120,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      site_format=False, validation_report_path=None,
                      unmapped_report=None, site_items=None,
                      rate_analysis=None, rate_database=None,
-                     project_location="", revision_snapshots=None):
+                     project_location="", revision_snapshots=None,
+                     header_colour=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2135,7 +2154,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             rate_analysis=rate_analysis,
             rate_database=rate_database,
             project_location=project_location,
-            revision_snapshots=revision_snapshots
+            revision_snapshots=revision_snapshots,
+            header_colour=header_colour
         )
 
     # Only categories that actually contain at least one element produce a
@@ -2649,7 +2669,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         archive.writestr(
             "xl/styles.xml",
             enforce_uniform_grid_borders(
-                build_xlsx_styles_xml()).encode("utf-8")
+                build_xlsx_styles_xml(header_colour)).encode("utf-8")
         )
 
         for index, sheet_name in enumerate(sheet_names, 1):
@@ -3255,7 +3275,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     assembly_profile=None, validation_report_path=None,
                     unmapped_report=None, site_items=None,
                     rate_analysis=None, rate_database=None,
-                    project_location="", revision_snapshots=None):
+                    project_location="", revision_snapshots=None,
+                    header_colour=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -3609,7 +3630,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         archive.writestr(
             "xl/styles.xml",
             enforce_uniform_grid_borders(
-                build_xlsx_styles_xml()).encode("utf-8")
+                build_xlsx_styles_xml(header_colour)).encode("utf-8")
         )
 
         for index, sheet_name in enumerate(sheet_names, 1):

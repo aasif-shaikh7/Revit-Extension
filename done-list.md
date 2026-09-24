@@ -1483,6 +1483,10 @@ from `script.py` (presets, custom hex, bad hex, back to default, survival across
 rendered screenshots. Harness: 414 checks, including contrast over 4,096 colours. Not yet opened
 inside Revit.
 
+**`v1.36.1`:** the workbook's header rows follow the same saved colour (classic column headers,
+site project-title row), text white or black by the same rule. Verified in real Excel 16; with
+no choice the styles are byte-identical to `v1.36.0`. Harness: 418 checks.
+
 ---
 
 ## Standing conventions
