@@ -9,8 +9,8 @@
 today; **CP3123 (CPython 3.12.3) remains the target engine**
 > **Engine caveat (T-03):** `script.py` carries no `#! python3` first line, so pyRevit loads it on
 > its default engine, IP27. The modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 21 import and write a workbook on CP3123 (measured 2026-09-24), the other two
-> (`revision_engine.py`, `header_colour.py`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
+> 22 import and write a workbook on CP3123 (measured 2026-09-24), the other three
+> (`revision_engine.py`, `header_colour.py`, `model_change_engine.py`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython. pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
 > is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
 > `PyRevitCPythonNotSupported`), on the currently-installed build (`6.5.3`) and upstream
@@ -203,6 +203,8 @@ The workbook can contain, in order:
 - **Detailed BOQ**, priced from the rate database,
 - **BOQ Revision** (`Previous Qty`, `Current Qty`, `Difference`, `% Difference`, `Status`),
   written from the second export of a model onwards,
+- **Model Changes** (P15: each element added, deleted or modified, what changed, and the concrete,
+  shuttering and steel difference, with a TOTAL per column),
 - **Site Items**,
 - **Unmapped Elements**,
 - a **Costing** sheet (Category, Element ID, Quantity, Rate, Amount = Quantity × Rate) with a
@@ -429,8 +431,10 @@ project.
   the second export onwards a `BOQ Revision` sheet gives Previous vs Current Quantity,
   Difference, Percentage Difference and a status per item. The Revision tab chooses which issue
   the next export is compared against (per model) and names issues.
-- **Phase 15 — Model Change Detection (not started).** Detect added/modified/deleted structural
-  elements and BOQ impact. High complexity; only after the core BOQ system is mature.
+- **Phase 15 — Model Change Detection (done, `v1.40.0`).** Every revision snapshot keeps one
+  record per element; a `Model Changes` sheet lists each element added, deleted or modified -
+  concrete, shuttering or hosted steel by 0.005 or more, or grade, level or family and type -
+  with the BOQ impact per element and in total.
 - **Phase 16 — Structural Dashboard (not started).** Concrete, Rebar (Ton), Formwork, Elements,
   Estimated Cost, Warnings.
 
@@ -495,6 +499,7 @@ Nudge.extension/
     ├── costing_engine.py
     ├── rate_database_engine.py
     ├── revision_engine.py
+    ├── model_change_engine.py
     ├── header_colour.py
     ├── site_items_tab.py, rate_analysis_tab.py, rate_database_tab.py, revision_tab.py
     ├── parameter_lists_tab.py
@@ -539,7 +544,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 432 checks passed`.
+`RESULT: all 440 checks passed`.
 
 ---
 

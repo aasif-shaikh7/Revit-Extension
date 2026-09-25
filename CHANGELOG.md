@@ -22,6 +22,69 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.40.0] - 2026-09-25
+
+**P15 Model Changes: which elements are behind the movement.** The BOQ Revision sheet says *how much*
+each BOQ item moved - "M30 beams 381 -> 395 m3". The new **Model Changes** sheet says *which
+elements* moved it:
+
+| Change | Category | Element ID | Family and Type | Level | What changed | Concrete Difference (m3) | Shuttering Difference (m2) | Steel Difference (kg) |
+|---|---|---|---|---|---|---|---|---|
+| Added | Beam | 40 | Beam: 230x450 | L5 | New element | 0.85 | 0 | 0 |
+| Modified | Beam | 12 | Beam: 230x600 | L3 | Concrete 1.200 -> 1.600 m3; Grade M25 -> M30; Type ... | 0.40 | 2.00 | 7.00 |
+| Deleted | Column | 5 | | L0 | No longer in the model | -0.62 | 0 | 0 |
+
+Each difference column holds one unit, so the sheet ends in a live `TOTAL` for each.
+
+### Decided (the owner left these to the tool, 2026-09-25)
+- **An element is Modified** when its concrete, shuttering or hosted steel moved by **0.005** or more
+  (m3 / m2 / kg - the revision sheet's own tolerance), or its **grade, level or family and type**
+  changed. Mark, Comments and other parameters do not make it Modified: they do not move the BOQ.
+- **Steel is per element:** every rebar row adds its weight to its host, so a beam reads
+  "Steel 45 -> 52 kg" rather than listing thousands of bars. Rebar with no concrete host is kept in
+  one record, so its weight never drops out of the totals.
+- **Where:** a Model Changes sheet right after BOQ Revision, in both workbook formats, compared
+  against the same issue the BOQ Revision sheet uses (the Revision tab's choice, else the latest).
+- An element deleted and drawn again gets a new Revit ID and shows as one Deleted and one Added.
+
+### How
+- `lib/model_change_engine.py` (new, the 22nd engine module): element records, the comparison, the
+  sheet. Order always comes from lists - never from a dict, which IronPython 2.7 does not keep in
+  order - and no `float()` ever sees `None`.
+- **Revision snapshots are now format 2:** each also carries one record per element - ID, category,
+  level, grade, family and type, concrete, shuttering, hosted steel.
+- The export collects each element's **family and type** through a sink next to the existing
+  material sink, so no workbook column is added.
+- **An issue is now "unchanged" only when its elements are too.** One beam moving to another level
+  leaves every BOQ total the same, but it is a change, and it is filed as a new revision.
+- A revision filed before this version has no element records, so no Model Changes sheet can be
+  drawn against it; the first export after the upgrade therefore files one new revision that has
+  them, and the sheet appears from the export after that.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 440 checks passed** (eight new). Eight mutations are each
+  caught by name: the tolerance dropped, a grade change ignored, steel not put on its host,
+  unhosted steel dropped, deleted elements dropped, the TOTAL ignoring the title bands, the
+  unchanged rule ignoring elements, and the type sink not handed over.
+- **Same results on both engines:** a 43-row scenario (added, deleted, modified, grade and steel
+  changes, missing quantities) gives identical output on CPython 3.12 and on pyRevit's IronPython
+  2.7.12. `scripts/ip27_compile.ps1`: 28 files compile, none fail.
+- **Live in a test Revit 2025** (IronPython 2.7.12, a copy of the RUDRSKSH BLOCK-M-STR model; the
+  owner's Revit untouched), three exports:
+  - classic, formwork on: the latest filed revision (Rev 04) predates element records, so no Model
+    Changes sheet, and Rev 05 was filed - format 2, **1,266 element records** (544 beams, 326
+    columns, 343 slabs, 40 walls, 13 foundations), **every one with its family and type** read from
+    Revit (`BEAM: 300X600` ...);
+  - classic, formwork off: a Model Changes sheet of **1,257 Modified** elements ("Shuttering 7.200
+    -> 0.000 m2"; the other 9 had no shuttering), Rev 06 filed;
+  - site, formwork on: the same 1,257 back, in the site title bands (`MODEL CHANGES - Rev 06 to
+    Rev 07`), Rev 07 filed.
+- **Reconciled in real Excel 16:** the Model Changes TOTAL for shuttering is **-17,737.14 m2** in the
+  classic workbook and **+17,737.14** in the site one - exactly the sum of the BOQ Revision sheet's
+  shuttering differences in each. Both open with no repair prompt, landscape, one page wide.
+
+---
+
 ## [v1.39.0] - 2026-09-25
 
 **P8, second slice: `script.py` is 645 lines shorter** (6,153 -> 5,508). No behaviour changes.

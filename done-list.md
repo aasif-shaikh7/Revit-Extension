@@ -1528,6 +1528,18 @@ old and new handlers through ten steps on the real `ui.xaml` is identical at eve
 site exports live in a test Revit match the `v1.38.0` ones sheet for sheet except the time stamp and
 the revision sheet. Harness 432 checks, five mutations caught.
 
+## P15-01 - Model Changes: the elements behind the movement (`v1.40.0`, 2026-09-25)
+
+**Built:** `lib/model_change_engine.py`; revision snapshots (format 2) keep one record per element
+(ID, category, level, grade, family and type, concrete, shuttering, hosted steel); a `Model Changes`
+sheet in both workbooks lists each element added, deleted or modified with what changed and the
+three differences, totalled. An element is Modified when a quantity moves by 0.005 or more or its
+grade, level or type changes; steel is summed onto its host. An issue is unchanged only when its
+elements are too. The export collects family and type through a sink, no new column.
+
+**Known to work:** Tested (harness) - 440 checks, eight mutations caught; identical output on
+CPython 3.12 and IronPython 2.7.12 for a 43-row scenario. See CHANGELOG for the live export.
+
 ---
 
 ## Standing conventions

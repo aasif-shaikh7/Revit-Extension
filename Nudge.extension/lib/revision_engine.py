@@ -41,8 +41,9 @@ REVISION_HEADERS = (
 QUANTITY_TOLERANCE = 0.005
 
 # Written into every snapshot so a later version can tell what it is
-# reading. Bump it only when the stored shape changes.
-SNAPSHOT_FORMAT = 1
+# reading. Bump it only when the stored shape changes. Format 2 (v1.40.0)
+# adds "elements": one record per element, for P15's Model Changes sheet.
+SNAPSHOT_FORMAT = 2
 
 STATUS_NEW = "New"
 STATUS_REMOVED = "Removed"
@@ -104,7 +105,7 @@ def _sum_field(rows, field, grade=None):
 
 
 def build_snapshot(data_result, rebar_rows=None, revision="",
-                   document="", exported=""):
+                   document="", exported="", element_types=None):
     """The plain numbers behind one issue of the BOQ.
 
     Same items, wording and order as the Detailed BOQ, but every quantity
@@ -172,12 +173,19 @@ def build_snapshot(data_result, rebar_rows=None, revision="",
                 "quantity": round(weight, 4),
             })
 
+    # P15: one record per element - identity, grade, level, family and
+    # type, and its concrete, shuttering and hosted steel - so the next
+    # issue can say which elements moved, not only how much.
+    from model_change_engine import build_element_records
+
     return {
         "format": SNAPSHOT_FORMAT,
         "revision": str(revision or ""),
         "document": str(document or ""),
         "exported": str(exported or ""),
         "items": items,
+        "elements": build_element_records(
+            data, rebar_rows, element_types),
     }
 
 
@@ -419,7 +427,11 @@ def snapshot_is_unchanged(previous, current):
         after = _number(item.get("quantity")) or 0.0
         if abs(after - before) >= QUANTITY_TOLERANCE:
             return False
-    return True
+    # P15 (v1.40.0): the same totals can hide a change - a beam moved to
+    # another level, a type swapped, one element grown while another
+    # shrank. An issue is only unchanged when its elements are too.
+    from model_change_engine import elements_unchanged
+    return elements_unchanged(previous, current)
 
 
 def revision_change_counts(previous, current):

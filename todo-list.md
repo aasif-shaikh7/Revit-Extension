@@ -55,7 +55,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P12 | Structural Rate Database (configurable, not hard-coded) | 4/5/4/2 | **built, waiting on real rates** (`v1.30.0` engine: entries, lookup by city/state/country and date, store, sheet builder; `v1.31.0` Rate Database tab, per-project location, sheet in both formats; `v1.32.0` the Detailed BOQ priced from it, live-verified on UMA NIWAS. The owner has no real rates yet; nothing is left to build until they do) |
 | P13 | Professional Excel BOQ (extend existing XLSX engine) | 5/5/3/4 | **done** (`v1.27.0` Detailed BOQ, `v1.28.0` Concrete Summary + Formwork Summary, `v1.29.0` all three in the site workbook; live-verified on UMA NIWAS in both formats, the site format also in the owner's own Revit 2026-09-22) |
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | **done** (`v1.35.0` engine + snapshots + `BOQ Revision` in both workbooks; `v1.35.1` run live, two IronPython bugs fixed; `v1.37.0` Revision tab - compare against any filed issue, per model, and name issues - run live in a test Revit) |
-| P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | `todo` |
+| P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | **done** (`v1.40.0` `lib/model_change_engine.py`, element records in every snapshot, a `Model Changes` sheet in both workbooks; decisions left to the tool by the owner, recorded in CHANGELOG) |
 | P16 | Structural Dashboard | 3/4/3/4 | `todo` |
 | INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `done` (`v1.19.0`) |
 | INT-04 | Controlled Structural Material assignment | — | **done** (`v1.23.0`, Bridge `v2.5.0`) |
@@ -65,9 +65,8 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 ## Active roadmap phase
 
 **Current product focus (2026-09-25):** **P14 is done** (`v1.37.0`). The next candidates are
-**P15** model change detection (waiting on the owner's four decisions: what counts as a change,
-rebar per bar or per diameter, the tolerance, where the result shows) or **P8**'s next slice -
-`script.py` is 5,508 lines after `v1.38.0`-`v1.39.0`. Everything up to P14 has shipped:
+**P16** structural dashboard, or **P8**'s next slice. P15 shipped in `v1.40.0`. Everything up to
+P15 has shipped:
 
 - **P1-P7, P9-P11, P13 are done** and owner-confirmed; see the table above and `CHANGELOG.md`.
 - **P12** is built end to end - engine, dialog tab, workbook sheet and the Detailed BOQ priced from
@@ -80,8 +79,8 @@ rebar per bar or per diameter, the tolerance, where the result shows) or **P8**'
 - **P14** is done: engine, sheets and the Revision tab, run live (`v1.35.1`, `v1.37.0`).
 - **IronPython `float(None)` sweep - done in `v1.35.2`.** Seventeen guards widened, verified on
   IronPython 2.7.12 itself, and the harness now fails any new `float()` guard that would let
-  IronPython's `SystemError` / `AttributeError` through. **P15** and **P16** have no
-  code yet.
+  IronPython's `SystemError` / `AttributeError` through.
+- **P15** is done (`v1.40.0`): the Model Changes sheet. **P16** has no code yet.
 
 The theme work (v1.33.0-v1.34.1) and the settings-safety fix (v1.34.2) sit outside the phase
 numbering; both are recorded in `CHANGELOG.md`.
