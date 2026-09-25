@@ -69,8 +69,10 @@ Nothing below claims a live Revit feature was verified by an agent when only the
   by the pre-split code from the same model earlier the same morning, is identical in 14 of its 16
   sheets and in `styles.xml`; the two that differ differ only where they must - the Summary's
   time stamp and version, and the BOQ Revision sheet, which compared against a different issue.
-- The tabs have not been clicked by a person inside Revit; the WPF run above is the evidence for
-  the dialog side.
+- **The owner opened the dialog in Revit on 2026-09-25 and clicked through the tabs** - so the
+  dialog opens on the split code and the tabs show. No tab's buttons were exercised by hand: what
+  Add, Save name and the rest do is known from the WPF run above and the live exports, not from a
+  person using them.
 
 ---
 
