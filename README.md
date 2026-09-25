@@ -76,8 +76,8 @@ Nudge tab ▶ Generate panel ▶ BOQ pushbutton
       │
       ▼
 RCC BOQ Parameter Manager
-      │  (10 tabs: Beam / Column / Structure Wall / Rebar / Slab / Foundation /
-      │   Assembly Profile / Site Items / Rate Analysis / Rate Database)
+      │  (11 tabs: Beam / Column / Structure Wall / Rebar / Slab / Foundation /
+      │   Assembly Profile / Site Items / Rate Analysis / Rate Database / Revision)
       ▼
 Revit element data + metric quantities
       │
@@ -100,8 +100,8 @@ dependencies imported into the pyRevit host.
 
 **RCC BOQ Parameter Manager** (`BOQ.pushbutton`):
 
-- **One dialog, ten tabs** — the six structural categories (Beam, Column, Structure Wall, Rebar,
-  Slab, Foundation) plus Assembly Profile, Site Items, Rate Analysis and Rate Database.
+- **One dialog, eleven tabs** — the six structural categories (Beam, Column, Structure Wall, Rebar,
+  Slab, Foundation) plus Assembly Profile, Site Items, Rate Analysis, Rate Database and Revision.
 - **Structural-only wall collection.** The Structure Wall tab reads `OST_Walls` whose Revit
   **Structural** flag is enabled; architectural walls are excluded.
 - **P4 Rebar quantity takeoff.** A dedicated Rebar tab/sheet collects `OST_Rebar` and exports Bar
@@ -362,7 +362,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 418 checks passed`.
+`RESULT: all 426 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -451,9 +451,8 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.35.0`. P1–P7, P9–P11 and P13 are done; P12 is built and waiting only on the owner's real
-rates; P14's engine and both workbook sheets shipped in `v1.35.0` and only its dialog tab is left;
-P8 is still open (`script.py` is 6,668 lines); P15 and P16 have not started.
+is `v1.37.0`. P1–P7, P9–P11, P13 and P14 are done; P12 is built and waiting only on the owner's
+real rates; P8 is still open (`script.py` is 7,081 lines); P15 and P16 have not started.
 
 Since `v1.23.2` the following shipped. `v1.26.x` added P11 rate analysis (engine, sheet and tab).
 `v1.27.0`–`v1.29.0` added the P13 `Detailed BOQ` plus `Concrete Summary` and `Formwork Summary` in

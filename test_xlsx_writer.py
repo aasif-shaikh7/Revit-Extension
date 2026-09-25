@@ -5852,15 +5852,17 @@ def main():
     check(
         export_handler_source.count("revision_snapshots=revision_snapshots,") == 2
         and "next_revision_label(" in export_handler_source
-        and "latest_snapshot(" in export_handler_source,
-        "P14 the export passes this issue and the last one to both formats"
+        and "choose_previous(" in export_handler_source
+        and "get_compare_choice(" in export_handler_source,
+        "P14 the export passes this issue and the chosen earlier one to both "
+        "formats"
     )
     save_at = export_handler_source.find("save_snapshot(revision_current)")
     validated_at = export_handler_source.find(
         "Canonical XLSX validation did not pass")
     check(
         save_at > validated_at > 0
-        and "if revision_current:" in export_handler_source,
+        and "if revision_current and revision_is_new:" in export_handler_source,
         "P14 a snapshot is filed only after the workbook validates"
     )
 
@@ -5878,9 +5880,10 @@ def main():
         "revision; five litres does not make one either"
     )
     check(
-        "snapshot_is_unchanged(" in export_handler_source
-        and export_handler_source.index("snapshot_is_unchanged(")
-        < export_handler_source.index("save_snapshot(revision_current)"),
+        "settle_current_issue(" in export_handler_source
+        and export_handler_source.index("settle_current_issue(")
+        < export_handler_source.index("save_snapshot(revision_current)")
+        and "if revision_current and revision_is_new:" in export_handler_source,
         "P14 the export files a revision only when something changed"
     )
 
@@ -6179,6 +6182,172 @@ def main():
         and 'load_app_settings().get(\n                            "header_colour")'
         in export_handler_source,
         "The export hands the saved header colour to both workbook writers"
+    )
+
+    # ------------------------------------------------------------
+    # P14 Revision tab (v1.37.0)
+    #
+    # The owner chooses which issue the next export is compared against,
+    # per model, and names issues. Two rules carry the weight: a chosen
+    # issue that has since been deleted falls back to the latest rather
+    # than comparing against nothing, and whether an export files a NEW
+    # revision is judged against the latest, never against the chosen
+    # one - comparing with Rev 00 must not refile a copy of Rev 02.
+    # ------------------------------------------------------------
+    import revision_engine as rev_tab
+
+    tab_filed = [
+        {"revision": "Rev 00", "exported": "2026-09-20",
+         "items": [{"code": "A|Beam|M30", "quantity": 3.5}]},
+        {"revision": "Rev 01", "exported": "2026-09-22", "name": "Tender",
+         "items": [{"code": "A|Beam|M30", "quantity": 4.0}]},
+        {"revision": "Rev 02", "exported": "2026-09-24",
+         "items": [{"code": "A|Beam|M30", "quantity": 4.1}]},
+    ]
+    check(
+        (rev_tab.choose_previous(tab_filed, "Rev 00") or {}).get("revision")
+        == "Rev 00"
+        and (rev_tab.choose_previous(tab_filed, "rev 1") or {}).get("revision")
+        == "Rev 01"
+        and (rev_tab.choose_previous(tab_filed, "") or {}).get("revision")
+        == "Rev 02"
+        and (rev_tab.choose_previous(tab_filed, "Rev 07") or {}).get("revision")
+        == "Rev 02"
+        and rev_tab.choose_previous([], "Rev 00") is None,
+        "P14 the chosen revision is compared against; none chosen, or one "
+        "since deleted, means the latest"
+    )
+
+    # Compare against Rev 00 while the model still measures what Rev 02
+    # measured: the sheet shows the change since Rev 00, and nothing new
+    # is filed, because nothing changed since the latest.
+    same_as_latest = {"revision": "Rev 03",
+                      "items": [{"code": "A|Beam|M30", "quantity": 4.1}]}
+    compared = rev_tab.compare_snapshots(
+        rev_tab.choose_previous(tab_filed, "Rev 00"), same_as_latest) or [{}]
+    check(
+        compared[0].get("previous") == 3.5
+        and compared[0].get("status") == "Increased"
+        and rev_tab.snapshot_is_unchanged(tab_filed[-1], same_as_latest)
+        and not rev_tab.snapshot_is_unchanged(tab_filed[0], same_as_latest),
+        "P14 comparing with an older issue shows the change since it, while "
+        "the filing rule still asks only whether anything changed since the "
+        "latest"
+    )
+    filing_block = export_handler_source[
+        export_handler_source.index("# The workbook is real, so this issue"):
+        export_handler_source.index("save_snapshot(revision_current)")]
+    check(
+        "settle_current_issue(\n                                "
+        "revision_latest, revision_current)" in export_handler_source
+        and "revision_latest = (" in export_handler_source,
+        "P14 the export files a new revision by comparing with the latest, "
+        "not with the chosen issue"
+    )
+
+    # An unchanged export IS the latest revision: it takes that label (so
+    # the sheet never says "Rev 03" for an issue that was never filed) and
+    # is not filed; a changed one keeps its new number and is filed.
+    settled, settled_new = rev_tab.settle_current_issue(
+        tab_filed[1], dict(same_as_latest, revision="Rev 03",
+                           items=[{"code": "A|Beam|M30", "quantity": 4.0}]))
+    fresh, fresh_new = rev_tab.settle_current_issue(tab_filed[2], dict(
+        same_as_latest, revision="Rev 03",
+        items=[{"code": "A|Beam|M30", "quantity": 5.0}]))
+    untouched = dict(same_as_latest)
+    rev_tab.settle_current_issue(tab_filed[2], untouched)
+    check(
+        settled["revision"] == "Rev 01" and settled.get("name") == "Tender"
+        and settled_new is False
+        and fresh["revision"] == "Rev 03" and fresh_new is True
+        and rev_tab.settle_current_issue(None, dict(same_as_latest))[1] is True
+        and untouched["revision"] == "Rev 03",
+        "P14 an export unchanged since the latest revision is called by that "
+        "revision's label and is not filed; a changed one takes the next number"
+    )
+
+    tab_settings = rev_tab.set_compare_choice(
+        {"theme": "Dark", "revision_compare": {"Other": "Rev 03"}},
+        "UMA NIWAS", "rev 01")
+    check(
+        tab_settings["theme"] == "Dark"
+        and tab_settings["revision_compare"] == {"Other": "Rev 03",
+                                                 "UMA NIWAS": "Rev 01"}
+        and rev_tab.get_compare_choice(tab_settings, "UMA NIWAS") == "Rev 01"
+        and rev_tab.get_compare_choice(tab_settings, "New model") == ""
+        and rev_tab.set_compare_choice(tab_settings, "UMA NIWAS", "Latest")
+        ["revision_compare"] == {"Other": "Rev 03"}
+        and "revision_compare" not in rev_tab.set_compare_choice(
+            {"revision_compare": {"A": "Rev 00"}}, "A", "")
+        and rev_tab.get_compare_choice({"revision_compare": "junk"}, "A") == ""
+        and rev_tab.get_compare_choice(None, "A") == "",
+        "P14 the compare choice is kept per model, clears back to latest, and "
+        "leaves every other setting alone"
+    )
+    check(
+        rev_tab.clean_revision_name("  Client   issue\t1 ") == "Client issue 1"
+        and len(rev_tab.clean_revision_name("x" * 200)) == rev_tab.MAX_NAME_LENGTH
+        and rev_tab.revision_display_name(tab_filed[1]) == "Rev 01 - Tender"
+        and rev_tab.revision_display_name(tab_filed[0]) == "Rev 00"
+        and rev_tab.revision_list_text(tab_filed[1])
+        == "Rev 01   |   2026-09-22   |   1 item   |   Tender"
+        and rev_tab.revision_meta_lines(tab_filed[1], tab_filed[2])[0]
+        == "Previous: Rev 01 - Tender exported 2026-09-22",
+        "P14 a revision name is tidied, capped, and shown in the list and the "
+        "sheet heading"
+    )
+
+    name_dir = tempfile.mkdtemp()
+    name_env = os.environ.get("LOCALAPPDATA")
+    try:
+        os.environ["LOCALAPPDATA"] = name_dir
+        for snapshot in tab_filed:
+            rev_tab.save_snapshot(dict(snapshot), "NAME TEST")
+        before = rev_tab.list_snapshots("NAME TEST")[1]
+        renamed_path = rev_tab.set_revision_name("NAME TEST", "Rev 01",
+                                                 "  Client issue 1 ")
+        after = rev_tab.list_snapshots("NAME TEST")[1]
+        cleared = rev_tab.set_revision_name("NAME TEST", "Rev 01", "   ")
+        after_clear = rev_tab.list_snapshots("NAME TEST")[1]
+        missing = rev_tab.set_revision_name("NAME TEST", "Rev 09", "x")
+        stored = io.open(renamed_path, encoding="utf-8").read()
+        names_ok = True
+    except Exception:
+        names_ok, before, after, after_clear, missing, stored = (
+            False, {}, {}, {}, "?", "")
+    finally:
+        if name_env is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = name_env
+        shutil.rmtree(name_dir, ignore_errors=True)
+    check(
+        names_ok
+        and after.get("name") == "Client issue 1"
+        and after.get("items") == before.get("items")
+        and after.get("exported") == before.get("exported")
+        and "name" not in after_clear
+        and missing == ""
+        and '"path"' not in stored,
+        "P14 renaming a revision changes only its name - the quantities and "
+        "date it recorded stay as filed"
+    )
+
+    tab_xaml = io.open(UI_PATH, encoding="utf-8-sig").read()
+    tab_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
+    tab_controls = ("RevisionCompareSelector", "RevisionList", "RevisionName",
+                    "RevisionSaveName", "RevisionRefresh", "RevisionSummary",
+                    "RevisionFolder")
+    check(
+        '<TabItem Header="Revision">' in tab_xaml
+        and all('x:Name="{0}"'.format(name) in tab_xaml for name in tab_controls)
+        and all('FindName("{0}")'.format(name) in tab_script
+                for name in tab_controls)
+        and "revision_tab_wire_controls()\n                revision_tab_refresh()"
+        in tab_script.replace("\r\n", "\n")
+        and 'if revision_tab_state["loading"]:' in tab_script,
+        "P14 the Revision tab has every control its handlers look for, is "
+        "wired and loaded when the dialog opens, and redrawing it saves nothing"
     )
 
     print("")

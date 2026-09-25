@@ -22,6 +22,62 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.37.0] - 2026-09-25
+
+**P14 is closed.** The last slice - choosing which issue to compare against, and naming issues -
+is in, with a dialog tab.
+
+### Added
+- **A Revision tab in the dialog** (the eleventh tab, after Rate Database):
+  - the revisions filed for this model, newest first - label, date, how many items, and the name;
+  - **Compare the next export against** - `Latest (Rev 02)` or any filed revision. Saved per model,
+    so choosing Rev 00 for one project does not touch another;
+  - a **name** for any revision ("Client issue 1", "Tender", up to 60 characters), which then
+    appears in the list, in the selector and in the sheet's heading
+    (`Previous: Rev 01 - Formwork off exported 2026-09-24`);
+  - one line saying what the next export will do, and where the revisions are stored.
+- In `lib/revision_engine.py`: `choose_previous`, `get_compare_choice` / `set_compare_choice`
+  (settings key `revision_compare`), `set_revision_name`, `clean_revision_name`,
+  `revision_display_name`, `revision_list_text`, and `settle_current_issue`.
+
+### Rules that carry the weight
+- **Whether an export files a new revision is judged against the latest, never against the chosen
+  issue.** Comparing with Rev 00 must not refile a copy of Rev 02 just because it differs from
+  Rev 00.
+- A chosen revision that has since been deleted falls back to the latest rather than comparing
+  against nothing.
+- Renaming changes only the name. The quantities and date a revision recorded stay as filed.
+- Opening or redrawing the tab saves nothing; only a change the owner makes is saved.
+
+### Fixed (found live, present since `v1.35.0`)
+- **An unchanged export was called by a number it never got.** The sheet read `Current: Rev 03` while
+  no Rev 03 was ever filed, and the next export would have claimed Rev 03 again. An export that
+  measures exactly what the latest filed revision measured *is* that revision:
+  `settle_current_issue` now gives it the latest's label and name before anything is written, and
+  it is not filed. Seen live afterwards: `Current: Rev 02`, and no Rev 03 on disk.
+
+### Verified
+- **Live in a test Revit 2025** (IronPython 2.7.12, Secondary bridge, a copy of the RUDRSKSH
+  BLOCK-M-STR model; the owner's Revit untouched):
+
+  | Export | Compared against | Sheet heading | Filed |
+  |---|---|---|---|
+  | classic, formwork on | Rev 01 (chosen, named "Formwork off") | `Previous: Rev 01 - Formwork off`, `Current: Rev 02`, shuttering `New` | nothing - unchanged since Rev 02 |
+  | classic, formwork off | Latest (Rev 02) | `Previous: Rev 02`, `Current: Rev 03`, shuttering `Removed` | `rev_03.json` |
+
+- **The tab itself in WPF on IronPython 2.7.12** with the real `ui.xaml` and the real handlers from
+  `script.py` (with small `os` / `json` stand-ins, since the hosted engine has no standard library):
+  the list and selector fill, nothing is saved on open, choosing Rev 00 saves it for this model only,
+  renaming Rev 01 updates list and selector and keeps Rev 00 selected, its quantity stays 4.0, a
+  rename with nothing selected warns, and Latest clears the choice. Screenshot taken.
+- `python test_xlsx_writer.py` prints **all 426 checks passed** (eight new). Seven mutations are each
+  caught: filing judged against the chosen issue, an unchanged export keeping the unfiled number,
+  an unchanged export filed anyway, a deleted choice comparing against nothing, a rename rewriting
+  quantities, one model's choice leaking to all, and a redraw saving the choice again.
+- The tab has not been clicked by a person inside Revit yet.
+
+---
+
 ## [v1.36.1] - 2026-09-24
 
 ### Added

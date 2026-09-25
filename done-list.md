@@ -1487,6 +1487,22 @@ inside Revit.
 site project-title row), text white or black by the same rule. Verified in real Excel 16; with
 no choice the styles are byte-identical to `v1.36.0`. Harness: 418 checks.
 
+## P14-02 - Revision tab: compare against any issue, name issues (`v1.37.0`, 2026-09-25)
+
+**Built:** an eleventh dialog tab listing the revisions filed for the model (newest first, with
+date, item count and name), a per-model **Compare the next export against** selector (Latest or any
+filed revision, settings key `revision_compare`), and a name for any revision that then shows in the
+list, the selector and the sheet heading. Whether an export files a new revision is still judged
+against the latest; a deleted choice falls back to the latest; a rename touches only the name.
+**Fixed on the way:** an unchanged export used to be called by a number it never got
+(`Current: Rev 03` with no Rev 03 filed); it now takes the latest's label (`settle_current_issue`).
+
+**Known to work:** Tested live in a test Revit 2025 (IronPython 2.7.12): compared against a chosen,
+named Rev 01 with nothing filed because nothing changed since Rev 02; then against Latest with
+formwork off, filed as Rev 03 with shuttering Removed. The tab itself was run in WPF on IronPython
+2.7.12 with the real `ui.xaml` and handlers, with a screenshot. Harness: 426 checks; seven mutations
+caught. Not yet clicked by a person inside Revit.
+
 ---
 
 ## Standing conventions

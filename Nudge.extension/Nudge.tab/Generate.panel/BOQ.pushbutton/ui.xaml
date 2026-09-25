@@ -1129,6 +1129,67 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="Revision">
+                <Grid Margin="18">
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="BOQ Revision" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
+                                   Style="{DynamicResource BrandBodyText}"
+                                   Text="Every export files the quantities behind it as a revision of this model - Rev 00, Rev 01 and on - but only when something changed. From the second export on, the workbook gets a BOQ Revision sheet: Previous Qty, Current Qty, Difference and % Difference for every item. Choose below which issue the next export is compared against, and give an issue a name so it can be found again."/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+                        <TextBlock Text="Compare the next export against" VerticalAlignment="Center" Margin="0,0,10,0"
+                                   Style="{DynamicResource BrandLabelText}"/>
+                        <ComboBox x:Name="RevisionCompareSelector" MinWidth="320" Style="{DynamicResource BrandComboBox}"
+                                  ToolTip="Latest follows whichever revision was filed last. A fixed choice stays until you change it. Saved for this model only."/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox Grid.Column="0" Header="Revisions filed for this model" Margin="0,0,8,0">
+                            <ListBox
+                                x:Name="RevisionList"
+                                Margin="5"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+                        </GroupBox>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="240">
+                            <TextBlock Text="Name of the selected revision" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,4"/>
+                            <TextBox x:Name="RevisionName" Margin="0,0,0,6" Style="{DynamicResource BrandTextBox}"
+                                     ToolTip="A short tag such as Client issue 1 or Tender. Up to 60 characters; blank removes the name."/>
+                            <Button x:Name="RevisionSaveName" Content="Save name" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="RevisionRefresh" Content="Refresh list" Height="34" Style="{DynamicResource BrandSecondaryButton}"/>
+                        </StackPanel>
+
+                    </Grid>
+
+                    <TextBlock x:Name="RevisionSummary" Grid.Row="3" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandBodyText}" Text="No revisions filed for this model yet."/>
+
+                    <TextBlock x:Name="RevisionFolder" Grid.Row="4" Margin="0,6,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandLabelText}" Text=""/>
+
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
 

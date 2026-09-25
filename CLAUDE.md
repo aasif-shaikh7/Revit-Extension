@@ -45,8 +45,8 @@ button to CP3123 is a deliberate, separately verified change, not a one-line edi
 contains `script.py` (the Revit/UI orchestration), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
 BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation/Rebar, discovers real parameters, classifies slab/
 foundation subtypes, collects concrete/formwork/rebar quantities, and writes a dependency-free XLSX workbook.
-The dialog has **ten tabs**: the six categories plus Assembly Profile, Site Items, Rate Analysis
-and Rate Database. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
+The dialog has **eleven tabs**: the six categories plus Assembly Profile, Site Items, Rate
+Analysis, Rate Database and Revision. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
 Rebar BBS, Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
 Grade, Concrete Summary, Formwork Summary, Detailed BOQ, BOQ Revision, Site Items, Unmapped
 Elements and Costing.
@@ -142,11 +142,10 @@ hard crash names its step).
 - **Source of truth is the code.** `script.py`, `ui.xaml` and `test_xlsx_writer.py` beat any prompt
   or roadmap. Read all three completely before writing code; never invent or remove functionality.
 - **Roadmap phases in `PRD.md` §12, live status in `todo-list.md`.** P1-P13 have shipped; P12's
-  engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. **P14**'s engine, both
-  workbook sheets and the per-export snapshot shipped in `v1.35.0`, with no dialog tab yet. The
-  open phases are **P8** (keep splitting `script.py`, still 6,500+ lines), the remaining **P14**
-  slice (choose which issue to compare against), **P15** (model change detection) and **P16**
-  (dashboard). Work one at a time, and
+  engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. **P14** is done
+  (`v1.35.0`-`v1.37.0`: engine, snapshots, both workbook sheets, the Revision tab). The open
+  phases are **P8** (keep splitting `script.py`, now 7,000+ lines), **P15** (model change
+  detection) and **P16** (dashboard). Work one at a time, and
   check `todo-list.md` rather than any older "next phase" sentence.
 
 ---

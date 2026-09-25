@@ -362,7 +362,8 @@ def revision_meta_lines(previous, current):
         exported = str(snapshot.get("exported", "") or "").strip()
         if not revision and not exported:
             continue
-        text = "{0}: {1}".format(label, revision or "(unlabelled)")
+        text = u"{0}: {1}".format(
+            label, revision_display_name(snapshot) or u"(unlabelled)")
         if exported:
             text += " exported {0}".format(exported)
         lines.append(text)
@@ -596,3 +597,151 @@ def latest_snapshot(document):
     """The highest-numbered snapshot filed for this document, or None."""
     filed = list_snapshots(document)
     return filed[-1] if filed else None
+
+
+# ------------------------------------------------------------------
+# Choosing the issue to compare against, and naming issues (v1.37.0)
+# ------------------------------------------------------------------
+
+# Where the per-document choice lives in the settings file:
+# {"revision_compare": {"<document folder name>": "Rev 01"}}. A document
+# with no entry compares against its latest filed revision, as before.
+COMPARE_SETTINGS_KEY = "revision_compare"
+
+# A name is a short tag for an issue ("Client issue 1", "Tender"), not a
+# note; it has to fit in a list row and a sheet heading.
+MAX_NAME_LENGTH = 60
+
+
+def clean_revision_name(name):
+    """Whitespace collapsed, trimmed, and cut to MAX_NAME_LENGTH."""
+    text = u" ".join(u"{0}".format(name or u"").split())
+    return text[:MAX_NAME_LENGTH].rstrip()
+
+
+def revision_display_name(snapshot):
+    """`Rev 01 - Client issue 1`, or just `Rev 01` when it has no name."""
+    if not isinstance(snapshot, dict):
+        return u""
+    label = u"{0}".format(snapshot.get("revision", "") or u"").strip()
+    name = clean_revision_name(snapshot.get("name", u""))
+    if label and name:
+        return u"{0} - {1}".format(label, name)
+    return label or name
+
+
+def revision_list_text(snapshot):
+    """One row of the dialog's list: label, date, how many items, name."""
+    if not isinstance(snapshot, dict):
+        return u""
+    parts = [u"{0}".format(snapshot.get("revision", "") or u"(unlabelled)")]
+    exported = u"{0}".format(snapshot.get("exported", "") or u"").strip()
+    if exported:
+        parts.append(exported)
+    count = len(snapshot_codes(snapshot))
+    parts.append(u"{0} item{1}".format(count, u"" if count == 1 else u"s"))
+    name = clean_revision_name(snapshot.get("name", u""))
+    if name:
+        parts.append(name)
+    return u"   |   ".join(parts)
+
+
+def get_compare_choice(settings, document):
+    """The label this document compares against, or "" for the latest."""
+    if not isinstance(settings, dict):
+        return ""
+    table = settings.get(COMPARE_SETTINGS_KEY)
+    if not isinstance(table, dict):
+        return ""
+    label = table.get(safe_folder_name(document), "")
+    number = revision_number(label)
+    return revision_label(number) if number is not None else ""
+
+
+def set_compare_choice(settings, document, label):
+    """A copy of settings with this document's choice set, or cleared.
+
+    Any label that is not a revision - "", "Latest", junk - clears the
+    choice, which means "the latest filed revision". Other documents'
+    choices and every other setting are kept.
+    """
+    result = dict(settings) if isinstance(settings, dict) else {}
+    table = result.get(COMPARE_SETTINGS_KEY)
+    table = dict(table) if isinstance(table, dict) else {}
+    key = safe_folder_name(document)
+    number = revision_number(label)
+    if number is None:
+        table.pop(key, None)
+    else:
+        table[key] = revision_label(number)
+    if table:
+        result[COMPARE_SETTINGS_KEY] = table
+    else:
+        result.pop(COMPARE_SETTINGS_KEY, None)
+    return result
+
+
+def choose_previous(filed, choice):
+    """The snapshot to compare against: the chosen one, else the latest.
+
+    `filed` is list_snapshots() - oldest first. A choice that is no
+    longer filed (its file was deleted) falls back to the latest rather
+    than silently comparing against nothing.
+    """
+    filed = [snapshot for snapshot in (filed or []) if isinstance(snapshot, dict)]
+    if not filed:
+        return None
+    wanted = revision_number(choice)
+    if wanted is not None:
+        for snapshot in filed:
+            if revision_number(snapshot.get("revision", "")) == wanted:
+                return snapshot
+    return filed[-1]
+
+
+def settle_current_issue(latest, current):
+    """(current, is_new): what this export is, before anything is written.
+
+    An export that measures exactly what the latest filed revision
+    measured is that revision, not a new one - so it is not filed, and it
+    must not be called by the next number either. Found live on
+    2026-09-25: the sheet read "Current: Rev 03" while no Rev 03 was ever
+    filed, and the next export would have claimed Rev 03 again. Such an
+    export takes the latest's label and name; its date stays today's,
+    because that is when this workbook was made. Returns a copy; the
+    snapshot passed in is not changed.
+    """
+    if not isinstance(current, dict):
+        return current, False
+    if isinstance(latest, dict) and snapshot_is_unchanged(latest, current):
+        settled = dict(current)
+        settled["revision"] = latest.get("revision", "")
+        if latest.get("name"):
+            settled["name"] = latest.get("name")
+        else:
+            settled.pop("name", None)
+        return settled, False
+    return current, True
+
+
+def set_revision_name(document, revision, name):
+    """Give a filed revision a name; return the file written, or "".
+
+    Only the name changes: the quantities, label and date are what that
+    issue measured and stay exactly as filed.
+    """
+    wanted = revision_number(revision)
+    if wanted is None:
+        return ""
+    for snapshot in list_snapshots(document):
+        if revision_number(snapshot.get("revision", "")) != wanted:
+            continue
+        updated = dict(snapshot)
+        updated.pop("path", None)
+        cleaned = clean_revision_name(name)
+        if cleaned:
+            updated["name"] = cleaned
+        else:
+            updated.pop("name", None)
+        return save_snapshot(updated, document)
+    return ""
