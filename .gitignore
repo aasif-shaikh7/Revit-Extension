@@ -11,3 +11,11 @@ _boq_writer_test.xlsx
 # Root-level local diagnostics/readback scripts
 /_*.py
 /_*.txt
+
+# The owner's rule (2026-09-25): every BOQ workbook exported for them, and
+# every model copy used for a test export, goes into docs/inbox/. Local
+# output - never committed. Only these two kinds are ignored, so anything
+# else the owner keeps in docs/inbox/ (such as report/) is left alone.
+/docs/*.xlsx
+/docs/inbox/*.xlsx
+/docs/inbox/*.rvt
