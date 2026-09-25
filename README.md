@@ -308,8 +308,8 @@ Revit-Extension/
 │       ├── rebar_engine.py       <- P4 rebar length/weight calculations
 │       ├── revision_engine.py    <- P14 snapshots + Previous/Current comparison
 │       ├── header_colour.py      <- dialog header colour presets + readable text
-│       ├── *_tab.py              <- the four data tabs' handlers (Site Items, Rate Analysis,
-│       │                            Rate Database, Revision), moved out of script.py
+│       ├── *_tab.py              <- dialog handlers moved out of script.py: the four data
+│       │                            tabs and the category tabs' parameter lists
 │       ├── rest_api.py           <- token/authentication + bounded serializers
 │       ├── rule_engine.py        <- P8 structural rules
 │       ├── settings_engine.py    <- persisted selections/options
@@ -364,7 +364,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 429 checks passed`.
+`RESULT: all 432 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -388,7 +388,7 @@ P4  Rebar Quantity Engine                        done
 P5  Rebar Summary / BBS                          done
 P6  Structural BOQ Assembly                      done
 P7  Site / Manual Structural Items               done
-P8  Structural Rule Engine                       open (script.py is 6,153 lines)
+P8  Structural Rule Engine                       open (script.py is 5,508 lines)
 P9  Validation Engine                            done
 P10 Unmapped Element Report                      done
 P11 Rate Analysis                                done
@@ -453,9 +453,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.37.0`. P1–P7, P9–P11, P13 and P14 are done; P12 is built and waiting only on the owner's
-real rates; P8 is still open (`script.py` is 6,153 lines after `v1.38.0` moved the four data tabs
-into `lib/`); P15 and P16 have not started.
+is `v1.39.0`. P1–P7, P9–P11, P13 and P14 are done; P12 is built and waiting only on the owner's
+real rates; P8 is still open (`script.py` is 5,508 lines after `v1.38.0`–`v1.39.0` moved the
+dialog handlers into `lib/`); P15 and P16 have not started.
 
 Since `v1.23.2` the following shipped. `v1.26.x` added P11 rate analysis (engine, sheet and tab).
 `v1.27.0`–`v1.29.0` added the P13 `Detailed BOQ` plus `Concrete Summary` and `Formwork Summary` in
