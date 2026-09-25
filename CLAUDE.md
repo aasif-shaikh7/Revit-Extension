@@ -58,7 +58,8 @@ the shared brand/theme system
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
-  `lib/` (21 engine modules + brand resource dictionaries + theme manager). No CI.
+  `lib/` (21 engine modules, 4 dialog-tab modules + brand resource dictionaries + theme
+  manager). No CI.
 - `RccBoq.RestBridge/` — the .NET Agent Bridge add-in and gateway that lets an agent read the live
   document and run a headless export, and `scripts/rcc_boq_rest_client.py`, its client.
 - Pure-Python dependency-free engines under `Nudge.extension/lib/`, deliberately free of Revit
@@ -71,6 +72,7 @@ What an agent can actually verify here:
 ```bash
 python test_xlsx_writer.py     # pure Python, ~1 s; prints "RESULT: all N checks passed"
 python test_rest_api.py        # the bridge's own Python-side checks
+powershell -File scripts\ip27_compile.ps1   # every file compiled on IronPython 2.7.12
 ```
 
 The harness prints its own count, so quote that number rather than a hand-maintained one. The
@@ -144,7 +146,7 @@ hard crash names its step).
 - **Roadmap phases in `PRD.md` §12, live status in `todo-list.md`.** P1-P13 have shipped; P12's
   engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. **P14** is done
   (`v1.35.0`-`v1.37.0`: engine, snapshots, both workbook sheets, the Revision tab). The open
-  phases are **P8** (keep splitting `script.py`, now 7,000+ lines), **P15** (model change
+  phases are **P8** (keep splitting `script.py`, 6,153 lines after `v1.38.0`), **P15** (model change
   detection) and **P16** (dashboard). Work one at a time, and
   check `todo-list.md` rather than any older "next phase" sentence.
 

@@ -2432,26 +2432,43 @@ def main():
         "IP27 rows preserve Selected parameter order with OrderedDict"
     )
 
+    # P8 (v1.38.0): the data tabs' handlers moved from script.py into
+    # lib/*_tab.py, inside each module's attach(). A handler is looked
+    # up in script.py first, then in those modules, so every check below
+    # reads the code wherever it now lives.
+    handler_texts = [script_text] + [
+        io.open(os.path.join(LIB_DIR, tab_file), encoding="utf-8-sig").read()
+        for tab_file in ("site_items_tab.py", "rate_analysis_tab.py",
+                         "rate_database_tab.py", "revision_tab.py")
+        if os.path.exists(os.path.join(LIB_DIR, tab_file))
+    ]
+    all_handler_text = "\n".join(handler_texts)
+
     def nested_handler_source(name):
-        match = re.search(
-            r"^(?P<indent>[ \t]+)def {0}\(".format(re.escape(name)),
-            script_text,
-            re.M
-        )
+        for handler_text in handler_texts:
+            match = re.search(
+                r"^(?P<indent>[ \t]+)def {0}\(".format(re.escape(name)),
+                handler_text,
+                re.M
+            )
+            if match is not None:
+                break
         if match is None:
             raise AssertionError("Could not find nested handler: {}".format(name))
-        tail = script_text[match.end():]
+        tail = handler_text[match.end():]
+        # A handler ends at the next def at its own indent - or, for the
+        # last handler in a tab module, at attach()'s closing return.
         next_handler = re.search(
-            r"^{0}def ".format(re.escape(match.group("indent"))),
+            r"^{0}(def |return \{{)".format(re.escape(match.group("indent"))),
             tail,
             re.M
         )
         end = (
             match.end() + next_handler.start()
             if next_handler is not None
-            else len(script_text)
+            else len(handler_text)
         )
-        return script_text[match.start():end]
+        return handler_text[match.start():end]
 
     persistent_selection_handlers = (
         "add_parameters", "remove_parameters",
@@ -4393,8 +4410,8 @@ def main():
     )
     db_field_names = re.findall(
         r'\("\w+", "(RateDb\w+)"\)',
-        script_text[script_text.index("RATE_DB_FIELD_CONTROLS = ("):
-                    script_text.index("def rate_db_display_text")])
+        all_handler_text[all_handler_text.index("RATE_DB_FIELD_CONTROLS = ("):
+                         all_handler_text.index("def rate_db_display_text")])
     check(
         len(db_field_names) == 9
         and all(name in rate_db_controls for name in db_field_names),
@@ -4406,8 +4423,10 @@ def main():
             ("RateDbAdd", "RateDbUpdate", "RateDbRemove", "RateDbClear",
              "RateDbList"))
         and "SelectionChanged" in db_wire_block
-        and "rate_db_wire_controls()" in script_text
-        and "rate_db_load_saved()" in script_text,
+        and 'dialog_tab_call("rate_db", "wire_controls")' in script_text
+        and 'dialog_tab_call("rate_db", "load_saved")' in script_text
+        and '"wire_controls": rate_db_wire_controls' in all_handler_text
+        and '"load_saved": rate_db_load_saved' in all_handler_text,
         "P12 tab wires all four buttons and the list, and is loaded on open"
     )
     db_read_block = nested_handler_source("rate_db_read_fields")
@@ -6335,19 +6354,120 @@ def main():
 
     tab_xaml = io.open(UI_PATH, encoding="utf-8-sig").read()
     tab_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
+    # v1.38.0: the handlers live in lib/revision_tab.py; script.py only
+    # attaches the tab and calls its entry points.
+    tab_module = io.open(os.path.join(LIB_DIR, "revision_tab.py"),
+                         encoding="utf-8-sig").read()
     tab_controls = ("RevisionCompareSelector", "RevisionList", "RevisionName",
                     "RevisionSaveName", "RevisionRefresh", "RevisionSummary",
                     "RevisionFolder")
     check(
         '<TabItem Header="Revision">' in tab_xaml
         and all('x:Name="{0}"'.format(name) in tab_xaml for name in tab_controls)
-        and all('FindName("{0}")'.format(name) in tab_script
+        and all('FindName("{0}")'.format(name) in tab_module
                 for name in tab_controls)
-        and "revision_tab_wire_controls()\n                revision_tab_refresh()"
+        and 'dialog_tab_call("revision", "wire_controls")\n'
+            '                dialog_tab_call("revision", "refresh")'
         in tab_script.replace("\r\n", "\n")
-        and 'if revision_tab_state["loading"]:' in tab_script,
+        and 'if revision_tab_state["loading"]:' in tab_module,
         "P14 the Revision tab has every control its handlers look for, is "
         "wired and loaded when the dialog opens, and redrawing it saves nothing"
+    )
+
+    # ------------------------------------------------------------
+    # P8 split: the four data tabs live in lib/*_tab.py (v1.38.0)
+    #
+    # Their handlers moved out of script.py verbatim, inside each
+    # module's attach(host). What can go wrong in a move like this is a
+    # name the moved code still expects from script.py's globals - under
+    # IronPython that is a NameError the first time a button is clicked,
+    # which no extraction-based check would see. So every name each
+    # module reads must be defined in it, imported, a builtin, or taken
+    # from host; and every host attribute it takes must be one that
+    # script.py actually sets.
+    # ------------------------------------------------------------
+    import ast as _p8_ast
+
+    try:
+        import builtins as _p8_builtins
+    except ImportError:
+        import __builtin__ as _p8_builtins
+    p8_builtin_names = set(dir(_p8_builtins)) | set(
+        ["unicode", "basestring", "long", "unichr"])
+
+    p8_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
+    p8_host_block = p8_script[p8_script.index("def attach_dialog_tabs():"):
+                              p8_script.index("def dialog_tab_call(")]
+    p8_host_set = set(re.findall(r"host\.(\w+) = ", p8_host_block))
+
+    p8_unresolved = []
+    p8_missing_host = []
+    p8_revit = []
+    for tab_file, entry_points in (
+            ("site_items_tab.py", ("wire_controls", "load_for_document")),
+            ("rate_analysis_tab.py", ("wire_controls", "load_saved")),
+            ("rate_database_tab.py", ("wire_controls", "load_saved")),
+            ("revision_tab.py", ("wire_controls", "refresh"))):
+        tab_text = io.open(os.path.join(LIB_DIR, tab_file),
+                           encoding="utf-8-sig").read()
+        tab_tree = _p8_ast.parse(tab_text)
+        defined, loaded = set(), set()
+        for node in _p8_ast.walk(tab_tree):
+            if isinstance(node, _p8_ast.FunctionDef):
+                defined.add(node.name)
+                defined.update(arg.arg for arg in node.args.args)
+                if node.args.vararg is not None:
+                    defined.add(node.args.vararg.arg)
+            elif isinstance(node, _p8_ast.Lambda):
+                defined.update(arg.arg for arg in node.args.args)
+            elif isinstance(node, _p8_ast.Name):
+                (defined if isinstance(node.ctx, _p8_ast.Store)
+                 else loaded).add(node.id)
+            elif isinstance(node, (_p8_ast.Import, _p8_ast.ImportFrom)):
+                defined.update((alias.asname or alias.name).split(".")[0]
+                               for alias in node.names)
+            elif isinstance(node, _p8_ast.ExceptHandler) and node.name:
+                defined.add(node.name)
+        for name in sorted(loaded - defined - p8_builtin_names):
+            p8_unresolved.append("{0}:{1}".format(tab_file, name))
+        for attribute in sorted(set(re.findall(r"host\.(\w+)", tab_text))):
+            if attribute not in p8_host_set:
+                p8_missing_host.append("{0}:{1}".format(tab_file, attribute))
+        if any(marker in tab_text for marker in
+               ("import Autodesk", "from Autodesk", "import pyrevit",
+                "from pyrevit", "doc.Title")):
+            p8_revit.append(tab_file)
+        for entry in entry_points:
+            if '"{0}": '.format(entry) not in tab_text:
+                p8_unresolved.append("{0}: no entry point {1}".format(
+                    tab_file, entry))
+    check(
+        not p8_unresolved,
+        "P8 every name the tab modules read is defined, imported or taken "
+        "from host{0}".format(
+            "" if not p8_unresolved else " (" + ", ".join(p8_unresolved) + ")")
+    )
+    check(
+        not p8_missing_host and not p8_revit,
+        "P8 the tab modules take only what script.py hands them, and hold no "
+        "Revit symbol or document{0}".format(
+            "" if not (p8_missing_host or p8_revit)
+            else " (" + ", ".join(p8_missing_host + p8_revit) + ")")
+    )
+    p8_left_behind = [name for name in (
+        "site_items_refresh", "site_items_add", "rate_add", "rate_refresh",
+        "rate_db_add", "rate_db_refresh", "revision_tab_refresh",
+        "revision_save_name")
+        if re.search(r"^\s+def {0}\(".format(name), p8_script, re.M)]
+    check(
+        not p8_left_behind
+        and "def show_category_counts(" in p8_script
+        and p8_script.index("attach_dialog_tabs()\n")
+        < p8_script.index('dialog_tab_call("site_items", "wire_controls")'),
+        "P8 the tab handlers live only in lib/, and the dialog attaches them "
+        "before wiring{0}".format(
+            "" if not p8_left_behind
+            else " (still in script.py: " + ", ".join(p8_left_behind) + ")")
     )
 
     print("")

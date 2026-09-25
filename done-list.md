@@ -1503,6 +1503,19 @@ formwork off, filed as Rev 03 with shuttering Removed. The tab itself was run in
 2.7.12 with the real `ui.xaml` and handlers, with a screenshot. Harness: 426 checks; seven mutations
 caught. Not yet clicked by a person inside Revit.
 
+## P8-04 - The four data tabs leave script.py (`v1.38.0`, 2026-09-25)
+
+**Built:** the Site Items, Rate Analysis, Rate Database and Revision handlers moved into
+`lib/site_items_tab.py`, `rate_analysis_tab.py`, `rate_database_tab.py` and `revision_tab.py`, each
+built around the open dialog by `attach(host)`. `script.py` keeps the lists they edit and a short
+`attach_dialog_tabs()`; 7,082 -> 6,153 lines. Also added `scripts/ip27_compile.ps1`, which compiles
+every file on IronPython 2.7.12.
+
+**Known to work:** the move is verbatim - 49 of 49 functions and constants identical to `main` up to
+indentation and the document title. Harness 429 checks with four mutations caught; 26 files compile
+on IronPython 2.7.12; all four tabs attached, loaded and clicked in WPF on IronPython 2.7.12 with the
+real `ui.xaml`. See CHANGELOG for the live Revit export.
+
 ---
 
 ## Standing conventions
