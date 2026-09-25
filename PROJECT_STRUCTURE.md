@@ -117,6 +117,7 @@ Nudge.extension/
     ├── rate_analysis_tab.py <- P11 Rate Analysis tab handlers, attach(host) (dialog only)
     ├── rate_database_tab.py <- P12 Rate Database tab handlers, attach(host) (dialog only)
     ├── revision_tab.py      <- P14 Revision tab handlers, attach(host) (dialog only)
+    ├── parameter_lists_tab.py <- category tabs' Available/Selected handlers, attach(host)
     ├── stack_runner.py      <- runs the workbook writers on a 64 MB-stack thread (pure Python)
     ├── crash_trail.py       <- one flushed line per step, so a hard crash names its step
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
@@ -134,8 +135,8 @@ Nudge.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. It also hosts the **21 pure-Python engine modules** and, since v1.38.0, **four
-  dialog-tab modules** (`*_tab.py`: handlers moved out of `script.py`, built around the open
+  dictionaries. It also hosts the **21 pure-Python engine modules** and, since v1.38.0-v1.39.0,
+  **five dialog-tab modules** (`*_tab.py`: handlers moved out of `script.py`, built around the open
   dialog by `attach(host)`; they import no Revit symbol and receive the document only as its
   title) listed in the
   tree above (`settings_engine`, `quantity_engine`, `formwork_engine`,

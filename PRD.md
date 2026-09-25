@@ -406,8 +406,8 @@ project.
 - **Phase 8 — Structural Rule Engine (open).** Configurable rules (`IF Category = Structural Column THEN
   Concrete = Volume`, `THEN Formwork = Column Formwork Rule`, `IF Rebar Exists THEN Rebar Quantity =
   Rebar Weight`). Modular and structural-only; prevents `script.py` becoming a large hard-coded
-  condition pile. Still open — `script.py` is 6,153 lines since `v1.38.0` moved the four data
-  tabs' handlers into `lib/*_tab.py`.
+  condition pile. Still open — `script.py` is 5,508 lines since `v1.38.0`–`v1.39.0` moved the
+  dialog handlers into `lib/*_tab.py`.
 - **Phase 9 — Validation Engine (done).** Before export validate missing parameters/materials/concrete
   grade, zero volume/area/quantity, missing rebar/mapping, invalid/unclassified elements, duplicate
   marks. Compact report (errors/warnings count + short lines) — no huge raw debug in the main dialog.
@@ -497,6 +497,7 @@ Nudge.extension/
     ├── revision_engine.py
     ├── header_colour.py
     ├── site_items_tab.py, rate_analysis_tab.py, rate_database_tab.py, revision_tab.py
+    ├── parameter_lists_tab.py
     ├── assembly_engine.py
     ├── site_items_engine.py
     ├── export_engine.py
@@ -538,7 +539,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 429 checks passed`.
+`RESULT: all 432 checks passed`.
 
 ---
 

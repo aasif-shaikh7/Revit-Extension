@@ -2439,7 +2439,8 @@ def main():
     handler_texts = [script_text] + [
         io.open(os.path.join(LIB_DIR, tab_file), encoding="utf-8-sig").read()
         for tab_file in ("site_items_tab.py", "rate_analysis_tab.py",
-                         "rate_database_tab.py", "revision_tab.py")
+                         "rate_database_tab.py", "revision_tab.py",
+                         "parameter_lists_tab.py")
         if os.path.exists(os.path.join(LIB_DIR, tab_file))
     ]
     all_handler_text = "\n".join(handler_texts)
@@ -6468,6 +6469,112 @@ def main():
         "before wiring{0}".format(
             "" if not p8_left_behind
             else " (still in script.py: " + ", ".join(p8_left_behind) + ")")
+    )
+
+    # ------------------------------------------------------------
+    # P8 split, slice 2: the parameter-list handlers (v1.39.0)
+    #
+    # Ten handlers of the six category tabs moved into
+    # lib/parameter_lists_tab.py. script.py binds them back under their
+    # old names from what attach() returns - and must do so before the
+    # first line that wires or calls one, or the dialog raises a
+    # NameError while it is being built. The handlers defined once per
+    # category inside the wiring loops stay in script.py.
+    # ------------------------------------------------------------
+    p8b_moved = ("filter_available_by_search", "refresh_category_view",
+                 "setup_rcc_filters", "sync_selected_parameters",
+                 "add_parameters", "remove_parameters", "move_up",
+                 "move_down", "move_top", "move_bottom")
+    p8b_text = io.open(os.path.join(LIB_DIR, "parameter_lists_tab.py"),
+                       encoding="utf-8-sig").read()
+    p8b_tree = _p8_ast.parse(p8b_text)
+    p8b_defined, p8b_loaded = set(), set()
+    for node in _p8_ast.walk(p8b_tree):
+        if isinstance(node, _p8_ast.FunctionDef):
+            p8b_defined.add(node.name)
+            p8b_defined.update(arg.arg for arg in node.args.args)
+            if node.args.vararg is not None:
+                p8b_defined.add(node.args.vararg.arg)
+        elif isinstance(node, _p8_ast.Lambda):
+            p8b_defined.update(arg.arg for arg in node.args.args)
+        elif isinstance(node, _p8_ast.Name):
+            (p8b_defined if isinstance(node.ctx, _p8_ast.Store)
+             else p8b_loaded).add(node.id)
+        elif isinstance(node, (_p8_ast.Import, _p8_ast.ImportFrom)):
+            p8b_defined.update((alias.asname or alias.name).split(".")[0]
+                               for alias in node.names)
+        elif isinstance(node, _p8_ast.ExceptHandler) and node.name:
+            p8b_defined.add(node.name)
+    p8b_unresolved = sorted(p8b_loaded - p8b_defined - p8_builtin_names)
+    p8b_host_set = set(re.findall(r"_parameter_list_host\.(\w+) = ", p8_script))
+    p8b_missing = sorted(set(re.findall(r"host\.(\w+)", p8b_text)) - p8b_host_set)
+    check(
+        not p8b_unresolved and not p8b_missing
+        and not any(marker in p8b_text for marker in
+                    ("import Autodesk", "from Autodesk", "import pyrevit",
+                     "from pyrevit", "doc.Title")),
+        "P8 the parameter-list module reads only its own names and what "
+        "script.py hands it{0}".format(
+            "" if not (p8b_unresolved or p8b_missing)
+            else " (" + ", ".join(p8b_unresolved + p8b_missing) + ")")
+    )
+
+    p8b_bind_at = {}
+    for name in p8b_moved:
+        match = re.search(r'^        {0} = _parameter_list_handlers\["{0}"\]$'.format(name),
+                          p8_script, re.M)
+        p8b_bind_at[name] = match.start() if match else -1
+    p8b_first_use = {}
+    for name in p8b_moved:
+        uses = [m.start() for m in re.finditer(r"\b{0}\(".format(name), p8_script)
+                if not p8_script[max(0, m.start() - 4):m.start()].endswith("def ")]
+        p8b_first_use[name] = min(uses) if uses else None
+    p8b_late = [name for name in p8b_moved
+                if p8b_bind_at[name] < 0
+                or (p8b_first_use[name] is not None
+                    and p8b_first_use[name] < p8b_bind_at[name])]
+    p8b_still_here = [name for name in p8b_moved
+                      if re.search(r"^\s+def {0}\(".format(name), p8_script, re.M)]
+    check(
+        not p8b_late and not p8b_still_here
+        and all('"{0}": {0},'.format(name) in p8b_text for name in p8b_moved)
+        and "def on_search_changed(" in p8_script
+        and "def apply_parameters(" in p8_script,
+        "P8 script.py binds the ten moved handlers under their old names "
+        "before any line uses them, and keeps the per-category ones{0}".format(
+            "" if not (p8b_late or p8b_still_here)
+            else " (" + ", ".join(p8b_late + p8b_still_here) + ")")
+    )
+
+    # A handler that assigns to a shared name changed script.py's global
+    # when it lived there; inside attach() the same line only makes a
+    # local, and the dialog silently stops updating. None may do it.
+    p8_rebinds = []
+    for tab_file in ("site_items_tab.py", "rate_analysis_tab.py",
+                     "rate_database_tab.py", "revision_tab.py",
+                     "parameter_lists_tab.py"):
+        tab_tree = _p8_ast.parse(io.open(os.path.join(LIB_DIR, tab_file),
+                                         encoding="utf-8-sig").read())
+        attach_node = [node for node in tab_tree.body
+                       if isinstance(node, _p8_ast.FunctionDef)
+                       and node.name == "attach"][0]
+        shared = set(target.id for node in attach_node.body
+                     if isinstance(node, _p8_ast.Assign)
+                     for target in node.targets
+                     if isinstance(target, _p8_ast.Name))
+        for handler in _p8_ast.walk(attach_node):
+            if not isinstance(handler, _p8_ast.FunctionDef) or handler is attach_node:
+                continue
+            for sub in _p8_ast.walk(handler):
+                if isinstance(sub, _p8_ast.Global) or (
+                        isinstance(sub, _p8_ast.Name)
+                        and isinstance(sub.ctx, _p8_ast.Store)
+                        and sub.id in shared):
+                    p8_rebinds.append("{0}:{1}".format(tab_file, handler.name))
+    check(
+        not p8_rebinds,
+        "P8 no moved handler rebinds a name it shares with script.py{0}".format(
+            "" if not p8_rebinds else " (" + ", ".join(p8_rebinds) + ")")
     )
 
     print("")

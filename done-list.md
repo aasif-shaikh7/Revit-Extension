@@ -1516,6 +1516,18 @@ indentation and the document title. Harness 429 checks with four mutations caugh
 on IronPython 2.7.12; all four tabs attached, loaded and clicked in WPF on IronPython 2.7.12 with the
 real `ui.xaml`. See CHANGELOG for the live Revit export.
 
+## P8-05 - The parameter-list handlers leave script.py (`v1.39.0`, 2026-09-25)
+
+**Built:** the category tabs' search filter, subtype filters, refresh, sync, Add, Remove and the four
+Move handlers moved into `lib/parameter_lists_tab.py`; `script.py` binds them back under their old
+names before any line uses them. Per-category loop handlers and `apply_parameters` stay. 6,153 ->
+5,508 lines.
+
+**Known to work:** verbatim (10 of 10 functions identical to `main`); an IronPython 2.7.12 A/B run of
+old and new handlers through ten steps on the real `ui.xaml` is identical at every step; classic and
+site exports live in a test Revit match the `v1.38.0` ones sheet for sheet except the time stamp and
+the revision sheet. Harness 432 checks, five mutations caught.
+
 ---
 
 ## Standing conventions

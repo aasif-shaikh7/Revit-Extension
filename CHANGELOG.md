@@ -22,6 +22,47 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.39.0] - 2026-09-25
+
+**P8, second slice: `script.py` is 645 lines shorter** (6,153 -> 5,508). No behaviour changes.
+
+### Changed
+- **The six category tabs' parameter-list handlers moved into `lib/parameter_lists_tab.py`:** the
+  search filter, the Slab / Foundation subtype filters, the list refresh, `sync_selected_parameters`,
+  Add, Remove and the four Move buttons - ten functions. `script.py` binds them back **under their
+  old names**, at the spot where the first of them used to be defined, so every later line - the
+  wiring loops, the export, the settings save - calls them exactly as before.
+- **Left in `script.py` on purpose:** the search, double-click and move handlers that `script.py`
+  defines *once per category inside its wiring loop* (each is bound to its own category through a
+  default argument - moving them would change which category they act on), and `apply_parameters`,
+  which is defined inside an `if`.
+- `capture_and_save_settings` and `show_category_counts` are defined further down `script.py` than
+  the binding, so the module receives wrappers that look them up when a handler runs.
+- Unlike the four data tabs (`v1.38.0`), these handlers also run during a **headless** export -
+  the export syncs the chosen parameters through them - so the live exports below exercise the new
+  module directly.
+
+### Verified
+- **Verbatim:** all 10 functions identical to `main` up to indentation. None of the five tab modules
+  rebinds a name it shares with `script.py` or declares `global` (inside `attach()` such a line would
+  make a local and silently stop updating the dialog) - now a harness check.
+- **IronPython 2.7.12, A/B:** the ten handlers as they were in `main` and the new module, driven
+  through the same ten steps on the real `ui.xaml` - fill, add three, move up / top / bottom / down,
+  remove, sync, search, subtype refresh - give **identical** Available and Selected lists, saved
+  selection and number of settings saves at every step. (Both also save once when Move down is
+  pressed on the bottom item; that is how it was, and it is left as it was.)
+- **Live in a test Revit 2025** (IronPython 2.7.12; the owner's Revit untouched): a classic and a
+  site export pass the canonical validation (16 and 12 sheets, 0 mismatches). Against the
+  `v1.38.0` exports of the same model, 15 of 16 classic sheets and 11 of 12 site sheets are
+  byte-identical, and `styles.xml` too; the rest differ only in the time stamp / version and in the
+  BOQ Revision sheet, which now compares Rev 04 with itself.
+- `python test_xlsx_writer.py` prints **all 432 checks passed** (three new); `scripts/ip27_compile.ps1`
+  compiles 27 files on IronPython 2.7.12 with none failing. Mutations caught: a handler bound after
+  its first use, `control_map` no longer handed over, the module losing its `status` alias, a moved
+  handler left defined in `script.py`, and a handler rebinding `active_filters`.
+
+---
+
 ## [v1.38.0] - 2026-09-25
 
 **P8, one slice: `script.py` is 929 lines shorter** (7,082 -> 6,153). No behaviour changes.
