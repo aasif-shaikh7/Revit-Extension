@@ -135,10 +135,10 @@ elements of that category in the current document and lists them alphabetically 
 | Foundation | `OST_StructuralFoundation` plus logical foundations stored as floors |
 | Rebar | `OST_Rebar` |
 
-The dialog carries ten tabs in total: the six category tabs above, in the order Beam, Column,
-Structure Wall, Rebar, Slab, Foundation, followed by four configuration tabs — Assembly Profile,
-Site Items, Rate Analysis and Rate Database — which hold user-entered data rather than discovered
-parameters.
+The dialog carries eleven tabs in total: the six category tabs above, in the order Beam, Column,
+Structure Wall, Rebar, Slab, Foundation, followed by five configuration tabs — Assembly Profile,
+Site Items, Rate Analysis, Rate Database and Revision — which hold user-entered data rather than
+discovered parameters.
 
 ### 5.2 Search and selection
 
@@ -423,11 +423,11 @@ project.
   Detailed BOQ plus Concrete Summary and Formwork Summary alongside the element, Rebar, assembly,
   grouping and costing sheets in both the Classic and Site formats, using live formulas where
   appropriate.
-- **Phase 14 — BOQ Revision (engine and both sheets done, `v1.35.0`; no dialog tab).** Each
-  export files a snapshot of its own numbers under `%LOCALAPPDATA%\RCC_BOQ\revisions\`, and
-  from the second export onwards a `BOQ Revision` sheet gives Previous vs Current Quantity,
-  Difference, Percentage Difference and a status per item. Choosing *which* issue to compare
-  against, rather than always the latest, is the remaining slice.
+- **Phase 14 — BOQ Revision (done, `v1.35.0`–`v1.37.0`).** Each export files a snapshot of
+  its own numbers under `%LOCALAPPDATA%\RCC_BOQ\revisions\` when something changed, and from
+  the second export onwards a `BOQ Revision` sheet gives Previous vs Current Quantity,
+  Difference, Percentage Difference and a status per item. The Revision tab chooses which issue
+  the next export is compared against (per model) and names issues.
 - **Phase 15 — Model Change Detection (not started).** Detect added/modified/deleted structural
   elements and BOQ impact. High complexity; only after the core BOQ system is mature.
 - **Phase 16 — Structural Dashboard (not started).** Concrete, Rebar (Ton), Formwork, Elements,
@@ -536,7 +536,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 418 checks passed`.
+`RESULT: all 426 checks passed`.
 
 ---
 
