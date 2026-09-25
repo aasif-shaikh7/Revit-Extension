@@ -35,10 +35,10 @@ first line pyRevit picks its default engine, and the default is IronPython. Conf
 - If `script.py` does not compile, pyRevit shows an error window titled `BOQ` and every queued
   bridge export waits forever. The harness now compiles every file whole.
 
-The **engines in `lib/` are CPython-clean**: 19 of the 22 import and write a workbook on
-CP3123 (measured 2026-09-24); `revision_engine.py` (v1.35.0), `header_colour.py` (v1.36.0) and
-`model_change_engine.py` (v1.40.0) have so far only been measured on Python 3.12.10 in the
-harness (the last also on IronPython 2.7.12). Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
+The **engines in `lib/` are CPython-clean**: 19 of the 23 import and write a workbook on
+CP3123 (measured 2026-09-24); `revision_engine.py` (v1.35.0), `header_colour.py` (v1.36.0),
+`model_change_engine.py` (v1.40.0) and `dashboard_engine.py` (v1.41.0) have so far only been
+measured on Python 3.12.10 in the harness (the last two also on IronPython 2.7.12). Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
 button to CP3123 is a deliberate, separately verified change, not a one-line edit.
 
 **Current state: one working tool pushbutton plus brand infrastructure.**
@@ -50,7 +50,7 @@ The dialog has **eleven tabs**: the six categories plus Assembly Profile, Site I
 Analysis, Rate Database and Revision. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
 Rebar BBS, Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
 Grade, Concrete Summary, Formwork Summary, Detailed BOQ, BOQ Revision, Model Changes, Site Items,
-Unmapped Elements and Costing.
+Unmapped Elements and Costing - with a Dashboard right after the Summary cover.
 `Nudge.extension/lib/` contains the split pure-Python engines and
 the shared brand/theme system
 (`theme_manager.py` + `lib/Resources/*.xaml` resource dictionaries), previewed live by the
@@ -59,7 +59,7 @@ the shared brand/theme system
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
-  `lib/` (22 engine modules, 5 dialog-tab modules + brand resource dictionaries + theme
+  `lib/` (23 engine modules, 5 dialog-tab modules + brand resource dictionaries + theme
   manager). No CI.
 - `RccBoq.RestBridge/` — the .NET Agent Bridge add-in and gateway that lets an agent read the live
   document and run a headless export, and `scripts/rcc_boq_rest_client.py`, its client.
@@ -145,10 +145,11 @@ hard crash names its step).
 - **Source of truth is the code.** `script.py`, `ui.xaml` and `test_xlsx_writer.py` beat any prompt
   or roadmap. Read all three completely before writing code; never invent or remove functionality.
 - **Roadmap phases in `PRD.md` §12, live status in `todo-list.md`.** P1-P13 have shipped; P12's
-  engine, tab, sheet and BOQ pricing are in, waiting only on the owner's real rates. **P14** is done
+  engine, tab, sheet and BOQ pricing are in, and real rates (Gujarat R&B SOR 2024-25) were
+  entered on 2026-09-25. **P14** is done
   (`v1.35.0`-`v1.37.0`: engine, snapshots, both workbook sheets, the Revision tab); **P15**'s Model
-  Changes sheet shipped in `v1.40.0`. The open phases are **P8** (keep splitting `script.py`) and
-  **P16** (dashboard). Work one at a time, and
+  Changes sheet shipped in `v1.40.0`; **P16**'s Dashboard in `v1.41.0`. The only open phase is
+  **P8** (keep splitting `script.py`). Work one at a time, and
   check `todo-list.md` rather than any older "next phase" sentence.
 
 ---
