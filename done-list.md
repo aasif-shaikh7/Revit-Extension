@@ -1540,6 +1540,23 @@ elements are too. The export collects family and type through a sink, no new col
 **Known to work:** Tested (harness) - 440 checks, eight mutations caught; identical output on
 CPython 3.12 and IronPython 2.7.12 for a 43-row scenario. See CHANGELOG for the live export.
 
+## P16-01 - Dashboard: the whole BOQ on one page (`v1.41.0`, 2026-09-25)
+
+**Built:** `lib/dashboard_engine.py` and a Dashboard sheet right after the Summary cover in both
+workbooks - key figures, concrete by grade, elements, estimated cost, warnings, and what moved since
+the previous issue. The harness now reads worksheets by name.
+
+**Known to work:** Tested (harness) - 448 checks; the dashboard cost equals the Detailed BOQ's own
+amounts; five mutations caught; identical on CPython 3.12 and IronPython 2.7.12. Real Excel 16 with
+the owner's Gujarat SOR rates: 9,49,841.80 on the dashboard = 949,841.80 on the Detailed BOQ, in both
+formats. Not run from inside Revit (no Revit-side code changed).
+
+## P12-02 - Real rates entered (2026-09-25)
+
+Eleven rates from the Govt of Gujarat R&B SOR 2024-25, EE(S) Mehsana (without GST): RCC M15-M35
+ready-mix, formwork per element type, TMT Fe 500D. Location "Gujarat"; each entry names its SOR item.
+Checked by pricing: a Navsari project is priced, a Mumbai project is not.
+
 ---
 
 ## Standing conventions

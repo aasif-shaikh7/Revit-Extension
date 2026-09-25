@@ -9,8 +9,9 @@
 today; **CP3123 (CPython 3.12.3) remains the target engine**
 > **Engine caveat (T-03):** `script.py` carries no `#! python3` first line, so pyRevit loads it on
 > its default engine, IP27. The modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 22 import and write a workbook on CP3123 (measured 2026-09-24), the other three
-> (`revision_engine.py`, `header_colour.py`, `model_change_engine.py`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
+> 23 import and write a workbook on CP3123 (measured 2026-09-24), the other four
+> (`revision_engine.py`, `header_colour.py`, `model_change_engine.py`, `dashboard_engine.py`) only
+> on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython. pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
 > is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
 > `PyRevitCPythonNotSupported`), on the currently-installed build (`6.5.3`) and upstream
@@ -193,6 +194,8 @@ Excel, `openpyxl`, or other package inside the pyRevit environment.
 
 The workbook can contain, in order:
 
+- a **Dashboard** right after the Summary cover (P16: key figures, concrete by grade, elements,
+  estimated cost, warnings, and what moved since the previous issue),
 - one element sheet per **populated** category (empty categories are skipped — no empty tabs),
 - **Rebar Summary** and **Rebar BBS**,
 - **Structural Assembly**,
@@ -419,8 +422,8 @@ project.
 
 - **Phase 11 — Structural Rate Analysis (done, `v1.26.x`).** Only after quantities are stable.
   Material, Labour, Machinery, Wastage, Overheads. `Quantity × Rate = Amount`.
-- **Phase 12 — Structural Rate Database (built in `v1.30.0`–`v1.32.0`; waiting on the owner's real
-  rates).** Configurable Item Code, Description, Unit, Rate, Currency, Location, Vendor, Effective
+- **Phase 12 — Structural Rate Database (done, `v1.30.0`–`v1.32.0`; real Gujarat R&B SOR 2024-25
+  rates entered 2026-09-25).** Configurable Item Code, Description, Unit, Rate, Currency, Location, Vendor, Effective
   Date, with lookup by city/state/country and effective date. Rates are never hard-coded.
 - **Phase 13 — Professional Excel BOQ (done, `v1.27.0`–`v1.29.0`).** The XLSX engine now writes the
   Detailed BOQ plus Concrete Summary and Formwork Summary alongside the element, Rebar, assembly,
@@ -435,8 +438,9 @@ project.
   record per element; a `Model Changes` sheet lists each element added, deleted or modified -
   concrete, shuttering or hosted steel by 0.005 or more, or grade, level or family and type -
   with the BOQ impact per element and in total.
-- **Phase 16 — Structural Dashboard (not started).** Concrete, Rebar (Ton), Formwork, Elements,
-  Estimated Cost, Warnings.
+- **Phase 16 — Structural Dashboard (done, `v1.41.0`).** A Dashboard sheet after the Summary
+  cover: concrete, rebar (t), formwork, elements, estimated cost (equal to the Detailed BOQ's
+  amounts), warnings, and what moved since the previous issue.
 
 Only **Structural** scope is in the current roadmap; Architecture / Doors / Windows / Plumbing /
 Electrical / HVAC / MEP are not.
@@ -500,6 +504,7 @@ Nudge.extension/
     ├── rate_database_engine.py
     ├── revision_engine.py
     ├── model_change_engine.py
+    ├── dashboard_engine.py
     ├── header_colour.py
     ├── site_items_tab.py, rate_analysis_tab.py, rate_database_tab.py, revision_tab.py
     ├── parameter_lists_tab.py
@@ -544,7 +549,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 440 checks passed`.
+`RESULT: all 448 checks passed`.
 
 ---
 

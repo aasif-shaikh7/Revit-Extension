@@ -2624,6 +2624,21 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             list(row) for row in unmapped_report
         ]
 
+    # P16: the whole BOQ on one page, right after the Summary cover (which
+    # is inserted in front of it next), so the cover lists it too.
+    from dashboard_engine import DASHBOARD_SHEET_NAME, build_dashboard_table
+    dashboard_table = build_dashboard_table(
+        data_result,
+        rate_database=rate_database,
+        project_location=project_location,
+        rate_date=str(generated_stamp or "")[:10],
+        unmapped_report=unmapped_report,
+        revision_snapshots=revision_snapshots)
+    if len(dashboard_table) > 1:
+        sheet_names.insert(0, DASHBOARD_SHEET_NAME)
+        sheet_rows[DASHBOARD_SHEET_NAME] = dashboard_table
+        quantity_column_map[DASHBOARD_SHEET_NAME] = [3]
+
     # Professional output: front Summary cover as the first sheet.
     summary_cover = build_summary_cover_rows(
         project_name,
@@ -3615,6 +3630,25 @@ def write_site_xlsx(file_path, data_result, project_name="",
         "levels": summary_meta.get("levels", []),
         "bands_cells": len(summary_table[4]) if len(summary_table) > 4 else 0
     }
+
+    # P16: the dashboard, in the site title bands, right after Summary.
+    from dashboard_engine import DASHBOARD_SHEET_NAME, build_dashboard_table
+    dashboard_plain = build_dashboard_table(
+        data_result,
+        rate_database=rate_database,
+        project_location=project_location,
+        rate_date=str(generated_stamp or "")[:10],
+        unmapped_report=unmapped_report,
+        revision_snapshots=revision_snapshots)
+    if len(dashboard_plain) > 1:
+        dashboard_table, dashboard_widths = build_site_tabular_sheet(
+            project_name, "PROJECT DASHBOARD", dashboard_plain,
+            band_title="RCC - DASHBOARD")
+        if len(dashboard_widths) == 5:
+            dashboard_widths[:] = [22, 34, 16, 10, 60]
+        sheet_names.insert(1, DASHBOARD_SHEET_NAME)
+        sheet_rows[DASHBOARD_SHEET_NAME] = dashboard_table
+        sheet_widths[DASHBOARD_SHEET_NAME] = dashboard_widths
 
     parent_dir = os.path.dirname(file_path)
 

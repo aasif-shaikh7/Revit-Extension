@@ -198,6 +198,28 @@ def main():
 
     passed = [0]
 
+    def sheet_part(archive, sheet_name):
+        """The worksheet part a sheet name points to.
+
+        Resolved through xl/workbook.xml and its relationships, so a sheet
+        added in front of others (the P16 Dashboard, after Summary) does
+        not make every later check read the wrong file.
+        """
+        workbook_xml = archive.read("xl/workbook.xml").decode("utf-8")
+        rels_xml = archive.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+        rid = None
+        for tag in re.findall(r"<sheet [^>]*/>", workbook_xml):
+            name = re.search(r'name="([^"]*)"', tag)
+            if name and name.group(1) == sheet_name:
+                rid = re.search(r'r:id="([^"]*)"', tag).group(1)
+        if rid is None:
+            raise AssertionError("no sheet named {0!r}".format(sheet_name))
+        for tag in re.findall(r"<Relationship [^>]*/>", rels_xml):
+            if 'Id="{0}"'.format(rid) in tag:
+                target = re.search(r'Target="([^"]*)"', tag).group(1)
+                return "xl/" + target.lstrip("/")
+        raise AssertionError("no relationship {0}".format(rid))
+
     def check(condition, message):
         if condition:
             passed[0] += 1
@@ -1678,7 +1700,7 @@ def main():
         )
 
         expected_order = [
-            "Summary", "Beam", "Column", "Structure Wall", "Foundation",
+            "Summary", "Dashboard", "Beam", "Column", "Structure Wall", "Foundation",
             "Rebar", "Rebar Summary", "Rebar BBS", "BOQ Summary",
             "Structural Assembly", "BOQ by Level", "BOQ by Grade",
             "Concrete Summary", "Detailed BOQ", "Costing"
@@ -1718,7 +1740,7 @@ def main():
         )
 
         beam_xml = archive.read(
-            "xl/worksheets/sheet2.xml"
+            sheet_part(archive, "Beam")
         ).decode("utf-8")
 
         check(
@@ -1806,7 +1828,7 @@ def main():
 
         # Every sheet prints A4 landscape, one page wide; sheetPr must be
         # the worksheet's first child or Excel reports a damaged file.
-        classic_sheet_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+        classic_sheet_xml = archive.read(sheet_part(archive, "Beam")).decode("utf-8")
         check(
             re.search(r'<worksheet [^>]*><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ',
                       classic_sheet_xml) is not None
@@ -1959,7 +1981,7 @@ def main():
 
         check(
             sheet_order_site == [
-                "Summary", "Beam", "Structure Wall", "Rebar",
+                "Summary", "Dashboard", "Beam", "Structure Wall", "Rebar",
                 "Rebar Summary", "Rebar BBS", "Structural Assembly",
                 "Concrete Summary", "Formwork Summary", "Detailed BOQ"
             ],
@@ -1973,7 +1995,7 @@ def main():
         )
 
         site_summary_xml = site_archive.read(
-            "xl/worksheets/sheet1.xml"
+            sheet_part(site_archive, "Summary")
         ).decode("utf-8")
 
         merge_counts = re.findall(
@@ -1995,7 +2017,7 @@ def main():
         )
 
         site_beam_xml = site_archive.read(
-            "xl/worksheets/sheet2.xml"
+            sheet_part(site_archive, "Beam")
         ).decode("utf-8")
 
         check(
@@ -2013,7 +2035,7 @@ def main():
         )
 
         site_wall_xml = site_archive.read(
-            "xl/worksheets/sheet3.xml"
+            sheet_part(site_archive, "Structure Wall")
         ).decode("utf-8")
 
         check(
@@ -2025,7 +2047,7 @@ def main():
         )
 
         site_rebar_xml = site_archive.read(
-            "xl/worksheets/sheet4.xml"
+            sheet_part(site_archive, "Rebar")
         ).decode("utf-8")
 
         check(
@@ -2039,10 +2061,10 @@ def main():
         )
 
         site_rebar_summary_xml = site_archive.read(
-            "xl/worksheets/sheet5.xml"
+            sheet_part(site_archive, "Rebar Summary")
         ).decode("utf-8")
         site_rebar_bbs_xml = site_archive.read(
-            "xl/worksheets/sheet6.xml"
+            sheet_part(site_archive, "Rebar BBS")
         ).decode("utf-8")
         check(
             ">REBAR DIAMETER SUMMARY<" in site_rebar_summary_xml
@@ -2061,7 +2083,7 @@ def main():
         )
 
         site_assembly_xml = site_archive.read(
-            "xl/worksheets/sheet7.xml"
+            sheet_part(site_archive, "Structural Assembly")
         ).decode("utf-8")
         check(
             ">RCC - STRUCTURAL ASSEMBLY<" in site_assembly_xml
@@ -2079,7 +2101,7 @@ def main():
             and "F4A582" not in site_styles_xml and "FCE8D5" not in site_styles_xml,
             "Site band and sub-band use Excel's Dark Blue, Text 2, Lighter 90% (#DAE9F8)"
         )
-        site_sheet_xml = site_archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+        site_sheet_xml = site_archive.read(sheet_part(site_archive, "Beam")).decode("utf-8")
         check(
             re.search(r'<worksheet [^>]*><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ',
                       site_sheet_xml) is not None
@@ -6758,6 +6780,146 @@ def main():
         and "import Autodesk" not in p15_source and "pyrevit" not in p15_source,
         "P15 the export collects each element's family and type and hands it "
         "to the snapshot; the engine holds no Revit symbol"
+    )
+
+    # ------------------------------------------------------------
+    # P16 Dashboard (v1.41.0)
+    #
+    # The whole BOQ on one page, after the Summary cover. Its figures come
+    # from the same plain numbers as the revision snapshot, and its cost
+    # from the same rates and codes as the Detailed BOQ - so the check
+    # that matters is that the two can never disagree.
+    # ------------------------------------------------------------
+    import dashboard_engine as dash
+
+    def dash_rows(table, section_name):
+        """The (item, value, unit, note) rows of one dashboard section."""
+        rows, inside = [], False
+        for row in table[1:]:
+            if row[0]:
+                inside = row[0] == section_name
+            if inside:
+                rows.append(tuple(row[1:]))
+        return rows
+
+    dash_table = dash.build_dashboard_table(
+        boq_fixture, rate_database=boq_rates,
+        project_location="Navsari, Gujarat, India", rate_date="2026-09-22")
+    dash_key = dict((r[0], r[1]) for r in dash_rows(dash_table, "KEY FIGURES"))
+    dash_cost = dict((r[0], r[1]) for r in dash_rows(dash_table, "ESTIMATED COST"))
+
+    # The Detailed BOQ's own amounts: quantity x rate on every priced row.
+    boq_amount = 0.0
+    for row in boq_engine.build_detailed_boq_table(
+            boq_fixture, {}, boq_fixture.get("Rebar") or [],
+            rate_database=boq_rates, project_location="Navsari, Gujarat, India",
+            rate_date="2026-09-22"):
+        if "." in str(row[0]) and row[0] != "Item No." and row[4] != "":
+            boq_amount += float(row[3]) * float(row[4])
+    check(
+        dash_table[0] == list(dash.DASHBOARD_HEADERS)
+        and abs(dash_cost.get("Total", -1) - round(boq_amount, 2)) < 0.01
+        and boq_amount > 0,
+        "P16 the dashboard's estimated cost equals the Detailed BOQ's own "
+        "amounts ({0} vs {1:.2f})".format(dash_cost.get("Total"), boq_amount)
+    )
+
+    dash_snapshot = revision.build_snapshot(boq_fixture, boq_fixture.get("Rebar") or [])
+    def dash_sum(prefix):
+        return round(sum(i["quantity"] for i in dash_snapshot["items"]
+                         if i["code"].startswith(prefix)), 2)
+    check(
+        dash_key.get("Concrete") == dash_sum("A|") == 5.0
+        and dash_key.get("Shuttering") == dash_sum("B|")
+        and dash_key.get("Reinforcement steel") == round(dash_sum("C|") / 1000.0, 3)
+        and dash_key.get("Structural elements") == 5
+        and dash_key.get("Rebar sets") == 3,
+        "P16 key figures are the BOQ's own totals: concrete, steel in "
+        "tonnes, shuttering, element and rebar counts"
+    )
+    dash_grades = [r[0] for r in dash_rows(dash_table, "CONCRETE BY GRADE")]
+    check(
+        dash_grades == ["M10", "M30", "M40", "Grade not recorded"],
+        "P16 concrete by grade runs in grade order, an unrecorded grade last "
+        "(got {0})".format(dash_grades)
+    )
+
+    dash_warn = dict((r[0], r[1]) for r in dash_rows(
+        dash.build_dashboard_table(
+            boq_fixture, rate_database=boq_rates,
+            project_location="Navsari, Gujarat, India", rate_date="2026-09-22",
+            unmapped_report=[("Category", "Element ID", "Level", "Issue", "Detail"),
+                             ("Beam", "4", "L2", "Missing concrete grade", ""),
+                             ("Beam", "7", "L2", "Missing concrete grade", ""),
+                             ("Slab", "8", "L1", "Unrouted element", "")]),
+        "WARNINGS"))
+    check(
+        dash_warn.get("Concrete grade not recorded") == 1
+        and dash_warn.get("Missing concrete grade") == 2
+        and dash_warn.get("Unrouted element") == 1
+        and dash_warn.get("BOQ items without a rate", 0) >= 1,
+        "P16 warnings count ungraded elements, unrated items and each kind of "
+        "unmapped finding"
+    )
+
+    no_rates = dash.build_dashboard_table(boq_fixture)
+    mixed = dash.build_dashboard_table(
+        boq_fixture, rate_database=boq_rates + [
+            {"item_code": "SHUT-BEAM", "unit": "m2", "rate": 30, "currency": "AED",
+             "source": "SAMPLE"}],
+        project_location="Navsari, Gujarat, India", rate_date="2026-09-22")
+    check(
+        [r[0] for r in dash_rows(no_rates, "ESTIMATED COST")] == ["Not estimated"]
+        and dict((r[0], r[1]) for r in dash_rows(mixed, "ESTIMATED COST"))["Total"] == ""
+        and not any(str(row[0]).startswith("SINCE") for row in no_rates),
+        "P16 with no rates the cost is not estimated, two currencies get no "
+        "total, and without a revision there is no 'since' section"
+    )
+
+    dash_prev = revision.build_snapshot(
+        {"Beam": boq_fixture["Beam"][:2]}, [], revision="Rev 00")
+    dash_cur = revision.build_snapshot(boq_fixture, boq_fixture.get("Rebar") or [],
+                                       revision="Rev 01")
+    dash_since = dict((r[0], r[1]) for r in dash_rows(
+        dash.build_dashboard_table(boq_fixture, revision_snapshots=(dash_prev, dash_cur)),
+        "SINCE REV 00"))
+    check(
+        dash_since.get("Concrete") == 3.0
+        # Beams 3 and 4 and the column are new; beam 1 now carries rebar,
+        # so its steel moved and it counts as modified.
+        and dash_since.get("Elements added / deleted / modified") == "3 / 0 / 1",
+        "P16 the dashboard says what moved since the issue it is compared "
+        "against (got {0})".format(dash_since)
+    )
+
+    dash_dir = tempfile.mkdtemp()
+    try:
+        dash_classic = boq_engine.write_basic_xlsx(
+            os.path.join(dash_dir, "c.xlsx"), boq_fixture,
+            generated_stamp="2026-09-22 10:00", rate_database=boq_rates,
+            project_location="Navsari, Gujarat, India")
+        dash_site = boq_engine.write_site_xlsx(
+            os.path.join(dash_dir, "s.xlsx"), boq_fixture, project_name="QA",
+            generated_stamp="2026-09-22 10:00", rate_database=boq_rates,
+            project_location="Navsari, Gujarat, India")
+    finally:
+        shutil.rmtree(dash_dir, ignore_errors=True)
+    site_dash = dash_site.get(dash.DASHBOARD_SHEET_NAME) or [[""]] * 3
+    check(
+        list(dash_classic)[:2] == ["Summary", dash.DASHBOARD_SHEET_NAME]
+        and list(dash_site)[:2] == ["Summary", dash.DASHBOARD_SHEET_NAME]
+        and any(dash.DASHBOARD_SHEET_NAME in str(cell)
+                for row in dash_classic["Summary"] for cell in row)
+        and site_dash[1][0] == "RCC - DASHBOARD"
+        and site_dash[2][0] == "PROJECT DASHBOARD",
+        "P16 both workbooks put the Dashboard right after Summary, and the "
+        "cover lists it"
+    )
+    dash_source = io.open(os.path.join(LIB_DIR, "dashboard_engine.py"),
+                          encoding="utf-8-sig").read()
+    check(
+        "import Autodesk" not in dash_source and "pyrevit" not in dash_source,
+        "P16 dashboard engine imports no Revit or pyRevit symbol"
     )
 
     print("")

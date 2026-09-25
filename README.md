@@ -19,9 +19,9 @@ bridge state and granting or revoking short controlled-write sessions.
   2.7.12)**: `script.py` carries no `#! python3` first line, so pyRevit loads it on its default
   engine. **CP3123 (CPython 3.12.3)** stays the target engine.
 > **Engine note:** the engine modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 22 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`,
-> `header_colour.py` and `model_change_engine.py` have so far only been measured on Python
-> 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF
+> 23 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`,
+> `header_colour.py`, `model_change_engine.py` and `dashboard_engine.py` have so far only been
+> measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython, because pyRevit still ships `pyrevit.forms` for IronPython
 > only — upstream master `6.5.5` carries the same CPython stub as the installed build (`6.5.3`).
 > From `v1.9.3`, the known IP27 fallback is silent so a healthy run does not force-open pyRevit
@@ -83,7 +83,7 @@ Revit element data + metric quantities
       │
       ▼
 Dependency-free XLSX (Open XML):
-      Element sheets ▶ Rebar Summary ▶ Rebar BBS ▶ Structural Assembly ▶
+      Summary ▶ Dashboard ▶ Element sheets ▶ Rebar Summary ▶ Rebar BBS ▶ Structural Assembly ▶
       Rate Analysis ▶ Rate Database ▶ BOQ Summary ▶ BOQ by Level ▶ BOQ by Grade ▶
       Concrete Summary ▶ Formwork Summary ▶ Detailed BOQ ▶ BOQ Revision ▶ Model Changes ▶
       Site Items ▶
@@ -147,6 +147,9 @@ dependencies imported into the pyRevit host.
 - **Model changes** — a `Model Changes` sheet lists the elements behind that movement: each one
   added, deleted or modified (concrete, shuttering or hosted steel by 0.005 or more, or its grade,
   level or family and type), with what changed in words and a TOTAL per difference column.
+- **Dashboard** — right after the Summary cover: concrete, steel (t), shuttering and element
+  counts; concrete by grade; the estimated cost from the rate database (always equal to the
+  Detailed BOQ's amounts); warnings; and what moved since the previous issue.
 - **Owner theme** — the dialog uses a red header band, peach buttons with black text, a lime
   selection colour, a gold tab strip and Consolas; the workbook uses red titles and headers,
   banded rows, lime-tint totals, Indian digit grouping and A4 landscape one page wide.
@@ -312,6 +315,7 @@ Revit-Extension/
 │       ├── rebar_engine.py       <- P4 rebar length/weight calculations
 │       ├── revision_engine.py    <- P14 snapshots + Previous/Current comparison
 │       ├── model_change_engine.py <- P15 element-level Added/Deleted/Modified
+│       ├── dashboard_engine.py   <- P16 the whole BOQ on one page
 │       ├── header_colour.py      <- dialog header colour presets + readable text
 │       ├── *_tab.py              <- dialog handlers moved out of script.py: the four data
 │       │                            tabs and the category tabs' parameter lists
@@ -369,7 +373,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 440 checks passed`.
+`RESULT: all 448 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -397,11 +401,11 @@ P8  Structural Rule Engine                       open (script.py is 5,508 lines)
 P9  Validation Engine                            done
 P10 Unmapped Element Report                      done
 P11 Rate Analysis                                done
-P12 Rate Database                                built; waiting on the owner's real rates
+P12 Rate Database                                done; Gujarat R&B SOR 2024-25 rates entered
 P13 Professional Excel BOQ                       done
-P14 BOQ Revision                                 not started
-P15 Model Change Detection                       not started
-P16 Structural Dashboard                         not started
+P14 BOQ Revision                                 done
+P15 Model Change Detection                       done
+P16 Structural Dashboard                         done
 ```
 
 Only **structural** scope is in the roadmap (Beam/Column/Structure Wall/Slab/Foundation/Rebar + concrete, reinforcement,
@@ -458,9 +462,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.40.0`. P1–P7, P9–P11, P13, P14 and P15 are done; P12 is built and waiting only on the
-owner's real rates; P8 is still open (`script.py` after `v1.38.0`–`v1.39.0` moved the dialog
-handlers into `lib/`); P16 has not started.
+is `v1.41.0`. Every phase is done except the open-ended P8 split (`script.py` after
+`v1.38.0`–`v1.39.0` moved the dialog handlers into `lib/`). P12's rate database holds real
+Gujarat R&B SOR 2024-25 rates since 2026-09-25.
 
 Since `v1.23.2` the following shipped. `v1.26.x` added P11 rate analysis (engine, sheet and tab).
 `v1.27.0`–`v1.29.0` added the P13 `Detailed BOQ` plus `Concrete Summary` and `Formwork Summary` in

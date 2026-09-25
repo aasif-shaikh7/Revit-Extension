@@ -22,6 +22,63 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.41.0] - 2026-09-25
+
+**P16 Dashboard: the whole BOQ on one page.** With P16 every phase of the roadmap has shipped
+except the open-ended P8 split.
+
+### Added
+- **A Dashboard sheet right after the Summary cover**, in both workbook formats (and listed on the
+  cover). One row per figure - Section | Item | Value | Unit | Note:
+  - **Key figures:** concrete (m3), reinforcement steel (t, with the kg in the note), shuttering
+    (m2), structural elements, rebar sets;
+  - **Concrete by grade**, in grade order, an unrecorded grade last and marked "not priced";
+  - **Elements** per category with their concrete and shuttering;
+  - **Estimated cost** - concrete, shuttering, steel and total, priced from the rate database by the
+    Detailed BOQ's own codes and rules; "not estimated" when there are no rates, no total when two
+    currencies meet, and how many BOQ items were priced;
+  - **Warnings** - elements with no grade (and the m3 that cannot be priced), elements with no
+    concrete volume, BOQ items with no rate, and each kind of Unmapped Elements finding;
+  - **Since** the issue the BOQ Revision sheet compares against: concrete, steel and shuttering
+    moved, and elements added / deleted / modified.
+- `lib/dashboard_engine.py` (the 23rd engine module). Every figure comes from the same plain numbers
+  as the revision snapshot, which uses the Detailed BOQ's items, so the dashboard and the BOQ cannot
+  disagree. No `script.py` change was needed: both writers already receive everything it uses.
+
+### Changed
+- The harness reads worksheets **by sheet name** (`sheet_part(archive, name)`, through
+  `workbook.xml` and its relationships) instead of by file number. Ten reads had hard-coded
+  `sheetN.xml`; putting a sheet after Summary moved every later file and broke sixteen checks that
+  were still right about the workbook.
+
+### P12 - real rates entered (owner's settings, not the repository)
+- At the owner's request (2026-09-25) the rate database was filled from the **Government of Gujarat
+  R&B Schedule of Rates 2024-25, EE(S) Mehsana division** (rates without GST, approved by Govt letter
+  SOR/2024/53o/C-1 dated 13-01-2025), read from the official PDF and cross-read in two extraction
+  modes: RCC M15-M35 ready-mix (items 05054-05058, excluding formwork and reinforcement),
+  formwork for foundations, slabs up to 200 mm, walls, rectangular columns and beams up to 1 m deep
+  (09001AA, B1A, CA, G1A, H1A), and TMT Fe 500D reinforcement (05014C). Eleven entries at location
+  "Gujarat", effective 2025-01-13; each names its SOR item in Source.
+- Known limits, stated to the owner: a Mehsana-division SOR, not Navsari's (no official Surat/Navsari
+  PDF was found - a city rate added later overrides it automatically); GST is not included; slabs
+  over 200 mm, beams over 1 m deep and propping over 4 m have their own SOR rates, not entered.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 448 checks passed** (eight new). The one that matters:
+  the dashboard's estimated cost equals the sum of the Detailed BOQ's own amounts. Five mutations
+  are each caught by name: shuttering left out of the cost, an unrecorded grade sorted first,
+  unmapped findings ignored, steel shown in kg as tonnes, the site workbook without a dashboard.
+- **Same results on both engines:** a 23-row dashboard scenario is identical on CPython 3.12 and on
+  pyRevit's IronPython 2.7.12; `scripts/ip27_compile.ps1` compiles every file.
+- **Real Excel 16, with the owner's real Gujarat SOR rates:** both formats open with no repair
+  prompt, Dashboard second, landscape one page wide; the estimated total **9,49,841.80** equals the
+  Detailed BOQ's amounts **949,841.80** in each, and each group matches a hand calculation
+  (concrete 66 x 5,013.29 + 36 x 4,823.19 = 5,04,511.98; steel 3,552 x 76.52 = 2,71,799.04).
+- Not run from inside Revit: nothing in `script.py` or the Revit-reading code changed. Cosmetic:
+  in the classic workbook the Value column's number format shows counts as "62.00".
+
+---
+
 ## [v1.40.0] - 2026-09-25
 
 **P15 Model Changes: which elements are behind the movement.** The BOQ Revision sheet says *how much*
