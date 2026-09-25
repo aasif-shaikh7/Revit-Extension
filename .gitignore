@@ -11,3 +11,7 @@ _boq_writer_test.xlsx
 # Root-level local diagnostics/readback scripts
 /_*.py
 /_*.txt
+
+# BOQ workbooks exported for the owner are kept in docs/ (owner's rule,
+# 2026-09-25) - local output, never committed.
+/docs/*.xlsx
