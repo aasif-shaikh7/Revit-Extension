@@ -6577,6 +6577,189 @@ def main():
             "" if not p8_rebinds else " (" + ", ".join(p8_rebinds) + ")")
     )
 
+    # ------------------------------------------------------------
+    # P15 Model Changes (v1.40.0)
+    #
+    # Which elements are behind the BOQ Revision sheet's movement. An
+    # element is Modified when its concrete, shuttering or hosted steel
+    # moved by 0.005 or more, or its grade, level or family and type
+    # changed; Added and Deleted by its element ID. Steel follows the
+    # host; rebar with no concrete host is kept in one record.
+    # ------------------------------------------------------------
+    import model_change_engine as mce
+
+    mce_rows0 = {
+        "Beam": [
+            {"Element ID": "12", "Level": "L3", "Grade": "M25",
+             "Qty: Volume (m3)": 1.2, "Qty: Shuttering (m2)": 6.0, "Mark": "B12"},
+            {"Element ID": "13", "Level": "L3", "Grade": "M25",
+             "Qty: Volume (m3)": 0.9, "Mark": "B13"},
+            {"Element ID": "9", "Level": "L1", "Grade": "M25",
+             "Qty: Volume (m3)": 0.5},
+        ],
+        "Column": [{"Element ID": "5", "Level": "L0", "Grade": "M30",
+                    "Qty: Volume (m3)": 0.62}],
+    }
+    mce_rebar0 = [
+        {"Rebar: Host Element ID": "12", "Rebar: Total Weight (kg)": 30.0},
+        {"Rebar: Host Element ID": "12", "Rebar: Total Weight (kg)": 15.0},
+        {"Rebar: Host Element ID": "", "Rebar: Total Weight (kg)": 3.0},
+        {"Rebar: Host Element ID": "777", "Rebar: Total Weight (kg)": 2.0},
+    ]
+    mce_rows1 = {
+        "Beam": [
+            {"Element ID": "12", "Level": "L3", "Grade": "M30",
+             "Qty: Volume (m3)": 1.6, "Qty: Shuttering (m2)": 8.0},
+            {"Element ID": "13", "Level": "L3", "Grade": "M25",
+             "Qty: Volume (m3)": 0.9042, "Mark": "B13-renamed"},
+            {"Element ID": "9", "Level": "L2", "Grade": "M25",
+             "Qty: Volume (m3)": 0.5},
+            {"Element ID": "40", "Level": "L5", "Grade": "M25",
+             "Qty: Volume (m3)": 0.85},
+            {"Element ID": "10", "Level": "L5", "Grade": "M25",
+             "Qty: Volume (m3)": 0.4},
+        ],
+    }
+    mce_rebar1 = [
+        {"Rebar: Host Element ID": "12", "Rebar: Total Weight (kg)": 52.0},
+        {"Rebar: Host Element ID": "", "Rebar: Total Weight (kg)": 3.0},
+        {"Rebar: Host Element ID": "777", "Rebar: Total Weight (kg)": 2.0},
+    ]
+    mce_records0 = mce.build_element_records(mce_rows0, mce_rebar0,
+                                             {"12": "Beam: 230x450"})
+    mce_prev = {"items": [], "elements": mce_records0}
+    mce_cur = {"items": [], "elements": mce.build_element_records(
+        mce_rows1, mce_rebar1, {"12": "Beam: 230x600"})}
+    mce_by_id = dict((record["id"], record) for record in mce_records0)
+    check(
+        [record["id"] for record in mce_records0] == ["12", "13", "9", "5", "(no host)"]
+        and mce_by_id["12"]["steel"] == 45.0
+        and mce_by_id["12"]["type"] == "Beam: 230x450"
+        and mce_by_id["13"]["steel"] is None
+        and mce_by_id["(no host)"]["steel"] == 5.0
+        and mce_by_id["(no host)"]["category"] == "Rebar",
+        "P15 each element keeps its own record, its hosted steel summed onto "
+        "it, and steel without a concrete host kept in one record"
+    )
+
+    mce_changes = mce.compare_elements(mce_prev, mce_cur)
+    mce_by_change = dict(((c["change"], c["id"]), c) for c in mce_changes)
+    beam12 = mce_by_change.get(("Modified", "12")) or {}
+    mce_order = [(c["change"], c["category"], c["id"]) for c in mce_changes]
+    mce_expected = [("Added", "Beam", "10"), ("Added", "Beam", "40"),
+                    ("Modified", "Beam", "9"), ("Modified", "Beam", "12"),
+                    ("Deleted", "Column", "5")]
+    check(
+        mce_order == mce_expected,
+        "P15 changes come in category order, deleted before added before "
+        "modified, then by level and element number{0}".format(
+            "" if mce_order == mce_expected else " (got {0})".format(mce_order))
+    )
+    check(
+        beam12.get("concrete") == 0.4 and beam12.get("shuttering") == 2.0
+        and beam12.get("steel") == 7.0
+        and "Grade M25 -> M30" in beam12.get("what", "")
+        and "Type Beam: 230x450 -> Beam: 230x600" in beam12.get("what", "")
+        and ("Modified", "13") not in mce_by_change
+        and "Level L1 -> L2" in (mce_by_change.get(("Modified", "9")) or {}).get("what", "")
+        and (mce_by_change.get(("Deleted", "5")) or {}).get("concrete") == -0.62
+        and (mce_by_change.get(("Added", "40")) or {}).get("concrete") == 0.85
+        and mce.change_counts(mce_prev, mce_cur) == (1, 2, 2),
+        "P15 size, steel, grade, level and type changes are named; four "
+        "litres and a new Mark are not a change; deleted counts negative"
+    )
+
+    mce_table = mce.build_model_changes_table(mce_prev, mce_cur)
+    mce_site = mce.build_model_changes_table(mce_prev, mce_cur, row_offset=5)
+    mce_meta = mce.build_model_changes_sheet(
+        mce_prev, mce_cur, meta_lines=["Previous: Rev 00", "Current: Rev 01"])
+    check(
+        mce_table[0] == list(mce.MODEL_CHANGES_HEADERS)
+        and mce_table[-1][0] == "TOTAL"
+        and mce_table[-1][6] == ("FORMULA", "SUM(G2:G6)")
+        and mce_site[-1][8] == ("FORMULA", "SUM(I7:I11)")
+        and mce_meta[-1][7] == ("FORMULA", "SUM(H4:H8)")
+        and mce_meta[0][0] == "Previous: Rev 00",
+        "P15 the sheet totals each difference column over its own rows, "
+        "wherever the heading or title bands push them"
+    )
+    old_format = {"items": [], "revision": "Rev 03"}
+    check(
+        mce.build_model_changes_table(old_format, mce_cur)
+        == [list(mce.MODEL_CHANGES_HEADERS)]
+        and mce.build_model_changes_table(mce_prev, mce_prev)
+        == [list(mce.MODEL_CHANGES_HEADERS)]
+        and not mce.elements_unchanged(old_format, mce_cur)
+        and mce.elements_unchanged(mce_prev, mce_prev)
+        and mce.elements_unchanged({"items": []}, {"items": []}),
+        "P15 no sheet against a snapshot without element records or when "
+        "nothing changed; the first export after the upgrade files a revision"
+    )
+
+    # The revision rule now sees element changes the totals hide: the
+    # same concrete, one beam moved to another level.
+    moved_level = {"Beam": [dict(mce_rows0["Beam"][2], Level="L9")]}
+    same_level = {"Beam": [dict(mce_rows0["Beam"][2])]}
+    snap_a = revision.build_snapshot(same_level, revision="Rev 00")
+    snap_b = revision.build_snapshot(moved_level, revision="Rev 01")
+    check(
+        snap_a["format"] == 2 and len(snap_a["elements"]) == 1
+        and snap_a["items"] == snap_b["items"]
+        and not revision.snapshot_is_unchanged(snap_a, snap_b)
+        and revision.snapshot_is_unchanged(snap_a, dict(snap_a)),
+        "P15 an element that moved level is a new revision even when every "
+        "BOQ total is the same"
+    )
+
+    p15_dir = tempfile.mkdtemp()
+    try:
+        prev_snap = revision.build_snapshot(mce_rows0, mce_rebar0, revision="Rev 00",
+                                            exported="2026-09-25")
+        cur_snap = revision.build_snapshot(mce_rows1, mce_rebar1, revision="Rev 01",
+                                           exported="2026-09-25")
+        classic_p15 = boq_engine.write_basic_xlsx(
+            os.path.join(p15_dir, "c.xlsx"), mce_rows1,
+            generated_stamp="2026-09-25 10:00",
+            revision_snapshots=(prev_snap, cur_snap))
+        site_p15 = boq_engine.write_site_xlsx(
+            os.path.join(p15_dir, "s.xlsx"), mce_rows1, project_name="QA",
+            generated_stamp="2026-09-25 10:00",
+            revision_snapshots=(prev_snap, cur_snap))
+        old_prev = dict(prev_snap)
+        old_prev.pop("elements")
+        classic_old = boq_engine.write_basic_xlsx(
+            os.path.join(p15_dir, "o.xlsx"), mce_rows1,
+            generated_stamp="2026-09-25 10:00",
+            revision_snapshots=(old_prev, cur_snap))
+    finally:
+        shutil.rmtree(p15_dir, ignore_errors=True)
+    classic_changes = classic_p15.get(mce.MODEL_CHANGES_SHEET_NAME) or [[]]
+    site_changes = site_p15.get(mce.MODEL_CHANGES_SHEET_NAME) or [[""]] * 7
+    check(
+        list(classic_p15).index(mce.MODEL_CHANGES_SHEET_NAME)
+        == list(classic_p15).index(revision.REVISION_SHEET_NAME) + 1
+        and str(classic_changes[0][0]).startswith("Previous: Rev 00")
+        and classic_changes[-1][0] == "TOTAL"
+        and site_changes[1][0] == "RCC - MODEL CHANGES"
+        and site_changes[2][0] == "MODEL CHANGES - Rev 00 to Rev 01"
+        and mce.MODEL_CHANGES_SHEET_NAME not in classic_old,
+        "P15 both workbooks write Model Changes right after BOQ Revision, "
+        "and none against a revision filed before element records existed"
+    )
+
+    p15_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
+    p15_source = io.open(os.path.join(LIB_DIR, "model_change_engine.py"),
+                         encoding="utf-8-sig").read()
+    check(
+        "type_sink=element_types" in p15_script
+        and "element_types=element_types" in p15_script
+        and "def build_element_data(include_grade=True, material_sink=None, type_sink=None):"
+        in p15_script
+        and "import Autodesk" not in p15_source and "pyrevit" not in p15_source,
+        "P15 the export collects each element's family and type and hands it "
+        "to the snapshot; the engine holds no Revit symbol"
+    )
+
     print("")
 
     if failures:

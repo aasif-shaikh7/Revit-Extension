@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.39.0'
+__version__ = '1.40.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.39.0'
+SCRIPT_VERSION = '1.40.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2027,7 +2027,7 @@ def resolve_structural_material(parameter_context):
     return ""
 
 
-def build_element_data(include_grade=True, material_sink=None):
+def build_element_data(include_grade=True, material_sink=None, type_sink=None):
     """
     Read actual values from the parameters currently selected in the UI.
     The current Selected / Export order is preserved.
@@ -2172,6 +2172,18 @@ def build_element_data(include_grade=True, material_sink=None):
                 material_sink[row["Element ID"]] = (
                     resolve_structural_material(parameter_context)
                 )
+
+            # P15 (v1.40.0): each element's family and type, for the Model
+            # Changes sheet, without adding a workbook column. Guarded: a
+            # type that cannot be read leaves the element without one.
+            if type_sink is not None and element_name != "Rebar":
+                try:
+                    family_name, type_name = _element_family_type_names(
+                        element)
+                    type_sink[row["Element ID"]] = u": ".join(
+                        [part for part in (family_name, type_name) if part])
+                except:
+                    pass
 
             quantity_values = []
             quantity_by_name = {}
@@ -4797,6 +4809,7 @@ try:
 
                     data_started = time.time()
                     element_materials = {}
+                    element_types = {}
                     trail("export | build_element_data")
                     (
                         element_data,
@@ -4806,7 +4819,8 @@ try:
                         # P10 reports missing concrete grade in both
                         # formats; the Site writer still hides the column.
                         include_grade=True,
-                        material_sink=element_materials
+                        material_sink=element_materials,
+                        type_sink=element_types
                     )
                     data_seconds = time.time() - data_started
 
@@ -5010,7 +5024,8 @@ try:
                             element_data.get("Rebar") or [],
                             revision=next_revision_label(revision_filed),
                             document=revision_document,
-                            exported=time.strftime("%Y-%m-%d")
+                            exported=time.strftime("%Y-%m-%d"),
+                            element_types=element_types
                         )
                         # Unchanged since the latest filed revision: this
                         # export IS that revision, and is labelled so.

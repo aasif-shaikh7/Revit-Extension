@@ -2571,6 +2571,20 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             sheet_rows[REVISION_SHEET_NAME] = revision_table
             quantity_column_map[REVISION_SHEET_NAME] = [4, 5, 6, 7]
 
+        # P15: which elements are behind that movement. Written only when
+        # both issues carry element records and something changed.
+        from model_change_engine import (
+            MODEL_CHANGES_SHEET_NAME, build_model_changes_sheet)
+        from revision_engine import revision_meta_lines
+        changes_table = build_model_changes_sheet(
+            revision_snapshots[0], revision_snapshots[1],
+            meta_lines=revision_meta_lines(
+                revision_snapshots[0], revision_snapshots[1]))
+        if len(changes_table) > 1:
+            sheet_names.append(MODEL_CHANGES_SHEET_NAME)
+            sheet_rows[MODEL_CHANGES_SHEET_NAME] = changes_table
+            quantity_column_map[MODEL_CHANGES_SHEET_NAME] = [7, 8, 9]
+
     # Per-element Costing sheet. Each element row carries its primary
     # quantity, its unit rate and a computed amount (quantity x rate).
     # build_costing_sheet lives in lib/costing_engine.py (section 9).
@@ -3494,9 +3508,11 @@ def write_site_xlsx(file_path, data_result, project_name="",
         revision_plain = build_revision_sheet(
             revision_snapshots[0], revision_snapshots[1], site_band_offset,
             with_meta=False)
+        # Named before the if: the Model Changes sheet below uses it too,
+        # even when the revision sheet has nothing to show.
+        heading = revision_title(
+            revision_snapshots[0], revision_snapshots[1])
         if len(revision_plain) > 2:
-            heading = revision_title(
-                revision_snapshots[0], revision_snapshots[1])
             revision_table, revision_widths = build_site_tabular_sheet(
                 project_name,
                 "BOQ REVISION" + (" - " + heading if heading else ""),
@@ -3506,6 +3522,23 @@ def write_site_xlsx(file_path, data_result, project_name="",
             sheet_names.append(REVISION_SHEET_NAME)
             sheet_rows[REVISION_SHEET_NAME] = revision_table
             sheet_widths[REVISION_SHEET_NAME] = revision_widths
+
+        # P15: the elements behind the movement, in the site title bands.
+        from model_change_engine import (
+            MODEL_CHANGES_SHEET_NAME, build_model_changes_table)
+        changes_plain = build_model_changes_table(
+            revision_snapshots[0], revision_snapshots[1], site_band_offset)
+        if len(changes_plain) > 1:
+            changes_table, changes_widths = build_site_tabular_sheet(
+                project_name,
+                "MODEL CHANGES" + (" - " + heading if heading else ""),
+                changes_plain, band_title="RCC - MODEL CHANGES")
+            if len(changes_widths) > 5:
+                changes_widths[3] = 30      # family and type
+                changes_widths[5] = 60      # what changed
+            sheet_names.append(MODEL_CHANGES_SHEET_NAME)
+            sheet_rows[MODEL_CHANGES_SHEET_NAME] = changes_table
+            sheet_widths[MODEL_CHANGES_SHEET_NAME] = changes_widths
 
     _trail("site | site items + unmapped")
     # P7: same typed line items as the classic workbook, wrapped in the

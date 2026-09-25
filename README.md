@@ -19,9 +19,9 @@ bridge state and granting or revoking short controlled-write sessions.
   2.7.12)**: `script.py` carries no `#! python3` first line, so pyRevit loads it on its default
   engine. **CP3123 (CPython 3.12.3)** stays the target engine.
 > **Engine note:** the engine modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 21 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`
-> (`v1.35.0`) and `header_colour.py` (`v1.36.0`) have so far only been measured on Python 3.12.10
-> in the harness. Only `script.py`'s pyRevit/WPF
+> 22 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`,
+> `header_colour.py` and `model_change_engine.py` have so far only been measured on Python
+> 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython, because pyRevit still ships `pyrevit.forms` for IronPython
 > only — upstream master `6.5.5` carries the same CPython stub as the installed build (`6.5.3`).
 > From `v1.9.3`, the known IP27 fallback is silent so a healthy run does not force-open pyRevit
@@ -85,7 +85,8 @@ Revit element data + metric quantities
 Dependency-free XLSX (Open XML):
       Element sheets ▶ Rebar Summary ▶ Rebar BBS ▶ Structural Assembly ▶
       Rate Analysis ▶ Rate Database ▶ BOQ Summary ▶ BOQ by Level ▶ BOQ by Grade ▶
-      Concrete Summary ▶ Formwork Summary ▶ Detailed BOQ ▶ BOQ Revision ▶ Site Items ▶
+      Concrete Summary ▶ Formwork Summary ▶ Detailed BOQ ▶ BOQ Revision ▶ Model Changes ▶
+      Site Items ▶
       Unmapped Elements ▶ Costing
 ```
 
@@ -133,8 +134,8 @@ dependencies imported into the pyRevit host.
   rate/price parameter on each category.
 - **Grouped, assembled and priced sheets** — `BOQ by Level`, `BOQ by Grade`, `Concrete Summary`,
   `Formwork Summary`, `Structural Assembly`, `Site Items`, `Rate Analysis`, `Rate Database`,
-  `Detailed BOQ`, `BOQ Revision` and `Unmapped Elements` are written when the relevant data
-  exists. The Site
+  `Detailed BOQ`, `BOQ Revision`, `Model Changes` and `Unmapped Elements` are written when the
+  relevant data exists. The Site
   format omits `BOQ Summary`, `BOQ by Level`, `BOQ by Grade` and `Costing`; the Classic format
   omits the site title bands.
 - **Rate database** — the Rate Database tab and sheet resolve a rate by city/state/country and
@@ -143,6 +144,9 @@ dependencies imported into the pyRevit host.
   second export onwards a `BOQ Revision` sheet gives `Previous Qty`, `Current Qty`,
   `Difference`, `% Difference` and a status per item. An export that measures what the last one
   measured does not become a new revision.
+- **Model changes** — a `Model Changes` sheet lists the elements behind that movement: each one
+  added, deleted or modified (concrete, shuttering or hosted steel by 0.005 or more, or its grade,
+  level or family and type), with what changed in words and a TOTAL per difference column.
 - **Owner theme** — the dialog uses a red header band, peach buttons with black text, a lime
   selection colour, a gold tab strip and Consolas; the workbook uses red titles and headers,
   banded rows, lime-tint totals, Indian digit grouping and A4 landscape one page wide.
@@ -307,6 +311,7 @@ Revit-Extension/
 │       ├── rate_database_engine.py <- P12 rate lookup by location and date
 │       ├── rebar_engine.py       <- P4 rebar length/weight calculations
 │       ├── revision_engine.py    <- P14 snapshots + Previous/Current comparison
+│       ├── model_change_engine.py <- P15 element-level Added/Deleted/Modified
 │       ├── header_colour.py      <- dialog header colour presets + readable text
 │       ├── *_tab.py              <- dialog handlers moved out of script.py: the four data
 │       │                            tabs and the category tabs' parameter lists
@@ -364,7 +369,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 432 checks passed`.
+`RESULT: all 440 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -453,9 +458,9 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.39.0`. P1–P7, P9–P11, P13 and P14 are done; P12 is built and waiting only on the owner's
-real rates; P8 is still open (`script.py` is 5,508 lines after `v1.38.0`–`v1.39.0` moved the
-dialog handlers into `lib/`); P15 and P16 have not started.
+is `v1.40.0`. P1–P7, P9–P11, P13, P14 and P15 are done; P12 is built and waiting only on the
+owner's real rates; P8 is still open (`script.py` after `v1.38.0`–`v1.39.0` moved the dialog
+handlers into `lib/`); P16 has not started.
 
 Since `v1.23.2` the following shipped. `v1.26.x` added P11 rate analysis (engine, sheet and tab).
 `v1.27.0`–`v1.29.0` added the P13 `Detailed BOQ` plus `Concrete Summary` and `Formwork Summary` in
