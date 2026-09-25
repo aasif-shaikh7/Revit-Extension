@@ -48,7 +48,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | **done** (`v1.25.6`) — engine, store, sheet + Costing and dialog tab; owner-confirmed 2026-09-21 |
-| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `script.py` is back up to **6,577 lines** after P11-P13 and the theme, so the split is not finished) |
+| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `v1.38.0` the four data tabs' handlers into `lib/*_tab.py`, `script.py` 7,082 -> **6,153 lines**; the split is not finished) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | **done** (`v1.21.0` foundation, `v1.25.8` severity + compact report, `v1.25.11` parameters + rebar, `v1.26.5` rebar rule measured on the BBS files; findings warn, not block) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
@@ -65,16 +65,17 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 ## Active roadmap phase
 
 **Current product focus (2026-09-25):** **P14 is done** (`v1.37.0`). The next candidates are
-**P8** - `script.py` is now 7,081 lines, and moving the dialog's tab handlers out is the useful
-slice - or **P15** model change detection, which builds on P14's snapshots. Everything up to
-P14 has shipped:
+**P8**'s next slice - `v1.38.0` moved the four data tabs out and `script.py` is 6,153 lines;
+the parameter tabs' Add/Remove/Move handlers are the next largest block - or **P15** model
+change detection, which builds on P14's snapshots. Everything up to P14 has shipped:
 
 - **P1-P7, P9-P11, P13 are done** and owner-confirmed; see the table above and `CHANGELOG.md`.
 - **P12** is built end to end - engine, dialog tab, workbook sheet and the Detailed BOQ priced from
   it - and only waits on the owner's real rates. Nothing to code there.
-- **P8** is the one that is still open in code: `script.py` is **6,577 lines**, larger than when
-  the split started, because P11-P13 and the theme all landed in it. The next useful slice is
-  moving the dialog's tab handlers out of `script.py`.
+- **P8** is the one that is still open in code. `v1.38.0` moved the Site Items, Rate Analysis,
+  Rate Database and Revision handlers into `lib/*_tab.py` (verbatim, checked function by
+  function); `script.py` went from 7,082 to **6,153 lines**. Next: the parameter tabs' list
+  handlers (Add/Remove/Move/filters).
 - **P14** is done: engine, sheets and the Revision tab, run live (`v1.35.1`, `v1.37.0`).
 - **IronPython `float(None)` sweep - done in `v1.35.2`.** Seventeen guards widened, verified on
   IronPython 2.7.12 itself, and the harness now fails any new `float()` guard that would let

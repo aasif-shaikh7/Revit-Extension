@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.37.0'
+__version__ = '1.38.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.37.0'
+SCRIPT_VERSION = '1.38.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -4216,747 +4216,56 @@ try:
         # ====================================================
 
         # ------------------------------------------------------------
-        # P7 - Site / Non-Model Items tab
-        #
-        # The list lives in site_items_state. Every handler rewrites it
-        # and then redraws, so what is on screen is always exactly what
-        # gets exported and saved.
+        # P8 (v1.38.0): the four data tabs - Site Items, Rate Analysis,
+        # Rate Database and Revision - have their handlers in
+        # lib/*_tab.py. attach_dialog_tabs() builds them around this
+        # dialog once the window exists; script.py keeps the lists they
+        # edit (site_items_state, rate_analysis_state, rate_db_state and
+        # their guards), because the export and the settings save read
+        # the same objects. A headless export never attaches the tabs,
+        # so dialog_tabs stays empty there.
         # ------------------------------------------------------------
 
-        def site_items_display_text(item):
-            """One readable line for the list box."""
-            amount = site_item_amount(item)
-            quantity = item.get("quantity")
-            rate = item.get("rate")
-            return u"{0}  |  {1}  |  {2} {3} x {4} = {5}".format(
-                item.get("code") or "(no code)",
-                item.get("description") or "(no description)",
-                "-" if quantity is None else quantity,
-                item.get("unit") or "-",
-                "-" if rate is None else rate,
-                "-" if amount is None else "{0:.2f}".format(amount)
-            )
+        dialog_tabs = {}
+
+        class _DialogTabHost(object):
+            """What the tab modules may use from this dialog."""
+
+        def attach_dialog_tabs():
+            host = _DialogTabHost()
+            host.window = window
+            host.document_title = safe_text(doc.Title, "")
+            host.set_status = set_status
+            host.load_app_settings = load_app_settings
+            host.save_app_settings = save_app_settings
+            host.ParameterItem = ParameterItem
+            host.safe_text = safe_text
+            host.site_items_state = site_items_state
+            host.site_items_ready = site_items_ready
+            host.site_items_source = site_items_source
+            host.site_items_dirty = site_items_dirty
+            host.rate_analysis_state = rate_analysis_state
+            host.rate_analysis_ready = rate_analysis_ready
+            host.rate_db_state = rate_db_state
+            host.rate_db_ready = rate_db_ready
+
+            import site_items_tab
+            import rate_analysis_tab
+            import rate_database_tab
+            import revision_tab
+
+            dialog_tabs["site_items"] = site_items_tab.attach(host)
+            dialog_tabs["rate_analysis"] = rate_analysis_tab.attach(host)
+            dialog_tabs["rate_db"] = rate_database_tab.attach(host)
+            dialog_tabs["revision"] = revision_tab.attach(host)
+
+        def dialog_tab_call(tab, entry, *args):
+            """Call one tab's entry point; a tab that is not attached is a no-op."""
+            handler = (dialog_tabs.get(tab) or {}).get(entry)
+            if handler is not None:
+                return handler(*args)
+            return None
 
-        def site_items_source_text():
-            """Say where the list came from and whether it is saved."""
-            if site_items_dirty[0]:
-                return ("Edited - saved to this project when you export or "
-                        "close.")
-            if site_items_source[0] == "document":
-                return "Showing this project's own saved list."
-            if site_items_source[0] == "default":
-                return ("Started from the default list. It becomes this "
-                        "project's own list when you export or close.")
-            return "No site items saved for this project yet."
-
-        def site_items_refresh(select_index=-1):
-            """Redraw the list, the source label and the summary line."""
-            try:
-                source_box = window.FindName("SiteItemSource")
-
-                if source_box is not None:
-                    source_box.Text = site_items_source_text()
-            except:
-                pass
-
-            try:
-                list_box = window.FindName("SiteItemList")
-
-                if list_box is not None:
-                    list_box.Items.Clear()
-                    for item in site_items_state:
-                        list_box.Items.Add(
-                            ParameterItem(site_items_display_text(item))
-                        )
-                    if 0 <= select_index < len(site_items_state):
-                        list_box.SelectedIndex = select_index
-
-                summary_box = window.FindName("SiteItemSummary")
-
-                if summary_box is not None:
-                    if not site_items_state:
-                        summary_box.Text = (
-                            "No site items. Add one above, or leave this tab "
-                            "empty - the workbook simply omits the sheet."
-                        )
-                    else:
-                        totals = summarize_site_items(site_items_state)
-                        findings = validate_site_items(site_items_state)
-                        text = "{0} item(s) | {1} priced, total {2:.2f}".format(
-                            totals["count"],
-                            totals["priced_count"],
-                            totals["amount_total"]
-                        )
-                        if totals["unpriced_count"]:
-                            text += (
-                                " | {0} awaiting a quantity or rate, exported "
-                                "with a blank Amount".format(
-                                    totals["unpriced_count"]
-                                )
-                            )
-                        if findings:
-                            text += " || " + " / ".join(findings[:3])
-                            if len(findings) > 3:
-                                text += " / +{0} more".format(len(findings) - 3)
-                        summary_box.Text = text
-            except:
-                pass
-
-        def site_items_fill_fields(item):
-            """Load one item back into the six text boxes."""
-            try:
-                for field_name, value in (
-                    ("SiteItemCode", item.get("code", "")),
-                    ("SiteItemDescription", item.get("description", "")),
-                    ("SiteItemUnit", item.get("unit", "")),
-                    ("SiteItemQuantity", item.get("quantity")),
-                    ("SiteItemRate", item.get("rate")),
-                    ("SiteItemRemarks", item.get("remarks", "")),
-                ):
-                    field = window.FindName(field_name)
-                    if field is not None:
-                        field.Text = (
-                            "" if value is None else u"{0}".format(value)
-                        )
-            except:
-                pass
-
-        def site_items_read_fields():
-            """Return one normalized item built from the text boxes."""
-            values = {}
-            for key, field_name in (
-                ("code", "SiteItemCode"),
-                ("description", "SiteItemDescription"),
-                ("unit", "SiteItemUnit"),
-                ("quantity", "SiteItemQuantity"),
-                ("rate", "SiteItemRate"),
-                ("remarks", "SiteItemRemarks"),
-            ):
-                try:
-                    field = window.FindName(field_name)
-                    values[key] = field.Text if field is not None else ""
-                except:
-                    values[key] = ""
-            return normalize_site_item(values, len(site_items_state))
-
-        def site_items_clear_fields():
-            """Empty the entry boxes and drop the list selection."""
-            site_items_fill_fields({})
-            try:
-                list_box = window.FindName("SiteItemList")
-                if list_box is not None:
-                    list_box.SelectedIndex = -1
-            except:
-                pass
-
-        def site_items_selected_index():
-            """Return the selected row index, or -1."""
-            try:
-                list_box = window.FindName("SiteItemList")
-                if list_box is None:
-                    return -1
-                return list_box.SelectedIndex
-            except:
-                return -1
-
-        def site_items_add(sender=None, args=None):
-            """Append what is typed as a new line."""
-            item = site_items_read_fields()
-
-            if not item.get("code") and not item.get("description"):
-                set_status(
-                    "Site items | Enter at least an item code or a description",
-                    "warning"
-                )
-                return
-
-            site_items_state.append(item)
-            site_items_dirty[0] = True
-            site_items_refresh(len(site_items_state) - 1)
-            site_items_clear_fields()
-            set_status("Site items | Added", "success")
-
-        def site_items_update(sender=None, args=None):
-            """Replace the selected line with what is typed."""
-            index = site_items_selected_index()
-
-            if not (0 <= index < len(site_items_state)):
-                set_status("Site items | Select a line to update", "warning")
-                return
-
-            site_items_state[index] = site_items_read_fields()
-            site_items_dirty[0] = True
-            site_items_refresh(index)
-            set_status("Site items | Updated", "success")
-
-        def site_items_remove(sender=None, args=None):
-            """Delete the selected line."""
-            index = site_items_selected_index()
-
-            if not (0 <= index < len(site_items_state)):
-                set_status("Site items | Select a line to remove", "warning")
-                return
-
-            del site_items_state[index]
-            site_items_dirty[0] = True
-            site_items_refresh()
-            site_items_clear_fields()
-            set_status("Site items | Removed", "success")
-
-        def site_items_clear(sender=None, args=None):
-            """Clear the entry boxes without touching the list."""
-            site_items_clear_fields()
-            set_status("Site items | Fields cleared", "info")
-
-        def site_items_selection_changed(sender, args):
-            """Load the clicked line into the entry boxes for editing."""
-            index = site_items_selected_index()
-            if 0 <= index < len(site_items_state):
-                site_items_fill_fields(site_items_state[index])
-
-        def site_items_save_default(sender=None, args=None):
-            """Make this list the starting point for NEW projects only."""
-            try:
-                settings = load_app_settings()
-                if not isinstance(settings, dict):
-                    settings = {}
-                settings["site_items"] = set_default_site_items(
-                    settings.get("site_items"),
-                    site_items_state
-                )
-                save_app_settings(settings)
-                set_status(
-                    "Site items | Saved as the default for new projects; "
-                    "projects with their own list are unchanged",
-                    "success"
-                )
-            except:
-                set_status("Site items | Could not save the default", "warning")
-
-        def site_items_load_for_document():
-            """Fill the tab from the store for the active document."""
-            try:
-                resolved = resolve_site_items(
-                    load_app_settings().get("site_items"),
-                    safe_text(doc.Title, "")
-                )
-                del site_items_state[:]
-                site_items_state.extend(resolved.get("items", []))
-
-                site_items_source[0] = resolved.get("source", "")
-                site_items_dirty[0] = False
-
-                site_items_ready[0] = True
-                site_items_refresh()
-            except:
-                pass
-
-        def site_items_wire_controls():
-            """Attach the tab's handlers once the window exists."""
-            try:
-                for control_name, handler in (
-                    ("SiteItemAdd", site_items_add),
-                    ("SiteItemUpdate", site_items_update),
-                    ("SiteItemRemove", site_items_remove),
-                    ("SiteItemClear", site_items_clear),
-                    ("SiteItemSaveDefault", site_items_save_default),
-                ):
-                    control = window.FindName(control_name)
-                    if control is not None:
-                        control.Click += handler
-
-                list_box = window.FindName("SiteItemList")
-
-                if list_box is not None:
-                    list_box.SelectionChanged += site_items_selection_changed
-            except:
-                pass
-
-        # ------------------------------------------------------------
-        # P11: RATE ANALYSIS TAB
-        #
-        # The build-ups live in rate_analysis_state. Every handler
-        # rewrites it and redraws, so the list on screen is exactly what
-        # is saved and exported - the same contract the Site Items tab
-        # uses.
-        # ------------------------------------------------------------
-
-        RATE_FIELD_CONTROLS = (
-            ("item_code", "RateItemCode"),
-            ("description", "RateDescription"),
-            ("unit", "RateUnit"),
-            ("material", "RateMaterial"),
-            ("wastage_pct", "RateWastagePct"),
-            ("labour", "RateLabour"),
-            ("machinery", "RateMachinery"),
-            ("overheads_pct", "RateOverheadsPct"),
-        )
-
-        def rate_display_text(analysis):
-            """One readable line: the item, and its rate or what is missing."""
-            from costing_engine import compute_analysed_rate
-
-            rate, missing = compute_analysed_rate(analysis)
-            if rate is None:
-                tail = "rate pending - needs {0}".format(", ".join(missing))
-            else:
-                tail = "rate {0:.2f} / {1}".format(
-                    rate, analysis.get("unit") or "unit")
-
-            return u"{0}  |  {1}  |  {2}".format(
-                analysis.get("item_code") or "(no code)",
-                analysis.get("description") or "(no description)",
-                tail
-            )
-
-        def rate_refresh(select_index=-1):
-            """Redraw the list and the summary line."""
-            from costing_engine import compute_analysed_rate
-
-            try:
-                list_box = window.FindName("RateList")
-                if list_box is not None:
-                    list_box.Items.Clear()
-                    for analysis in rate_analysis_state:
-                        list_box.Items.Add(
-                            ParameterItem(rate_display_text(analysis))
-                        )
-                    if 0 <= select_index < len(rate_analysis_state):
-                        list_box.SelectedIndex = select_index
-            except:
-                pass
-
-            try:
-                summary_box = window.FindName("RateSummary")
-                if summary_box is None:
-                    return
-
-                if not rate_analysis_state:
-                    summary_box.Text = (
-                        "No rate build-ups. Items added here export to their "
-                        "own Rate Analysis sheet."
-                    )
-                    return
-
-                priced = 0
-                pending = 0
-                for analysis in rate_analysis_state:
-                    if compute_analysed_rate(analysis)[0] is None:
-                        pending += 1
-                    else:
-                        priced += 1
-
-                text = "{0} item(s) | {1} priced".format(
-                    len(rate_analysis_state), priced)
-                if pending:
-                    text += (
-                        " | {0} awaiting a figure - those export with a "
-                        "blank rate rather than a zero".format(pending)
-                    )
-                summary_box.Text = text
-            except:
-                pass
-
-        def rate_fill_fields(analysis):
-            """Load one build-up into the entry boxes for editing."""
-            for key, control_name in RATE_FIELD_CONTROLS:
-                try:
-                    control = window.FindName(control_name)
-                    if control is None:
-                        continue
-                    value = analysis.get(key)
-                    control.Text = "" if value is None else str(value)
-                except:
-                    pass
-
-        def rate_read_fields():
-            """Read the entry boxes into a normalized build-up."""
-            from costing_engine import normalize_rate_analysis
-
-            values = {}
-            for key, control_name in RATE_FIELD_CONTROLS:
-                try:
-                    control = window.FindName(control_name)
-                    values[key] = control.Text if control is not None else ""
-                except:
-                    values[key] = ""
-            return normalize_rate_analysis(values)
-
-        def rate_clear_fields(sender=None, args=None):
-            for _key, control_name in RATE_FIELD_CONTROLS:
-                try:
-                    control = window.FindName(control_name)
-                    if control is not None:
-                        control.Text = ""
-                except:
-                    pass
-            set_status("Rate analysis | Fields cleared", "info")
-
-        def rate_selected_index():
-            try:
-                list_box = window.FindName("RateList")
-                if list_box is None:
-                    return -1
-                return int(list_box.SelectedIndex)
-            except:
-                return -1
-
-        def rate_add(sender=None, args=None):
-            """Add the typed build-up. An item needs at least a code."""
-            analysis = rate_read_fields()
-
-            if not analysis.get("item_code"):
-                set_status(
-                    "Rate analysis | Give the item a code before adding it",
-                    "warning"
-                )
-                return
-
-            # Selecting a line fills the boxes, so pressing Add instead of
-            # Update made a silent second copy. One code, one rate.
-            from costing_engine import find_rate_code_conflict
-
-            if find_rate_code_conflict(
-                    rate_analysis_state, analysis["item_code"]) >= 0:
-                set_status(
-                    "Rate analysis | {0} is already in the list - select it "
-                    "and use Update selected to change it".format(
-                        analysis["item_code"]),
-                    "warning"
-                )
-                return
-
-            rate_analysis_state.append(analysis)
-            rate_refresh(len(rate_analysis_state) - 1)
-            set_status(
-                "Rate analysis | Added {0}".format(analysis["item_code"]),
-                "success"
-            )
-
-        def rate_update(sender=None, args=None):
-            index = rate_selected_index()
-            if not (0 <= index < len(rate_analysis_state)):
-                set_status(
-                    "Rate analysis | Select an item to update", "warning")
-                return
-
-            analysis = rate_read_fields()
-            if not analysis.get("item_code"):
-                set_status(
-                    "Rate analysis | Give the item a code before updating it",
-                    "warning"
-                )
-                return
-
-            # The line may keep its own code; it may not take another's.
-            from costing_engine import find_rate_code_conflict
-
-            if find_rate_code_conflict(
-                    rate_analysis_state, analysis["item_code"], index) >= 0:
-                set_status(
-                    "Rate analysis | Another line already uses {0}".format(
-                        analysis["item_code"]),
-                    "warning"
-                )
-                return
-
-            rate_analysis_state[index] = analysis
-            rate_refresh(index)
-            set_status(
-                "Rate analysis | Updated {0}".format(analysis["item_code"]),
-                "success"
-            )
-
-        def rate_remove(sender=None, args=None):
-            index = rate_selected_index()
-            if not (0 <= index < len(rate_analysis_state)):
-                set_status(
-                    "Rate analysis | Select an item to remove", "warning")
-                return
-
-            removed = rate_analysis_state.pop(index)
-            rate_refresh()
-            set_status(
-                "Rate analysis | Removed {0}".format(
-                    removed.get("item_code") or "item"),
-                "info"
-            )
-
-        def rate_selection_changed(sender=None, args=None):
-            index = rate_selected_index()
-            if 0 <= index < len(rate_analysis_state):
-                rate_fill_fields(rate_analysis_state[index])
-
-        def rate_load_saved():
-            """Load the saved build-ups into the tab."""
-            try:
-                from costing_engine import load_rate_analysis
-
-                del rate_analysis_state[:]
-                rate_analysis_state.extend(
-                    load_rate_analysis(load_app_settings())
-                )
-                # Only now does the list on screen stand for the saved one.
-                rate_analysis_ready[0] = True
-            except:
-                del rate_analysis_state[:]
-
-            try:
-                source_box = window.FindName("RateSource")
-                if source_box is not None:
-                    source_box.Text = (
-                        "Showing the saved build-ups; they are written back "
-                        "when you export or close."
-                        if rate_analysis_state
-                        else "No rate build-ups saved yet."
-                    )
-            except:
-                pass
-
-            rate_refresh()
-
-        def rate_wire_controls():
-            """Attach the tab's handlers once the window exists."""
-            try:
-                for control_name, handler in (
-                    ("RateAdd", rate_add),
-                    ("RateUpdate", rate_update),
-                    ("RateRemove", rate_remove),
-                    ("RateClear", rate_clear_fields),
-                ):
-                    control = window.FindName(control_name)
-                    if control is not None:
-                        control.Click += handler
-
-                list_box = window.FindName("RateList")
-                if list_box is not None:
-                    list_box.SelectionChanged += rate_selection_changed
-            except:
-                pass
-
-        # ------------------------------------------------------------
-        # P12: RATE DATABASE TAB
-        #
-        # The rates live in rate_db_state, with the same contract as the
-        # Rate Analysis tab: every handler rewrites the list and redraws,
-        # so what is on screen is what is saved and exported. The
-        # project's location is kept per document.
-        # ------------------------------------------------------------
-
-        RATE_DB_FIELD_CONTROLS = (
-            ("item_code", "RateDbItemCode"),
-            ("description", "RateDbDescription"),
-            ("unit", "RateDbUnit"),
-            ("rate", "RateDbRate"),
-            ("currency", "RateDbCurrency"),
-            ("location", "RateDbLocation"),
-            ("vendor", "RateDbVendor"),
-            ("effective_date", "RateDbEffectiveDate"),
-            ("source", "RateDbSourceText"),
-        )
-
-        def rate_db_display_text(entry):
-            """One readable line: code, rate, where, from when, status."""
-            from rate_database_engine import rate_entry_status
-
-            if entry.get("rate") is None:
-                rate_text = "no rate"
-            else:
-                rate_text = u"{0:.2f} {1} / {2}".format(
-                    entry["rate"], entry.get("currency") or "",
-                    entry.get("unit") or "unit").replace("  ", " ")
-            return u"{0}  |  {1}  |  {2}  |  from {3}  |  {4}".format(
-                entry.get("item_code") or "(no code)",
-                rate_text,
-                entry.get("location") or "any location",
-                entry.get("effective_date") or "(no date)",
-                rate_entry_status(entry)
-            )
-
-        def rate_db_refresh(select_index=-1):
-            """Redraw the list and the summary line."""
-            from rate_database_engine import (
-                STATUS_READY, STATUS_SAMPLE, rate_entry_status)
-
-            try:
-                list_box = window.FindName("RateDbList")
-                if list_box is not None:
-                    list_box.Items.Clear()
-                    for entry in rate_db_state:
-                        list_box.Items.Add(
-                            ParameterItem(rate_db_display_text(entry))
-                        )
-                    if 0 <= select_index < len(rate_db_state):
-                        list_box.SelectedIndex = select_index
-            except:
-                pass
-
-            try:
-                summary_box = window.FindName("RateDbSummary")
-                if summary_box is None:
-                    return
-                if not rate_db_state:
-                    summary_box.Text = (
-                        "No rates. Rates added here export to their own "
-                        "Rate Database sheet."
-                    )
-                    return
-                statuses = [rate_entry_status(e) for e in rate_db_state]
-                ready = statuses.count(STATUS_READY)
-                samples = statuses.count(STATUS_SAMPLE)
-                pending = len(statuses) - ready - samples
-                text = "{0} rate(s) | {1} ready".format(len(statuses), ready)
-                if samples:
-                    text += " | {0} sample - not real rates".format(samples)
-                if pending:
-                    text += " | {0} need input".format(pending)
-
-                # Rates for a place that is not one of this project's
-                # levels never price it - right for a Dubai rate on a
-                # Navsari job, wrong for a misspelt 'Gujrat'. Say which.
-                from rate_database_engine import unmatched_places
-                location_box = window.FindName("RateDbProjectLocation")
-                project_location = (
-                    location_box.Text if location_box is not None else "")
-                others = unmatched_places(rate_db_state, project_location)
-                if others:
-                    text += (
-                        u" | Not used for this project: {0} - check the "
-                        u"spelling if one should apply here".format(
-                            ", ".join(others)))
-                summary_box.Text = text
-            except:
-                pass
-
-        def rate_db_fill_fields(entry):
-            """Load one rate into the entry boxes for editing."""
-            for key, control_name in RATE_DB_FIELD_CONTROLS:
-                try:
-                    control = window.FindName(control_name)
-                    if control is None:
-                        continue
-                    value = entry.get(key)
-                    control.Text = "" if value is None else str(value)
-                except:
-                    pass
-
-        def rate_db_read_fields():
-            """Read the boxes: (normalized entry, problem text or '')."""
-            from rate_database_engine import normalize_rate_entry
-
-            values = {}
-            for key, control_name in RATE_DB_FIELD_CONTROLS:
-                try:
-                    control = window.FindName(control_name)
-                    values[key] = control.Text if control is not None else ""
-                except:
-                    values[key] = ""
-            entry = normalize_rate_entry(values)
-
-            problem = ""
-            if not entry.get("item_code"):
-                problem = "Give the rate an item code"
-            elif (safe_text(values.get("rate"), "").strip()
-                    and entry.get("rate") is None):
-                problem = "Rate must be a number, zero or more"
-            elif entry.get("date_invalid"):
-                problem = "Effective Date must be YYYY-MM-DD, e.g. 2026-09-22"
-            return entry, problem
-
-        def rate_db_clear_fields(sender=None, args=None):
-            for _key, control_name in RATE_DB_FIELD_CONTROLS:
-                try:
-                    control = window.FindName(control_name)
-                    if control is not None:
-                        control.Text = ""
-                except:
-                    pass
-            set_status("Rate database | Fields cleared", "info")
-
-        def rate_db_selected_index():
-            try:
-                list_box = window.FindName("RateDbList")
-                if list_box is None:
-                    return -1
-                return int(list_box.SelectedIndex)
-            except:
-                return -1
-
-        def rate_db_add(sender=None, args=None):
-            """Add the typed rate. Refuses a bad figure or a duplicate."""
-            entry, problem = rate_db_read_fields()
-            if problem:
-                set_status("Rate database | " + problem, "warning")
-                return
-
-            # One code may have many rates - one per place and date - but
-            # not two for the same place and day.
-            from rate_database_engine import find_rate_entry_conflict
-
-            if find_rate_entry_conflict(rate_db_state, entry) >= 0:
-                set_status(
-                    "Rate database | {0} already has a rate for this "
-                    "location and date - select it and use Update "
-                    "selected".format(entry["item_code"]),
-                    "warning"
-                )
-                return
-
-            rate_db_state.append(entry)
-            rate_db_refresh(len(rate_db_state) - 1)
-            set_status(
-                "Rate database | Added {0}".format(entry["item_code"]),
-                "success"
-            )
-
-        def rate_db_update(sender=None, args=None):
-            index = rate_db_selected_index()
-            if not (0 <= index < len(rate_db_state)):
-                set_status(
-                    "Rate database | Select a rate to update", "warning")
-                return
-
-            entry, problem = rate_db_read_fields()
-            if problem:
-                set_status("Rate database | " + problem, "warning")
-                return
-
-            from rate_database_engine import find_rate_entry_conflict
-
-            if find_rate_entry_conflict(rate_db_state, entry, index) >= 0:
-                set_status(
-                    "Rate database | Another rate already covers {0} for "
-                    "this location and date".format(entry["item_code"]),
-                    "warning"
-                )
-                return
-
-            rate_db_state[index] = entry
-            rate_db_refresh(index)
-            set_status(
-                "Rate database | Updated {0}".format(entry["item_code"]),
-                "success"
-            )
-
-        def rate_db_remove(sender=None, args=None):
-            index = rate_db_selected_index()
-            if not (0 <= index < len(rate_db_state)):
-                set_status(
-                    "Rate database | Select a rate to remove", "warning")
-                return
-
-            removed = rate_db_state.pop(index)
-            rate_db_refresh()
-            set_status(
-                "Rate database | Removed {0}".format(
-                    removed.get("item_code") or "rate"),
-                "info"
-            )
-
-        def rate_db_selection_changed(sender=None, args=None):
-            index = rate_db_selected_index()
-            if 0 <= index < len(rate_db_state):
-                rate_db_fill_fields(rate_db_state[index])
 
         def show_category_counts():
             """Write this model's element count onto each category tab.
@@ -4988,250 +4297,6 @@ try:
                 except:
                     pass
 
-        def rate_db_load_saved():
-            """Load the saved rates and this project's location."""
-            settings = {}
-            try:
-                from rate_database_engine import (
-                    get_project_location, load_rate_database)
-
-                settings = load_app_settings()
-                del rate_db_state[:]
-                rate_db_state.extend(load_rate_database(settings))
-                # Only now does the list on screen stand for the saved one.
-                rate_db_ready[0] = True
-
-                location_box = window.FindName("RateDbProjectLocation")
-                if location_box is not None:
-                    location_box.Text = get_project_location(
-                        settings, safe_text(doc.Title, ""))
-            except:
-                del rate_db_state[:]
-
-            try:
-                source_box = window.FindName("RateDbSource")
-                if source_box is not None:
-                    source_box.Text = (
-                        "Showing the saved rates; they are written back "
-                        "when you export or close."
-                        if rate_db_state
-                        else "No rates saved yet."
-                    )
-            except:
-                pass
-
-            rate_db_refresh()
-
-        def rate_db_wire_controls():
-            """Attach the tab's handlers once the window exists."""
-            try:
-                for control_name, handler in (
-                    ("RateDbAdd", rate_db_add),
-                    ("RateDbUpdate", rate_db_update),
-                    ("RateDbRemove", rate_db_remove),
-                    ("RateDbClear", rate_db_clear_fields),
-                ):
-                    control = window.FindName(control_name)
-                    if control is not None:
-                        control.Click += handler
-
-                list_box = window.FindName("RateDbList")
-                if list_box is not None:
-                    list_box.SelectionChanged += rate_db_selection_changed
-
-                # Re-check which rates apply once the location is edited.
-                location_box = window.FindName("RateDbProjectLocation")
-                if location_box is not None:
-                    location_box.LostFocus += (
-                        lambda sender, args: rate_db_refresh(
-                            rate_db_selected_index()))
-            except:
-                pass
-
-        # ====================================================
-        # P14 REVISION TAB (v1.37.0)
-        # The revisions filed for this model (newest first), which
-        # one the next export is compared against, and a short name
-        # per revision. The choice is saved per model under
-        # "revision_compare"; renaming touches only the name, never
-        # the quantities a revision recorded. Guarded throughout: a
-        # failure here must not stop the dialog or an export.
-        # ====================================================
-
-        revision_tab_state = {
-            "rows": [],        # snapshots in list order, newest first
-            "choices": [""],   # selector index -> label ("" = latest)
-            "loading": False,
-        }
-
-        def revision_tab_document():
-            return safe_text(doc.Title, "")
-
-        def revision_tab_summary():
-            """One line saying what the next export will do."""
-            from revision_engine import (
-                choose_previous, get_compare_choice,
-                next_revision_label, revision_display_name)
-
-            summary_box = window.FindName("RevisionSummary")
-            if summary_box is None:
-                return
-            rows = revision_tab_state["rows"]
-            if not rows:
-                summary_box.Text = (
-                    "No revisions filed for this model yet. The first "
-                    "export files Rev 00; from the second on, the workbook "
-                    "gets a BOQ Revision sheet.")
-                return
-            filed = list(reversed(rows))
-            choice = get_compare_choice(
-                load_app_settings(), revision_tab_document())
-            target = choose_previous(filed, choice)
-            summary_box.Text = (
-                u"{0} revision{1} filed. The next export is compared "
-                u"against {2}{3}, and is filed as {4} if anything "
-                u"changed.".format(
-                    len(filed), u"" if len(filed) == 1 else u"s",
-                    revision_display_name(target),
-                    u"" if choice else u" (the latest)",
-                    next_revision_label(filed)))
-
-        def revision_tab_refresh(select_label=None):
-            """Reload the filed revisions and redraw list and selector."""
-            from revision_engine import (
-                document_folder, get_compare_choice, list_snapshots,
-                revision_display_name, revision_list_text, revision_number)
-
-            document = revision_tab_document()
-            try:
-                filed = list_snapshots(document)
-            except:
-                filed = []
-            rows = list(reversed(filed))
-            revision_tab_state["rows"] = rows
-            revision_tab_state["loading"] = True
-            try:
-                list_box = window.FindName("RevisionList")
-                if list_box is not None:
-                    list_box.Items.Clear()
-                    selected = -1
-                    for index, snapshot in enumerate(rows):
-                        list_box.Items.Add(
-                            ParameterItem(revision_list_text(snapshot)))
-                        if (select_label is not None
-                                and revision_number(snapshot.get("revision"))
-                                == revision_number(select_label)):
-                            selected = index
-                    list_box.SelectedIndex = selected
-
-                selector = window.FindName("RevisionCompareSelector")
-                if selector is not None:
-                    selector.Items.Clear()
-                    choices = [""]
-                    selector.Items.Add(
-                        u"Latest ({0})".format(
-                            revision_display_name(rows[0]))
-                        if rows else u"Latest")
-                    for snapshot in rows:
-                        choices.append(snapshot.get("revision", ""))
-                        selector.Items.Add(revision_display_name(snapshot))
-                    revision_tab_state["choices"] = choices
-                    wanted = get_compare_choice(load_app_settings(), document)
-                    index = 0
-                    for position, label in enumerate(choices):
-                        if wanted and label and (
-                                revision_number(label)
-                                == revision_number(wanted)):
-                            index = position
-                    selector.SelectedIndex = index
-            except:
-                pass
-            finally:
-                revision_tab_state["loading"] = False
-
-            try:
-                folder_box = window.FindName("RevisionFolder")
-                if folder_box is not None:
-                    folder_box.Text = u"Stored in: {0}".format(
-                        document_folder(document))
-            except:
-                pass
-            try:
-                revision_tab_summary()
-            except:
-                pass
-
-        def revision_compare_changed(sender, args):
-            if revision_tab_state["loading"]:
-                return
-            try:
-                from revision_engine import set_compare_choice
-                index = sender.SelectedIndex
-                choices = revision_tab_state["choices"]
-                if index < 0 or index >= len(choices):
-                    return
-                save_app_settings(set_compare_choice(
-                    load_app_settings(), revision_tab_document(),
-                    choices[index]))
-                revision_tab_summary()
-            except:
-                pass
-
-        def revision_list_changed(sender, args):
-            try:
-                name_box = window.FindName("RevisionName")
-                index = sender.SelectedIndex
-                rows = revision_tab_state["rows"]
-                if name_box is None:
-                    return
-                if 0 <= index < len(rows):
-                    name_box.Text = rows[index].get("name", u"") or u""
-                else:
-                    name_box.Text = u""
-            except:
-                pass
-
-        def revision_save_name(sender, args):
-            try:
-                from revision_engine import set_revision_name
-                list_box = window.FindName("RevisionList")
-                name_box = window.FindName("RevisionName")
-                index = list_box.SelectedIndex if list_box is not None else -1
-                rows = revision_tab_state["rows"]
-                if not 0 <= index < len(rows):
-                    set_status("Select a revision in the list first.",
-                               "warning")
-                    return
-                label = rows[index].get("revision", "")
-                name = name_box.Text if name_box is not None else u""
-                if set_revision_name(revision_tab_document(), label, name):
-                    revision_tab_refresh(select_label=label)
-                    set_status(u"{0} renamed.".format(label), "success")
-                else:
-                    set_status(u"{0} could not be renamed.".format(label),
-                               "warning")
-            except:
-                set_status("The revision name could not be saved.",
-                           "warning")
-
-        def revision_tab_wire_controls():
-            """Attach the tab's handlers once the window exists."""
-            try:
-                selector = window.FindName("RevisionCompareSelector")
-                if selector is not None:
-                    selector.SelectionChanged += revision_compare_changed
-                list_box = window.FindName("RevisionList")
-                if list_box is not None:
-                    list_box.SelectionChanged += revision_list_changed
-                save_button = window.FindName("RevisionSaveName")
-                if save_button is not None:
-                    save_button.Click += revision_save_name
-                refresh_button = window.FindName("RevisionRefresh")
-                if refresh_button is not None:
-                    refresh_button.Click += (
-                        lambda sender, args: revision_tab_refresh())
-            except:
-                pass
 
         def capture_and_save_settings():
             """
@@ -6706,7 +5771,7 @@ try:
                         # Show the new revision on the Revision tab while
                         # the dialog is still open.
                         try:
-                            revision_tab_refresh()
+                            dialog_tab_call("revision", "refresh")
                         except:
                             pass
 
@@ -7015,30 +6080,36 @@ try:
         else:
             # P7: attach the Site Items handlers and load this document's
             # list before the dialog becomes visible.
+            # P8: build the four data tabs' handlers around this dialog.
             try:
-                site_items_wire_controls()
-                site_items_load_for_document()
+                attach_dialog_tabs()
+            except:
+                pass
+
+            try:
+                dialog_tab_call("site_items", "wire_controls")
+                dialog_tab_call("site_items", "load_for_document")
             except:
                 pass
 
             # P11: the Rate Analysis tab, loaded from the saved build-ups.
             try:
-                rate_wire_controls()
-                rate_load_saved()
+                dialog_tab_call("rate_analysis", "wire_controls")
+                dialog_tab_call("rate_analysis", "load_saved")
             except:
                 pass
 
             # P12: the Rate Database tab, loaded from the saved rates.
             try:
-                rate_db_wire_controls()
-                rate_db_load_saved()
+                dialog_tab_call("rate_db", "wire_controls")
+                dialog_tab_call("rate_db", "load_saved")
             except:
                 pass
 
             # P14: the Revision tab, loaded from this model's snapshots.
             try:
-                revision_tab_wire_controls()
-                revision_tab_refresh()
+                dialog_tab_call("revision", "wire_controls")
+                dialog_tab_call("revision", "refresh")
             except:
                 pass
 

@@ -22,6 +22,58 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.38.0] - 2026-09-25
+
+**P8, one slice: `script.py` is 929 lines shorter** (7,082 -> 6,153). No behaviour changes.
+
+### Changed
+- **The four data tabs' handlers moved into `lib/`:** `site_items_tab.py` (P7),
+  `rate_analysis_tab.py` (P11), `rate_database_tab.py` (P12) and `revision_tab.py` (P14). Each
+  exposes `attach(host)`, which builds that tab's handlers around the open dialog and returns the
+  entry points `script.py` calls (`wire_controls`, `load_saved` / `load_for_document`,
+  `refresh`). `script.py` keeps a short `attach_dialog_tabs()` that hands the modules what they may
+  use - the window, the document's **title** (never the Revit document), `set_status`, the settings
+  load/save, `ParameterItem`, `safe_text` - and the lists they edit, which stay in `script.py`
+  because the export and the settings save read the same objects.
+- **The move is verbatim.** Checked function by function against `main`: all 49 functions and
+  constants of the four blocks are identical except for indentation and one substitution
+  (`safe_text(doc.Title, "")` -> `document_title`, three places). `show_category_counts`, which sat
+  inside the Rate Database block but belongs to the category tabs, stayed in `script.py` unchanged.
+- A headless export never attaches the tabs, as before; the export's call to refresh the Revision
+  tab goes through `dialog_tab_call`, which does nothing when the tab is not there.
+
+### Added
+- **`scripts/ip27_compile.ps1`** - compiles `script.py` and every `lib/` module on pyRevit's own
+  IronPython 2.7.12 engine, outside Revit. The harness compiles with CPython 3, which accepts
+  Python-3-only syntax that IronPython rejects; this does not. Proven on purpose-made bad files: an
+  unterminated string and a keyword-only argument are rejected, Python-2 syntax is accepted.
+- Three harness checks for the split: every name a tab module reads is defined, imported, a builtin
+  or taken from `host` (a moved handler still reaching for a `script.py` global would be a
+  `NameError` on the first click in IronPython); every `host` attribute a module takes is one
+  `script.py` sets, and no module holds a Revit symbol or the document; the handlers exist only in
+  `lib/`, attached before they are wired. Four mutations - `script.py` no longer handing
+  `set_status`, a module losing its `window`, a module reaching for `doc` again, a module dropping an
+  engine import - are each caught by name.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 429 checks passed**; every existing tab check now reads
+  the handlers from their new modules.
+- `scripts/ip27_compile.ps1`: **26 files compile on IronPython 2.7.12, 0 fail.**
+- **In WPF on IronPython 2.7.12** with the real `ui.xaml`, `script.py`'s real `attach_dialog_tabs()`
+  and the four real modules: all four attach and load (the three ready guards turn true), and a real
+  click on Add in Rate Database, Rate Analysis and Site Items each adds one entry - to the list on
+  screen and to `script.py`'s own list object, which is what the export and the save read.
+- **Live in a test Revit 2025** (IronPython 2.7.12, Secondary bridge; the owner's Revit untouched):
+  a site and a classic export on the split code both completed and passed the canonical validation
+  (12 and 16 sheets, 0 mismatches). The classic workbook, compared sheet by sheet with one written
+  by the pre-split code from the same model earlier the same morning, is identical in 14 of its 16
+  sheets and in `styles.xml`; the two that differ differ only where they must - the Summary's
+  time stamp and version, and the BOQ Revision sheet, which compared against a different issue.
+- The tabs have not been clicked by a person inside Revit; the WPF run above is the evidence for
+  the dialog side.
+
+---
+
 ## [v1.37.0] - 2026-09-25
 
 **P14 is closed.** The last slice - choosing which issue to compare against, and naming issues -
