@@ -269,3 +269,55 @@ def get_parameters(elements, derived_names=None):
     )
 
     return result
+
+
+# P10-02: material parameter names read from the per-element parameter
+# index, instance before type. Kept on one line for the regression harness.
+STRUCTURAL_MATERIAL_PARAMETER_NAMES = ("Structural Material", "Material")
+
+
+def structural_material_candidates(parameter_context, read_value):
+    """
+    P10-02/P10-03: yield every non-empty material name from the export's
+    parameter index in priority order - "Structural Material" before
+    "Material", instance before type. "<By Category>" is skipped.
+
+    Beams and Columns carry an instance "Structural Material"; Walls and
+    Foundation Slabs expose it on their type (observed on live Revit 2025
+    models). The export has already indexed both scopes for this element,
+    so each candidate is a dictionary lookup plus one value read.
+
+    Moved from script.py in the P8 split (v1.48.0). `read_value` is the
+    host's value reader (script.py's safe_parameter_value), handed in.
+    """
+    if not isinstance(parameter_context, dict):
+        return
+
+    for parameter_name in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
+        key = parameter_name.lower()
+
+        for scope in ("instance", "type"):
+            try:
+                parameter = parameter_context.get(scope, {}).get(key)
+            except:
+                parameter = None
+
+            if parameter is None:
+                continue
+
+            try:
+                value = str(read_value(parameter) or "").strip()
+            except:
+                value = ""
+
+            if value and value not in ("<By Category>", "<None>"):
+                yield value
+
+
+def resolve_structural_material(parameter_context, read_value):
+    """P10-02: return the highest-priority structural material name, or ""."""
+    for material_name in structural_material_candidates(
+            parameter_context, read_value):
+        return material_name
+
+    return ""

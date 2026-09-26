@@ -1622,6 +1622,17 @@ Checked by pricing: a Navsari project is priced, a Mumbai project is not.
 
 **Known to work:** Tested (harness): 470 checks. See CHANGELOG for the live read and export.
 
+## P8-05 - Slice 3: material choice, subtype filter, bar-to-beam choice (`v1.48.0`, 2026-09-26)
+
+**Built:** three decisions moved to `lib/` (`parameter_engine`, `rule_engine`, `rebar_engine`), with
+their Revit reads handed in from `script.py` (5,911 -> 5,833 lines).
+
+**Known to work:**
+- Tested (harness): 473 checks.
+- 10,000 random cases matched `HEAD` exactly.
+- Live: tab counts, a BBS re-read and a dialog export, 351,312 cells with only the 3 expected
+  differences.
+
 ---
 
 ## Standing conventions

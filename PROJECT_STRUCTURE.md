@@ -344,7 +344,7 @@ every phase:
 | P5 Rebar Summary / BBS | `rebar_engine.py` |
 | P6 Assembly | `lib/assembly_engine.py` + settings-driven configuration + export (**exists since v1.15.0**) |
 | P7 Site items | `lib/site_items_engine.py` (**exists since v1.25.0**: rules, pricing and table; settings/dialog/export still to come) |
-| P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1/v1.25.7**: host-free classification rules, the routing core and its audit reporting, grade and parameter-reader rules; Revit-bound readers stay in `script.py`) |
+| P8 Rule Engine | `lib/rule_engine.py` + `lib/parameter_engine.py` (**since v1.24.0/v1.24.1/v1.25.7**: host-free classification rules, the routing core and its audit reporting, grade and parameter-reader rules; since v1.48.0 also the structural-material choice, the Slab/Foundation subtype filter and, in `lib/rebar_engine.py`, the bar-to-beam choice; Revit-bound readers stay in `script.py`) |
 | P9 Validation Engine | `lib/validation_engine.py` (**since v1.21.0** as the P10 foundation; **v1.25.8** adds issue severity and the compact pre-export report) |
 | P10 Unmapped report | reuse validation engine (**first slice v1.21.0**: `build_unmapped_element_report`) |
 | P11 Rate Analysis | `lib/costing_engine.py` (**exists since v1.8.6**) |
