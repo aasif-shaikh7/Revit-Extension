@@ -7387,7 +7387,8 @@ def main():
     check(
         "STRUCTURAL_FRAME_CUT_LENGTH" in cut_reader
         and 'convert_quantity_value(raw_value, "length")' in cut_reader
-        and 'results.append(("Qty: Cut Length (m)", read_beam_cut_length(element)))'
+        and "beam_cut_length = read_beam_cut_length(element)" in cut_quantities
+        and 'results.append(("Qty: Cut Length (m)", beam_cut_length))'
         in cut_quantities
         and cut_quantities.index("Qty: Cut Length (m)")
         < cut_quantities.index("P3/site-format")
@@ -7395,6 +7396,21 @@ def main():
         and '("Rebar: Beam Cut Length (m)", host_cut_length)' in cut_rebar_source,
         "Cut Length is read from Revit's own Cut Length, for beams and for the "
         "beam a bar is hosted in"
+    )
+
+    # v1.47.0: a beam's formwork follows its Cut Length, as its concrete
+    # volume does; the drawn Length is only the fallback.
+    formwork_source = extract_function_source(cut_script, "get_element_quantities")
+    check(
+        'results.append(("Qty: Cut Length (m)", beam_cut_length))' in formwork_source
+        and 'if element_name == "Beam" and beam_cut_length not in ("", None):'
+        in formwork_source
+        and "formwork_length = beam_cut_length" in formwork_source
+        and "length_m=formwork_length," in formwork_source
+        and formwork_source.index("formwork_length = calculated_length")
+        < formwork_source.index("element_dims = resolve_element_dimensions("),
+        "Cut Length a beam's shuttering length is its Cut Length, the drawn "
+        "Length only when there is none"
     )
 
     # ------------------------------------------------------------

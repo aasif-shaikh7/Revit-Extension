@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.46.0'
+__version__ = '1.47.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.46.0'
+SCRIPT_VERSION = '1.47.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -1353,8 +1353,10 @@ def get_element_quantities(
     # v1.43.0: a beam's Cut Length beside its Length. Length is the drawn
     # length; Cut Length is what is left after the joins at columns and
     # other beams cut it back. On UMA NIWAS 12 of 519 beams differ.
+    beam_cut_length = ""
     if element_name == "Beam":
-        results.append(("Qty: Cut Length (m)", read_beam_cut_length(element)))
+        beam_cut_length = read_beam_cut_length(element)
+        results.append(("Qty: Cut Length (m)", beam_cut_length))
 
     # P3/site-format: collect the raw dimension sources once, resolve them
     # into L/W/H metres, then derive the SHUTTERING formwork area. The
@@ -1474,9 +1476,17 @@ def get_element_quantities(
         except:
             bbox_long = bbox_short = bbox_vertical = ""
 
+    # v1.47.0: a beam's formwork runs along its Cut Length, the length its
+    # concrete volume already follows - there is no formwork inside the
+    # joint, where the concrete is the column's. The drawn Length stays
+    # the fallback, and Qty: Length (m) itself is unchanged.
+    formwork_length = calculated_length
+    if element_name == "Beam" and beam_cut_length not in ("", None):
+        formwork_length = beam_cut_length
+
     element_dims = resolve_element_dimensions(
         element_name,
-        length_m=calculated_length,
+        length_m=formwork_length,
         width_m=param_width,
         height_m=param_height,
         depth_m=param_depth,

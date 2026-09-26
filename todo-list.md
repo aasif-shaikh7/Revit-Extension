@@ -61,7 +61,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | BBS-03 | Rebar sheets of the main export from the BBS models (owner's chosen parameters) | — | **done** (`v1.46.0`; replaces the BBS Bar Schedule) |
 | BEAM-02 | Beam Cut Length for beam bars hosted on columns | — | **done** (`v1.45.0`; live: 8 of 9 found, 0 of 3,812 column bars mismatched) |
 | BBS-02 | BBS Bar Schedule - every bar of the BBS models in the main export | — | **done** (`v1.44.0`; live: 8,652 bars, schedule = BBS Steel = 132,379.003 kg) |
-| BEAM-01 | Beam Cut Length on Beam and Rebar sheets | — | **done** (`v1.43.0`; open: shuttering still uses the drawn Length, 7.62 m2 over on UMA NIWAS's 12 cut-back beams - owner decides) |
+| BEAM-01 | Beam Cut Length on Beam and Rebar sheets | — | **done** (`v1.43.0`; shuttering follows the Cut Length since `v1.47.0` - 7.63 m2 less on UMA NIWAS's 12 cut-back beams) |
 | INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `done` (`v1.19.0`) |
 | INT-04 | Controlled Structural Material assignment | — | **done** (`v1.23.0`, Bridge `v2.5.0`) |
 
