@@ -226,7 +226,8 @@ def attach(host):
                     reading = read_bbs_model(entry.get("path"))
                     record_bbs_reading(entry, reading.get("values") or [],
                                        signature=signature,
-                                       revit=reading.get("revit", u""))
+                                       revit=reading.get("revit", u""),
+                                       bars=reading.get("rows"))
                 except Exception as error:
                     failed += 1
                     record_bbs_error(entry, error)

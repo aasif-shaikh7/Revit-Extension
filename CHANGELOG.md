@@ -22,6 +22,53 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.44.0] - 2026-09-26
+
+**BBS Bar Schedule: every bar of the BBS models in the structural model's own export.** The owner
+asked why the export had no Rebar sheet. UMA NIWAS's structural model has no rebar, so its
+Rebar, Rebar Summary and Rebar BBS sheets are empty. BBS Steel carried only per-model totals.
+
+### Added
+- **Reading a BBS model now also keeps every bar's row.** The row is read by the same
+  `get_rebar_quantities` as this model's Rebar sheet, and holds:
+  - mark, shape and diameter;
+  - A-H, bend diameter and hooks;
+  - cutting length, quantity, total length and weight;
+  - rebar ID, host category and host ID, and the host beam's Cut Length;
+  - level.
+
+  The level comes from the bar or its host, one hop only (`bbs_rebar_level`). It never walks
+  the host chain whose recursion once overflowed Revit's stack on a BBS model. For stairs it uses
+  the stairs' Base Level. The store keeps each field list once per model (store format 2).
+- **A BBS Bar Schedule sheet**, right after BBS Steel in both formats. It groups each model's
+  bars the way Rebar BBS groups this model's own, model by model in element and level order,
+  with the element and the BBS model file in front. It is **for reading only**: the BOQ still
+  counts the steel once, from the per-diameter totals taken in the same read.
+- A model read before this version still counts. Its row, the BBS Steel status and the tab ask
+  for it to be read again, and *Read new and changed* picks it up.
+
+### Changed
+- `_rebar_shape_dimension_mm`, `_rebar_text` and `get_rebar_quantities` look up types and hosts
+  in the element's own document, not the dialog's. This makes no difference for this model; it
+  is required for a BBS model.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 466 checks passed** (three new).
+  `scripts/ip27_compile.ps1`: 31 files.
+- **Live, Revit 2025 / IronPython (`pyrevit run`), copies of all 20 BBS models, through the real
+  `read_bbs_model`:**
+  - 8,652 bars were kept and every one has a level; the stair model was re-read after its Base
+    Level was added.
+  - Host Cut Length is filled on the bars hosted in beams (for example 327 of 332 on the 1st
+    level beam model).
+  - The steel is unchanged at 132,379.003 kg.
+- **Live export, test Revit, a copy of the structural model:** site (15 sheets) and classic (19)
+  had 0 validation mismatches, with BBS Bar Schedule after BBS Steel and 5,612 schedule rows.
+  In real Excel 16 the schedule's Total Weight adds up to **132,379.003 kg**, equal to the BBS
+  Steel GRAND TOTAL. Both opened with no repair prompt.
+
+---
+
 ## [v1.43.0] - 2026-09-26
 
 **Beam Cut Length on the sheets.** Asked for by the owner: when rebar is exported, the bar's

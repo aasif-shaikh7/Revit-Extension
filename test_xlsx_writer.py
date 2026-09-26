@@ -7000,11 +7000,31 @@ def main():
         files = bbs_store["files"]
         # beam 1st, foundation, beam plinth: read; column: read, then its
         # file changes; slab: fails; stair: never read.
+        def bbs_bar(mark, host, cut, quantity, level="05 1ST LEVEL"):
+            return {"Level": level, "Rebar: Bar Mark": mark,
+                    "Rebar: Shape": "STRAIGHT", "Rebar: Diameter (mm)": 12.0,
+                    "Rebar: Cutting Length (m)": 5.0, "Rebar: Bar Length (m)": 5.0,
+                    "Rebar: Quantity": quantity,
+                    "Rebar: Total Length (m)": 5.0 * quantity,
+                    "Rebar: Unit Weight (kg/m)": 0.8889,
+                    "Rebar: Total Weight (kg)": round(0.8889 * 5.0 * quantity, 3),
+                    "Rebar: Element ID": mark + host,
+                    "Rebar: Host Category": "Structural Framing",
+                    "Rebar: Host Element ID": host,
+                    "Rebar: Host Cut Length (m)": cut,
+                    "Not kept": "x"}
+        bbs_bars = {
+            0: [bbs_bar("19", "301", 4.6, 4), bbs_bar("19", "301", 4.6, 2),
+                bbs_bar("20", "302", 0.2, 3)],
+            1: [bbs_bar("F1", "", "", 10, level="")],
+            2: [bbs_bar("P1", "401", 2.9, 2, level="03 PLINTH LEVEL")],
+        }
         for index, values in ((0, bbs_values[:2]), (1, bbs_values[2:3]),
                               (2, bbs_values[2:3]), (3, bbs_values[:1])):
             bbs.record_bbs_reading(files[index], values,
                                    signature=bbs.file_signature(bbs_paths[index]),
-                                   read_at="2026-09-26 10:00", revit="2025")
+                                   read_at="2026-09-26 10:00", revit="2025",
+                                   bars=bbs_bars.get(index))
         bbs.record_bbs_error(files[4], "The file is not a Revit model")
         with io.open(bbs_paths[3], "ab") as handle:
             handle.write(b" changed")
@@ -7137,6 +7157,60 @@ def main():
             "BBS both workbooks' Detailed BOQ carries the BBS steel in its "
             "reinforcement items"
         )
+
+        # v1.44.0: every bar of the BBS models, as one cutting schedule.
+        schedule = bbs.build_bbs_bar_schedule_table(reloaded)
+        sched_head = schedule[0]
+        rebar_head = list(rebar_eng.build_rebar_bbs_table([])[0])
+        mark_col = sched_head.index("Bar Mark")
+        qty_col = sched_head.index("Quantity")
+        cut_col_s = sched_head.index("Host Cut Length (m)")
+        sched_rows = [(row[0], row[mark_col], row[qty_col], row[cut_col_s])
+                      for row in schedule[1:]]
+        check(
+            sched_head == ["Element", "BBS Model"] + rebar_head
+            and sched_rows == [("Foundation", "F1", 10, ""),
+                               ("Beam", "P1", 2, 2.9),
+                               ("Beam", "19", 6, 4.6),
+                               ("Beam", "20", 3, 0.2)]
+            and schedule[1][1] == os.path.basename(bbs_paths[1])
+            and "Not kept" not in reloaded["files"][0]["bar_fields"]
+            and all(len(row) == len(sched_head) for row in schedule),
+            "BBS Bar Schedule lists every bar of the counted models, grouped as "
+            "Rebar BBS groups them, element and level in order, with each "
+            "bar's host beam Cut Length (got {0})".format(sched_rows)
+        )
+
+        old_read = {"path": bbs_paths[0], "name": "old", "group": "Beam",
+                    "read": "2026-09-26 09:00", "diameters": [[12.0, 1, 1.0, 0.9]],
+                    "total_kg": 0.9, "sets": 1,
+                    "signature": bbs.file_signature(bbs_paths[0])}
+        reread = dict(old_read, bars=[[1]], bar_fields=["Level"])
+        bbs.record_bbs_reading(reread, bbs_values[:1],
+                               signature=bbs.file_signature(bbs_paths[0]))
+        check(
+            bbs.entry_status(old_read) == "read"
+            and bbs.needs_reading(old_read)
+            and "bar schedule not read" in bbs.bbs_list_text(old_read)
+            and "bars" not in reread and "bar_fields" not in reread,
+            "BBS a model read before bars were kept still counts, is asked to "
+            "be read again, and a reading without bars drops old ones"
+        )
+
+        sched_classic = list(bbs_classic)
+        sched_site = list(bbs_site)
+        check(
+            sched_classic.index(bbs.BBS_BAR_SCHEDULE_SHEET_NAME)
+            == sched_classic.index(bbs.BBS_STEEL_SHEET_NAME) + 1
+            and sched_site.index(bbs.BBS_BAR_SCHEDULE_SHEET_NAME)
+            == sched_site.index(bbs.BBS_STEEL_SHEET_NAME) + 1
+            and bbs_classic[bbs.BBS_BAR_SCHEDULE_SHEET_NAME] == schedule
+            and bbs_site[bbs.BBS_BAR_SCHEDULE_SHEET_NAME][1][0]
+            == "RCC - REINFORCEMENT BBS"
+            and bbs.BBS_BAR_SCHEDULE_SHEET_NAME not in bbs_plain,
+            "BBS both workbooks write the BBS Bar Schedule right after BBS "
+            "Steel; the steel it lists is not counted twice"
+        )
         check(
             classic_names.index(bbs.BBS_STEEL_SHEET_NAME)
             == classic_names.index("Rebar BBS") + 1
@@ -7170,7 +7244,10 @@ def main():
         bbs_script.count("bbs_steel=bbs_steel") == 3
         and 'load_bbs_store(safe_text(doc.Title, ""))' in bbs_script
         and "calculated = rebar_steel_values(element)" in bbs_script
-        and "rebar_steel_values(rebar)" in bbs_reader
+        and "OrderedDict(get_rebar_quantities(rebar))" in bbs_reader
+        and 'row["Level"] = bbs_rebar_level(rebar)' in bbs_reader
+        and "get_element_level" not in extract_function_source(
+            bbs_script, "bbs_rebar_level").split('"""')[2]
         and "DetachAndPreserveWorksets" in bbs_reader
         and "bbs_doc.Close(False)" in bbs_reader.split("finally:")[-1]
         and "if opened_here:" in bbs_reader.split("finally:")[-1]

@@ -2370,6 +2370,17 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append(BBS_STEEL_SHEET_NAME)
         sheet_rows[BBS_STEEL_SHEET_NAME] = bbs_table
         quantity_column_map[BBS_STEEL_SHEET_NAME] = bbs_numeric_columns(bbs_table)
+    # v1.44.0: every bar of those models, as a cutting schedule. For
+    # reading only - the steel above is what the BOQ counts.
+    from bbs_steel_engine import (
+        BBS_BAR_SCHEDULE_SHEET_NAME, bbs_bar_schedule_numeric_columns,
+        build_bbs_bar_schedule_table)
+    bar_schedule = build_bbs_bar_schedule_table(bbs_steel)
+    if len(bar_schedule) > 1:
+        sheet_names.append(BBS_BAR_SCHEDULE_SHEET_NAME)
+        sheet_rows[BBS_BAR_SCHEDULE_SHEET_NAME] = bar_schedule
+        quantity_column_map[BBS_BAR_SCHEDULE_SHEET_NAME] = (
+            bbs_bar_schedule_numeric_columns())
     steel_rows = (data_result.get("Rebar") or []) + bbs_steel_rows(bbs_steel)
 
     # Build the BOQ Summary sheet from the recorded category totals.
@@ -3450,6 +3461,20 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append(BBS_STEEL_SHEET_NAME)
         sheet_rows[BBS_STEEL_SHEET_NAME] = bbs_table
         sheet_widths[BBS_STEEL_SHEET_NAME] = bbs_widths
+    # v1.44.0: every bar of those models, as a cutting schedule.
+    from bbs_steel_engine import (
+        BBS_BAR_SCHEDULE_SHEET_NAME, build_bbs_bar_schedule_table)
+    bar_plain = build_bbs_bar_schedule_table(bbs_steel)
+    if len(bar_plain) > 1:
+        bar_table, bar_widths = build_site_tabular_sheet(
+            project_name, "BAR SCHEDULE - FROM BBS MODELS", bar_plain,
+            band_title="RCC - REINFORCEMENT BBS")
+        if len(bar_widths) > 2:
+            bar_widths[0] = 14          # element
+            bar_widths[1] = 52          # BBS model file name
+        sheet_names.append(BBS_BAR_SCHEDULE_SHEET_NAME)
+        sheet_rows[BBS_BAR_SCHEDULE_SHEET_NAME] = bar_table
+        sheet_widths[BBS_BAR_SCHEDULE_SHEET_NAME] = bar_widths
     steel_rows = (data_result.get("Rebar") or []) + bbs_steel_rows(bbs_steel)
 
     _trail("site | structural assembly")
