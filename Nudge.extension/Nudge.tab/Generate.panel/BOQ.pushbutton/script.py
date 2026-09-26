@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.41.0'
+__version__ = '1.42.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.41.0'
+SCRIPT_VERSION = '1.42.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -1403,7 +1403,10 @@ def _rebar_double(element, enum_names, lookup_names, unit_kind):
     try:
         type_id = element.GetTypeId()
         if type_id is not None and not type_id.Equals(DB.ElementId.InvalidElementId):
-            type_element = doc.GetElement(type_id)
+            # The element's own document: a BBS model read in the
+            # background is not `doc`, and its type ids mean nothing there.
+            owner = getattr(element, "Document", None) or doc
+            type_element = owner.GetElement(type_id)
             if type_element is not None:
                 for enum_name in enum_names:
                     candidates.append(
@@ -1525,8 +1528,12 @@ def _rebar_text(element, lookup_names):
     return ""
 
 
-def get_rebar_quantities(element):
-    """P4/P5 adapter: quantity plus shape dimensions for an auditable BBS."""
+def rebar_steel_values(element):
+    """Diameter, quantity, lengths and d^2/162 weight of one Rebar/set.
+
+    The steel half of get_rebar_quantities, shared with the BBS model
+    reader so a bar weighs the same in a BBS model as in this one.
+    """
     diameter_m = _rebar_double(
         element,
         ("REBAR_INSTANCE_BAR_DIAMETER", "REBAR_BAR_DIAMETER"),
@@ -1568,12 +1575,69 @@ def get_rebar_quantities(element):
             "length"
         )
 
-    calculated = build_rebar_quantity_values(
+    return build_rebar_quantity_values(
         diameter_mm,
         quantity,
         bar_length_m,
         total_length_m
     )
+
+
+def read_bbs_model(path):
+    """Weigh the rebar of one BBS model, opened in the background.
+
+    The model is opened without being shown - detached from its central
+    file when it is workshared, so nothing is written back to it - and
+    closed again without saving. A model this Revit already has open is
+    read where it is and left open. Returns the rebar_steel_values of
+    every Rebar/set in it, and the Revit version that read it.
+    """
+    app = doc.Application
+    wanted = os.path.normcase(os.path.abspath(path))
+    bbs_doc = None
+    for open_doc in app.Documents:
+        try:
+            open_path = open_doc.PathName
+            if open_path and os.path.normcase(os.path.abspath(open_path)) == wanted:
+                bbs_doc = open_doc
+                break
+        except:
+            continue
+
+    opened_here = bbs_doc is None
+    if opened_here:
+        options = DB.OpenOptions()
+        try:
+            if DB.BasicFileInfo.Extract(path).IsWorkshared:
+                options.DetachFromCentralOption = (
+                    DB.DetachFromCentralOption.DetachAndPreserveWorksets)
+        except:
+            pass
+        bbs_doc = app.OpenDocumentFile(
+            DB.ModelPathUtils.ConvertUserVisiblePathToModelPath(path),
+            options)
+
+    try:
+        values = []
+        rebars = (
+            DB.FilteredElementCollector(bbs_doc)
+            .OfCategory(DB.BuiltInCategory.OST_Rebar)
+            .WhereElementIsNotElementType()
+        )
+        for rebar in rebars:
+            values.append(rebar_steel_values(rebar))
+        return {"values": values, "revit": safe_text(app.VersionNumber, "")}
+    finally:
+        if opened_here:
+            try:
+                bbs_doc.Close(False)
+            except:
+                pass
+
+
+def get_rebar_quantities(element):
+    """P4/P5 adapter: quantity plus shape dimensions for an auditable BBS."""
+    calculated = rebar_steel_values(element)
 
     shape_dimensions_mm = {}
     for dimension_name in tuple("ABCDEFGH"):
@@ -4047,6 +4111,20 @@ try:
         class _DialogTabHost(object):
             """What the tab modules may use from this dialog."""
 
+        def pump_dialog():
+            """Let the dialog redraw during a long job on its own thread.
+
+            Reading BBS models takes minutes; without this the status line
+            would not change until the last model was read.
+            """
+            try:
+                from System import Action
+                from System.Windows.Threading import DispatcherPriority
+                window.Dispatcher.Invoke(
+                    Action(lambda: None), DispatcherPriority.Background)
+            except:
+                pass
+
         def attach_dialog_tabs():
             host = _DialogTabHost()
             host.window = window
@@ -4064,16 +4142,20 @@ try:
             host.rate_analysis_ready = rate_analysis_ready
             host.rate_db_state = rate_db_state
             host.rate_db_ready = rate_db_ready
+            host.read_bbs_model = read_bbs_model
+            host.pump_dialog = pump_dialog
 
             import site_items_tab
             import rate_analysis_tab
             import rate_database_tab
             import revision_tab
+            import bbs_steel_tab
 
             dialog_tabs["site_items"] = site_items_tab.attach(host)
             dialog_tabs["rate_analysis"] = rate_analysis_tab.attach(host)
             dialog_tabs["rate_db"] = rate_database_tab.attach(host)
             dialog_tabs["revision"] = revision_tab.attach(host)
+            dialog_tabs["bbs_steel"] = bbs_steel_tab.attach(host)
 
         def dialog_tab_call(tab, entry, *args):
             """Call one tab's entry point; a tab that is not attached is a no-op."""
@@ -4989,6 +5071,21 @@ try:
                     except:
                         site_items = []
 
+                    # v1.42.0: steel read from this model's separate BBS
+                    # models on the BBS Steel tab. It joins the model's own
+                    # rebar in the Detailed BOQ, the snapshot and the
+                    # Dashboard, and gets a BBS Steel sheet. Nothing is
+                    # opened here - the export uses what was last read, and
+                    # the workbook says when a model changed since.
+                    bbs_steel = None
+                    try:
+                        from bbs_steel_engine import load_bbs_store
+                        bbs_steel = load_bbs_store(safe_text(doc.Title, ""))
+                        if not bbs_steel.get("files"):
+                            bbs_steel = None
+                    except:
+                        bbs_steel = None
+
                     # P14: this issue's own numbers, and the issue
                     # before it. The snapshot is filed only after the
                     # workbook validates, further down, so a failed
@@ -5025,7 +5122,8 @@ try:
                             revision=next_revision_label(revision_filed),
                             document=revision_document,
                             exported=time.strftime("%Y-%m-%d"),
-                            element_types=element_types
+                            element_types=element_types,
+                            bbs_steel=bbs_steel
                         )
                         # Unchanged since the latest filed revision: this
                         # export IS that revision, and is labelled so.
@@ -5086,7 +5184,8 @@ try:
                             project_location=project_location,
                             revision_snapshots=revision_snapshots,
                             header_colour=workbook_header_colour,
-                            site_items=site_items
+                            site_items=site_items,
+                            bbs_steel=bbs_steel
                         )
 
                     else:
@@ -5114,7 +5213,8 @@ try:
                             project_location=project_location,
                             revision_snapshots=revision_snapshots,
                             header_colour=workbook_header_colour,
-                            site_items=site_items
+                            site_items=site_items,
+                            bbs_steel=bbs_steel
                         )
 
                     trail("export | workbook written")
@@ -5480,6 +5580,14 @@ try:
             try:
                 dialog_tab_call("revision", "wire_controls")
                 dialog_tab_call("revision", "refresh")
+            except:
+                pass
+
+            # v1.42.0: the BBS Steel tab, loaded from this model's list of
+            # BBS models and what was last read from them.
+            try:
+                dialog_tab_call("bbs_steel", "wire_controls")
+                dialog_tab_call("bbs_steel", "refresh")
             except:
                 pass
 

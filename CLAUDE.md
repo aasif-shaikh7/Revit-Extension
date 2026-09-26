@@ -35,10 +35,11 @@ first line pyRevit picks its default engine, and the default is IronPython. Conf
 - If `script.py` does not compile, pyRevit shows an error window titled `BOQ` and every queued
   bridge export waits forever. The harness now compiles every file whole.
 
-The **engines in `lib/` are CPython-clean**: 19 of the 23 import and write a workbook on
+The **engines in `lib/` are CPython-clean**: 19 of the 24 import and write a workbook on
 CP3123 (measured 2026-09-24); `revision_engine.py` (v1.35.0), `header_colour.py` (v1.36.0),
-`model_change_engine.py` (v1.40.0) and `dashboard_engine.py` (v1.41.0) have so far only been
-measured on Python 3.12.10 in the harness (the last two also on IronPython 2.7.12). Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
+`model_change_engine.py` (v1.40.0), `dashboard_engine.py` (v1.41.0) and `bbs_steel_engine.py`
+(v1.42.0) have so far only been measured on Python 3.12.10 in the harness (the last three also on
+IronPython 2.7.12). Only `script.py`'s pyRevit/WPF layer holds the tool on IP27. Moving the
 button to CP3123 is a deliberate, separately verified change, not a one-line edit.
 
 **Current state: one working tool pushbutton plus brand infrastructure.**
@@ -46,9 +47,9 @@ button to CP3123 is a deliberate, separately verified change, not a one-line edi
 contains `script.py` (the Revit/UI orchestration), `ui.xaml` (the WPF dialog) and `icon.png`. It opens the RCC
 BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation/Rebar, discovers real parameters, classifies slab/
 foundation subtypes, collects concrete/formwork/rebar quantities, and writes a dependency-free XLSX workbook.
-The dialog has **eleven tabs**: the six categories plus Assembly Profile, Site Items, Rate
-Analysis, Rate Database and Revision. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
-Rebar BBS, Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
+The dialog has **twelve tabs**: the six categories plus Assembly Profile, Site Items, Rate
+Analysis, Rate Database, Revision and BBS Steel. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
+Rebar BBS, BBS Steel (steel read from separate BBS models), Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
 Grade, Concrete Summary, Formwork Summary, Detailed BOQ, BOQ Revision, Model Changes, Site Items,
 Unmapped Elements and Costing - with a Dashboard right after the Summary cover.
 `Nudge.extension/lib/` contains the split pure-Python engines and
@@ -59,7 +60,7 @@ the shared brand/theme system
 What exists:
 
 - One extension: the BOQ tool pushbutton, a Brand Showcase pushbutton (theme QA), and a shared
-  `lib/` (23 engine modules, 5 dialog-tab modules + brand resource dictionaries + theme
+  `lib/` (24 engine modules, 6 dialog-tab modules + brand resource dictionaries + theme
   manager). No CI.
 - `RccBoq.RestBridge/` — the .NET Agent Bridge add-in and gateway that lets an agent read the live
   document and run a headless export, and `scripts/rcc_boq_rest_client.py`, its client.
@@ -131,8 +132,10 @@ export. Structure Wall uses Length/Height/Thickness and gross `2LH` shuttering. 
 `lib/rebar_engine.py`. The dependency-free engines live in `lib/`; the newest of them are
 `rate_database_engine.py` (P12 rates by code, place and date), `revision_engine.py` (P14: the
 snapshot behind each issue, and the comparison between two), `stack_runner.py` (runs the
-workbook writers on a big-stack thread) and `crash_trail.py` (one flushed line per step, so a
-hard crash names its step).
+workbook writers on a big-stack thread), `crash_trail.py` (one flushed line per step, so a
+hard crash names its step) and `bbs_steel_engine.py` (v1.42.0: the steel of separate BBS models,
+read once on the BBS Steel tab by `script.py`'s `read_bbs_model` and kept per model, then added
+to the Detailed BOQ, the snapshot and the Dashboard).
 
 ---
 
@@ -148,7 +151,8 @@ hard crash names its step).
   engine, tab, sheet and BOQ pricing are in, and real rates (Gujarat R&B SOR 2024-25) were
   entered on 2026-09-25. **P14** is done
   (`v1.35.0`-`v1.37.0`: engine, snapshots, both workbook sheets, the Revision tab); **P15**'s Model
-  Changes sheet shipped in `v1.40.0`; **P16**'s Dashboard in `v1.41.0`. The only open phase is
+  Changes sheet shipped in `v1.40.0`; **P16**'s Dashboard in `v1.41.0`. BBS Steel (steel from
+  separate BBS models, not a PRD phase) followed in `v1.42.0`. The only open phase is
   **P8** (keep splitting `script.py`). Work one at a time, and
   check `todo-list.md` rather than any older "next phase" sentence.
 

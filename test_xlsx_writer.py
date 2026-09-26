@@ -2462,7 +2462,7 @@ def main():
         io.open(os.path.join(LIB_DIR, tab_file), encoding="utf-8-sig").read()
         for tab_file in ("site_items_tab.py", "rate_analysis_tab.py",
                          "rate_database_tab.py", "revision_tab.py",
-                         "parameter_lists_tab.py")
+                         "parameter_lists_tab.py", "bbs_steel_tab.py")
         if os.path.exists(os.path.join(LIB_DIR, tab_file))
     ]
     all_handler_text = "\n".join(handler_texts)
@@ -6430,7 +6430,8 @@ def main():
             ("site_items_tab.py", ("wire_controls", "load_for_document")),
             ("rate_analysis_tab.py", ("wire_controls", "load_saved")),
             ("rate_database_tab.py", ("wire_controls", "load_saved")),
-            ("revision_tab.py", ("wire_controls", "refresh"))):
+            ("revision_tab.py", ("wire_controls", "refresh")),
+            ("bbs_steel_tab.py", ("wire_controls", "refresh"))):
         tab_text = io.open(os.path.join(LIB_DIR, tab_file),
                            encoding="utf-8-sig").read()
         tab_tree = _p8_ast.parse(tab_text)
@@ -6574,7 +6575,7 @@ def main():
     p8_rebinds = []
     for tab_file in ("site_items_tab.py", "rate_analysis_tab.py",
                      "rate_database_tab.py", "revision_tab.py",
-                     "parameter_lists_tab.py"):
+                     "parameter_lists_tab.py", "bbs_steel_tab.py"):
         tab_tree = _p8_ast.parse(io.open(os.path.join(LIB_DIR, tab_file),
                                          encoding="utf-8-sig").read())
         attach_node = [node for node in tab_tree.body
@@ -6920,6 +6921,277 @@ def main():
     check(
         "import Autodesk" not in dash_source and "pyrevit" not in dash_source,
         "P16 dashboard engine imports no Revit or pyRevit symbol"
+    )
+
+    # ------------------------------------------------------------
+    # BBS Steel (v1.42.0)
+    #
+    # Steel that lives in separate BBS models, read once on the BBS Steel
+    # tab and kept per model. It must weigh exactly as the model's own
+    # rebar does, join the same Detailed BOQ items, and never count a
+    # model that was not read. File names are the real UMA NIWAS ones.
+    # ------------------------------------------------------------
+    import bbs_steel_engine as bbs
+    import rebar_engine as rebar_eng
+
+    bbs_names = [
+        ("UMA NIWAS BUILDING-BBS FOUNDATION-07-05-2025.rvt", "Foundation", ""),
+        ("UMA NIWAS BUILDING-BBS COLUMN-23-05-2025.rvt", "Column", ""),
+        ("UMA NIWAS BUILDING-PLINTH LEVEL BBS BEAM-06-09-2025.rvt", "Beam",
+         "PLINTH LEVEL"),
+        ("UMA NIWAS BUILDING-1ST LEVEL BBS BEAM-06-09-2025.rvt", "Beam",
+         "1ST LEVEL"),
+        ("UMA NIWAS BUILDING-8TH LEVEL BBS SLAB-08-09-2025.rvt", "Slab",
+         "8TH LEVEL"),
+        ("UMA NIWAS BUILDING-BBS STAIR-20-05-2025.rvt", "Stair", ""),
+        ("Tower A Stair Slab.rvt", "Stair", ""),
+        ("site model.rvt", "Other", ""),
+    ]
+    bbs_detected = [(bbs.detect_bbs_group(n), bbs.detect_bbs_level(n))
+                    for n, _g, _l in bbs_names]
+    check(
+        bbs_detected == [(g, l) for _n, g, l in bbs_names]
+        and bbs.level_sort_key("PLINTH LEVEL") < bbs.level_sort_key("1ST LEVEL")
+        < bbs.level_sort_key("8TH LEVEL") < bbs.level_sort_key(""),
+        "BBS a model's element and level come from its file name, a stair "
+        "slab is a stair, and plinth sorts before the 1st level{0}".format(
+            "" if bbs_detected == [(g, l) for _n, g, l in bbs_names]
+            else " (got {0})".format(bbs_detected))
+    )
+
+    bbs_values = [
+        rebar_eng.build_rebar_quantity_values(12, 4, "", 10.0),
+        rebar_eng.build_rebar_quantity_values(12, 2, "", 5.0),
+        rebar_eng.build_rebar_quantity_values(8, 3, "", 6.0),
+        rebar_eng.build_rebar_quantity_values("", 1, "", 4.0),
+    ]
+    bbs_diameters, bbs_sets, bbs_unweighed = bbs.summarize_steel(bbs_values)
+    kg12 = round(12 * 12 / 162.0, 4) * 15.0
+    kg8 = round(8 * 8 / 162.0, 4) * 6.0
+    check(
+        [row[:3] for row in bbs_diameters] == [[8.0, 3, 6.0], [12.0, 6, 15.0]]
+        and abs(bbs_diameters[0][3] - kg8) < 0.002
+        and abs(bbs_diameters[1][3] - kg12) < 0.002
+        and bbs_sets == 4 and bbs_unweighed == 1,
+        "BBS steel is weighed by the Rebar sheet's own d^2/162 rule, per "
+        "diameter; a set with no diameter is counted as unweighed, not guessed"
+    )
+
+    bbs_dir = tempfile.mkdtemp()
+    bbs_old_appdata = os.environ.get("LOCALAPPDATA")
+    os.environ["LOCALAPPDATA"] = bbs_dir
+    try:
+        bbs_paths = []
+        for name in ("UMA NIWAS BUILDING-1ST LEVEL BBS BEAM-06-09-2025.rvt",
+                     "UMA NIWAS BUILDING-BBS FOUNDATION-07-05-2025.rvt",
+                     "UMA NIWAS BUILDING-PLINTH LEVEL BBS BEAM-06-09-2025.rvt",
+                     "UMA NIWAS BUILDING-BBS COLUMN-23-05-2025.rvt",
+                     "UMA NIWAS BUILDING-8TH LEVEL BBS SLAB-08-09-2025.rvt",
+                     "UMA NIWAS BUILDING-BBS STAIR-20-05-2025.rvt"):
+            path = os.path.join(bbs_dir, name)
+            with io.open(path, "wb") as handle:
+                handle.write(b"rvt")
+            bbs_paths.append(path)
+        bbs_store = bbs.empty_store("QA BBS")
+        first_added = bbs.add_bbs_files(bbs_store, bbs_paths)
+        again_added = bbs.add_bbs_files(bbs_store, [bbs_paths[0].upper(),
+                                                    bbs_paths[1]])
+        files = bbs_store["files"]
+        # beam 1st, foundation, beam plinth: read; column: read, then its
+        # file changes; slab: fails; stair: never read.
+        for index, values in ((0, bbs_values[:2]), (1, bbs_values[2:3]),
+                              (2, bbs_values[2:3]), (3, bbs_values[:1])):
+            bbs.record_bbs_reading(files[index], values,
+                                   signature=bbs.file_signature(bbs_paths[index]),
+                                   read_at="2026-09-26 10:00", revit="2025")
+        bbs.record_bbs_error(files[4], "The file is not a Revit model")
+        with io.open(bbs_paths[3], "ab") as handle:
+            handle.write(b" changed")
+        saved_at = bbs.save_bbs_store(bbs_store, "QA BBS")
+        reloaded = bbs.load_bbs_store("QA BBS")
+        statuses = [bbs.entry_status(entry) for entry in reloaded["files"]]
+        os.remove(bbs_paths[1])
+        statuses_gone = [bbs.entry_status(entry) for entry in reloaded["files"]]
+        check(
+            first_added == 6 and again_added == 0
+            and saved_at.startswith(os.path.join(bbs_dir, "RCC_BOQ", "bbs"))
+            and statuses == ["read", "read", "read", "changed", "error", "unread"]
+            and statuses_gone[1] == "missing"
+            and [bbs.needs_reading(e) for e in reloaded["files"]]
+            == [False, False, False, True, True, True]
+            and bbs.load_bbs_store("never saved")["files"] == [],
+            "BBS the list is kept per model, a model is listed once, and each "
+            "one knows whether it is read, changed, missing, failed or unread "
+            "(got {0})".format(statuses_gone)
+        )
+
+        counted_kg = round(kg12 + kg8 + kg8 + round(12 * 12 / 162.0, 4) * 10.0, 3)
+        check(
+            [e["name"] for e in bbs.counted_entries(reloaded)]
+            == [os.path.basename(p) for p in bbs_paths[:4]]
+            and abs(bbs.bbs_total_kg(reloaded) - counted_kg) < 0.01
+            and all(row["Rebar: Source"].startswith("BBS model: ")
+                    for row in bbs.bbs_steel_rows(reloaded)),
+            "BBS a failed or unread model counts nothing; a changed or missing "
+            "one counts as last read"
+        )
+
+        bbs_table = bbs.build_bbs_steel_table(reloaded)
+        first_column = [row[0] for row in bbs_table[1:]]
+        grand = bbs_table[-1]
+        header = bbs_table[0]
+        beam_rows = [row for row in bbs_table if row[0] == "Beam"]
+        slab_row = [row for row in bbs_table if row[0] == "Slab"][0]
+        check(
+            header[:4] == ["Element", "Level", "BBS Model", "Rebar Sets"]
+            and header[4:6] == ["8 mm (kg)", "12 mm (kg)"]
+            and header[-4:] == ["Total (kg)", "Total (t)", "Read On", "Status"]
+            and first_column == ["Foundation", "FOUNDATION TOTAL", "Column",
+                                 "COLUMN TOTAL", "Beam", "Beam", "BEAM TOTAL",
+                                 "Slab", "SLAB TOTAL", "Stair", "STAIR TOTAL",
+                                 "GRAND TOTAL"]
+            and [row[1] for row in beam_rows] == ["PLINTH LEVEL", "1ST LEVEL"]
+            and abs(grand[-4] - counted_kg) < 0.02
+            and grand[3] == 5
+            and slab_row[3] == "" and slab_row[-1].startswith("Could not be read")
+            and "CHANGED" in [row for row in bbs_table if row[0] == "Column"][0][-1]
+            and "unweighed" not in str(bbs_table),
+            "BBS the sheet lists every model by element and level, totals each "
+            "element and the whole, and shows an unread model without figures"
+        )
+
+        bbs_steel_rows = (boq_fixture.get("Rebar") or []) + bbs.bbs_steel_rows(reloaded)
+        bbs_boq = boq_engine.build_detailed_boq_table(
+            boq_fixture, {}, bbs_steel_rows, rate_database=boq_rates,
+            project_location="Navsari, Gujarat, India", rate_date="2026-09-22")
+        bbs_boq_steel = dict((row[1], row[3]) for row in bbs_boq
+                             if str(row[0]).startswith("C."))
+        bbs_snapshot = revision.build_snapshot(
+            boq_fixture, boq_fixture.get("Rebar") or [], bbs_steel=reloaded)
+        bbs_snap_steel = dict((i["description"], i["quantity"])
+                              for i in bbs_snapshot["items"]
+                              if i["code"].startswith("C|"))
+        model_12 = 150.0
+        check(
+            abs(bbs_boq_steel.get("Reinforcement steel, 12 mm dia", 0)
+                - (model_12 + kg12 + round(12 * 12 / 162.0, 4) * 10.0)) < 0.01
+            and abs(bbs_boq_steel.get("Reinforcement steel, 8 mm dia", 0)
+                    - (20.0 + 2 * kg8)) < 0.01
+            and all(abs(bbs_snap_steel[k] - bbs_boq_steel[k]) < 0.001
+                    for k in bbs_boq_steel)
+            and len(bbs_snapshot["elements"]) == len(revision.build_snapshot(
+                boq_fixture, boq_fixture.get("Rebar") or [])["elements"]),
+            "BBS steel joins the model's own rebar in the same Detailed BOQ "
+            "item per diameter, and the snapshot agrees; it adds no element "
+            "records"
+        )
+
+        bbs_dash = dash.build_dashboard_table(
+            boq_fixture, rate_database=boq_rates,
+            project_location="Navsari, Gujarat, India", rate_date="2026-09-22",
+            bbs_steel=reloaded)
+        bbs_dash_key = dict((r[0], r) for r in dash_rows(bbs_dash, "KEY FIGURES"))
+        bbs_dash_warn = dict((r[0], r[1]) for r in dash_rows(bbs_dash, "WARNINGS"))
+        bbs_dash_cost = dict((r[0], r[1]) for r in dash_rows(bbs_dash, "ESTIMATED COST"))
+        bbs_amount = 0.0
+        for row in bbs_boq:
+            if "." in str(row[0]) and row[0] != "Item No." and row[4] != "":
+                bbs_amount += float(row[3]) * float(row[4])
+        check(
+            bbs_dash_key["Reinforcement steel"][1]
+            == round(sum(bbs_boq_steel.values()) / 1000.0, 3)
+            and "from BBS models" in bbs_dash_key["Reinforcement steel"][3]
+            and bbs_dash_key["BBS models"][1] == 4
+            and abs(bbs_dash_cost["Total"] - round(bbs_amount, 2)) < 0.01
+            and bbs_dash_warn.get("BBS model not read yet") == 1
+            and bbs_dash_warn.get("BBS model could not be read") == 1
+            and bbs_dash_warn.get("BBS model changed since it was read") == 1
+            and bbs_dash_warn.get("BBS model file not found") == 1
+            and bbs_dash_warn.get("Rebar in this model and in BBS models") == 3,
+            "BBS the dashboard counts the BBS steel and prices it as the "
+            "Detailed BOQ does, and warns of every model not in order and of "
+            "rebar in both places"
+        )
+
+        bbs_classic = boq_engine.write_basic_xlsx(
+            os.path.join(bbs_dir, "c.xlsx"), boq_fixture,
+            generated_stamp="2026-09-22 10:00", bbs_steel=reloaded)
+        bbs_site = boq_engine.write_site_xlsx(
+            os.path.join(bbs_dir, "s.xlsx"), boq_fixture, project_name="QA",
+            generated_stamp="2026-09-22 10:00", bbs_steel=reloaded)
+        bbs_plain = boq_engine.write_basic_xlsx(
+            os.path.join(bbs_dir, "p.xlsx"), boq_fixture,
+            generated_stamp="2026-09-22 10:00")
+        classic_names = list(bbs_classic)
+        site_bbs = bbs_site.get(bbs.BBS_STEEL_SHEET_NAME) or [[""]] * 3
+
+        def written_steel(sheet):
+            return dict((row[1], row[3]) for row in sheet
+                        if len(row) > 3 and str(row[0]).startswith("C."))
+        check(
+            written_steel(bbs_classic[boq_engine.DETAILED_BOQ_SHEET_NAME])
+            == bbs_boq_steel
+            and written_steel(bbs_site[boq_engine.DETAILED_BOQ_SHEET_NAME])
+            == bbs_boq_steel,
+            "BBS both workbooks' Detailed BOQ carries the BBS steel in its "
+            "reinforcement items"
+        )
+        check(
+            classic_names.index(bbs.BBS_STEEL_SHEET_NAME)
+            == classic_names.index("Rebar BBS") + 1
+            and bbs_classic[bbs.BBS_STEEL_SHEET_NAME] == bbs_table
+            and site_bbs[1][0] == "RCC - BBS STEEL"
+            and list(bbs_site).index(bbs.BBS_STEEL_SHEET_NAME)
+            == list(bbs_site).index("Rebar BBS") + 1
+            and bbs.BBS_STEEL_SHEET_NAME not in bbs_plain
+            and os.path.isfile(os.path.join(bbs_dir, "c.xlsx"))
+            and os.path.isfile(os.path.join(bbs_dir, "s.xlsx")),
+            "BBS both workbooks write the BBS Steel sheet after the rebar "
+            "sheets and validate; a model without BBS models gets none"
+        )
+    finally:
+        if bbs_old_appdata is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = bbs_old_appdata
+        shutil.rmtree(bbs_dir, ignore_errors=True)
+
+    bbs_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read().replace("\r\n", "\n")
+    bbs_xaml = io.open(UI_PATH, encoding="utf-8-sig").read()
+    bbs_tab_text = io.open(os.path.join(LIB_DIR, "bbs_steel_tab.py"),
+                           encoding="utf-8-sig").read()
+    bbs_engine_text = io.open(os.path.join(LIB_DIR, "bbs_steel_engine.py"),
+                              encoding="utf-8-sig").read()
+    bbs_reader = extract_function_source(bbs_script, "read_bbs_model")
+    bbs_controls = ("BbsList", "BbsAdd", "BbsRemove", "BbsGroupSelector",
+                    "BbsReadChanged", "BbsReadAll", "BbsSummary", "BbsFolder")
+    check(
+        bbs_script.count("bbs_steel=bbs_steel") == 3
+        and 'load_bbs_store(safe_text(doc.Title, ""))' in bbs_script
+        and "calculated = rebar_steel_values(element)" in bbs_script
+        and "rebar_steel_values(rebar)" in bbs_reader
+        and "DetachAndPreserveWorksets" in bbs_reader
+        and "bbs_doc.Close(False)" in bbs_reader.split("finally:")[-1]
+        and "if opened_here:" in bbs_reader.split("finally:")[-1]
+        and 'owner = getattr(element, "Document", None) or doc' in bbs_script,
+        "BBS the export hands the stored steel to the snapshot and both "
+        "writers; a BBS model is weighed by the same code as this model's "
+        "rebar, detached if workshared, and closed unsaved only if it was "
+        "opened for the read"
+    )
+    check(
+        '<TabItem Header="BBS Steel">' in bbs_xaml
+        and all('x:Name="{0}"'.format(name) in bbs_xaml for name in bbs_controls)
+        and all('"{0}"'.format(name) in bbs_tab_text for name in bbs_controls)
+        and 'dialog_tab_call("bbs_steel", "wire_controls")\n'
+            '                dialog_tab_call("bbs_steel", "refresh")' in bbs_script
+        and "window.IsEnabled = False" in bbs_tab_text
+        and "window.IsEnabled = True" in bbs_tab_text.split("finally:")[-1]
+        and "import Autodesk" not in bbs_engine_text
+        and "pyrevit" not in bbs_engine_text,
+        "BBS the tab has every control its handlers look for, is wired when "
+        "the dialog opens, locks the dialog while reading; the engine holds "
+        "no Revit symbol"
     )
 
     print("")

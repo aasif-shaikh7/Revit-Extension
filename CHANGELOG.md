@@ -22,6 +22,100 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.42.0] - 2026-09-26
+
+**BBS Steel: the steel of separate BBS models in the BOQ.** UMA NIWAS's structural model has no
+rebar. Its reinforcement lives in twenty separate BBS models (foundation, column, plinth + 1-8
+beam levels, 1-8 slab levels, stair), so its BOQ carried no steel and priced none. Asked for by
+the owner on 2026-09-25 after step 1 measured those models (132.38 t).
+
+### Added
+- **A BBS Steel tab** (the twelfth). It lists this model's BBS models: Add (a file picker), Remove,
+  the element each one is for, and two buttons, *Read new and changed* and *Read all again*.
+  Reading opens each model in the background - detached from its central file if it is
+  workshared - weighs its rebar and closes it without saving. A model this Revit already has open
+  is read where it is and left open. The dialog is locked while a read runs, the status line
+  names the model being read, and the list is saved after every model, so a crash loses at most
+  that one.
+- **The element comes from the model's file name** (STAIR, SLAB, BEAM, COLUMN, WALL,
+  FOUNDATION/FOOTING/RAFT/PILE, in that order), and so does the level (`PLINTH LEVEL`,
+  `1ST LEVEL`...). It is never taken from the rebar's host, because on UMA NIWAS the slab rebar is
+  hosted on Structural Foundations, the way the slabs are modelled. A wrong guess is corrected on
+  the tab.
+- **The export uses what was read**, without opening anything:
+  - BBS steel joins the model's own rebar in the **Detailed BOQ**'s reinforcement items, one
+    item per diameter whatever the source, and is priced by the same STEEL codes.
+  - It is in the revision snapshot too, so a BBS change is a new revision.
+  - It is on the **Dashboard**: the steel figure notes "of which ... kg from BBS models", there
+    is a *BBS models* row, and the cost includes it. The warnings name each kind of model not in
+    order - not read yet, could not be read, changed since it was read, file not found - and flag
+    rebar that is in both this model and BBS models.
+  - A new **BBS Steel sheet**, after the rebar sheets in both formats, has one row per model:
+    element, level, file, rebar sets, kg per diameter, total kg and t, read on, status. Each
+    element group has a total and there is a GRAND TOTAL. A model that is not counted still gets
+    its row, with no figures and the reason.
+- **What is counted:** a model that failed or was never read counts nothing. A model that
+  changed or went missing counts as last read, and is warned about.
+- `lib/bbs_steel_engine.py` (the 24th engine module). It is pure Python and keeps one store per
+  model in `%LOCALAPPDATA%\RCC_BOQ\bbs\<document title>.json`.
+- `lib/bbs_steel_tab.py` (the sixth dialog-tab module).
+- `script.py`'s `read_bbs_model(path)`.
+
+### Changed
+- `get_rebar_quantities`'s steel half is now `rebar_steel_values(element)`, shared with the BBS
+  reader, so a bar weighs the same in a BBS model as in this one.
+- `_rebar_double` reads an element's type from the element's own document instead of the
+  dialog's. This makes no difference for this model; for a BBS model, the dialog's document would
+  have looked up the wrong element.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 459 checks passed** (eleven new). The BBS tab module
+  joined the P8 audits: names, host and no rebinding. Eight planted bugs are each caught by name:
+  - the snapshot ignoring BBS steel;
+  - a failed model being counted;
+  - levels sorted by name;
+  - the classic Detailed BOQ without BBS steel;
+  - the dashboard without BBS warnings;
+  - a changed file going unnoticed;
+  - a stair slab read as a slab;
+  - the tab not unlocking the dialog.
+- **The tab on IronPython 2.7.12 with the real `ui.xaml`**, driven outside Revit with only the
+  Revit reader stood in. Checked: adding models, element guesses, changing an element (saved,
+  selection kept), a read with one model failing (3 of 4 read, the dialog disabled during the
+  read and enabled after), a re-read that retries only the failed model, a changed file marked
+  CHANGED and re-read, *Read all again*, and Remove (the file itself untouched). The BBS Steel
+  sheet built there matches.
+- `scripts/ip27_compile.ps1`: 31 files compiled, 0 failed.
+- **Live, Revit 2025 on IronPython 2.7.12:** `script.py`'s own `read_bbs_model`,
+  `rebar_steel_values` and `_rebar_double` (extracted unchanged, run by `pyrevit run` in a
+  separate Revit) read copies of all twenty UMA NIWAS BBS models.
+  - The models are Revit 2020 files, upgraded in memory.
+  - 20 of 20 were read with no error and no unweighed set, and each was closed again.
+  - Total **132,379.003 kg**. This equals step 1's independent CPython measurement file for file,
+    except the column model: 52,901.299 kg against 52,901.286 kg. That 0.013 kg is how the two
+    engines round a half. IronPython 2.7 rounds each set's kg away from zero, CPython 3 to even,
+    over 3,812 sets. The button runs on IronPython.
+- **Live export, test Revit (Agent Bridge, port 48886), on a copy of the structural model, with
+  that reading as its BBS list:** both formats completed with 0 validation mismatches (site 14
+  sheets, classic 18), BBS Steel after the element sheets.
+  - The Dashboard shows steel 132.379 t "of which 132,379.00 kg from BBS models", 20 of 20 BBS
+    models counted, and steel at Rs 1,01,29,641.31 (132,379.003 kg x 76.52, Gujarat SOR). The
+    estimate is Rs 1,41,58,739.39, up from Rs 40,29,098.08. The four unpriced items are still
+    the M40 ones.
+  - Detailed BOQ section C has seven items, 8 to 32 mm, equal to the BBS Steel sheet's GRAND
+    TOTAL row.
+  - The export filed **Rev 01** (steel +132.379 t, concrete and shuttering unchanged, no element
+    changes). A second export was recognised as the same issue and filed nothing.
+  - Both workbooks opened in real Excel 16 with no repair prompt; the Detailed BOQ amounts add up
+    to the Dashboard total.
+- Not yet done by the owner: clicking *Read* in their own dialog. The dialog's read path ran
+  only on IronPython outside Revit (with a stand-in reader), and the reader only through
+  `pyrevit run`.
+- Cosmetic, as before: in the classic workbook a TOTAL row formats every number with two
+  decimals, so the GRAND TOTAL shows 8,652.00 sets.
+
+---
+
 ## [v1.41.0] - 2026-09-25
 
 **P16 Dashboard: the whole BOQ on one page.** With P16 every phase of the roadmap has shipped

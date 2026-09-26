@@ -105,7 +105,8 @@ def _sum_field(rows, field, grade=None):
 
 
 def build_snapshot(data_result, rebar_rows=None, revision="",
-                   document="", exported="", element_types=None):
+                   document="", exported="", element_types=None,
+                   bbs_steel=None):
     """The plain numbers behind one issue of the BOQ.
 
     Same items, wording and order as the Detailed BOQ, but every quantity
@@ -116,6 +117,10 @@ def build_snapshot(data_result, rebar_rows=None, revision="",
     `document` the Revit document it was taken from, `exported` the date
     in ISO form. None of the three is invented: a caller that does not
     know one leaves it empty.
+
+    `bbs_steel` is the model's BBS store (bbs_steel_engine): the steel
+    read from separate BBS models joins the model's own rebar in section
+    C, diameter by diameter, exactly as the Detailed BOQ adds it up.
     """
     from export_engine import (
         DETAILED_BOQ_CATEGORIES, NO_GRADE_LABEL, grades_in, boq_diameter_text)
@@ -158,10 +163,15 @@ def build_snapshot(data_result, rebar_rows=None, revision="",
             "quantity": quantity,
         })
 
-    # C. Reinforcement, one item per diameter.
-    if rebar_rows:
+    # C. Reinforcement, one item per diameter - the model's own rebar and
+    # the steel read from its BBS models together.
+    steel_rows = list(rebar_rows or [])
+    if bbs_steel:
+        from bbs_steel_engine import bbs_steel_rows
+        steel_rows += bbs_steel_rows(bbs_steel)
+    if steel_rows:
         from rebar_engine import build_rebar_diameter_summary_table
-        for row in build_rebar_diameter_summary_table(rebar_rows)[1:]:
+        for row in build_rebar_diameter_summary_table(steel_rows)[1:]:
             weight = _number(row[4])
             if not weight:
                 continue

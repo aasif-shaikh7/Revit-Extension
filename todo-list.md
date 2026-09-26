@@ -57,6 +57,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P14 | BOQ Revision (Rev 00/01/02 comparison) | 4/5/4/2 | **done** (`v1.35.0` engine + snapshots + `BOQ Revision` in both workbooks; `v1.35.1` run live, two IronPython bugs fixed; `v1.37.0` Revision tab - compare against any filed issue, per model, and name issues - run live in a test Revit) |
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | **done** (`v1.40.0` `lib/model_change_engine.py`, element records in every snapshot, a `Model Changes` sheet in both workbooks; decisions left to the tool by the owner, recorded in CHANGELOG) |
 | P16 | Structural Dashboard | 3/4/3/4 | **done** (`v1.41.0` `lib/dashboard_engine.py`, a Dashboard sheet after Summary in both workbooks; cost equals the Detailed BOQ's amounts) |
+| BBS-01 | Steel from separate BBS models (BBS Steel tab + sheet) | — | **done** (`v1.42.0` `lib/bbs_steel_engine.py`, `lib/bbs_steel_tab.py`, `read_bbs_model`; UMA NIWAS's 20 BBS models read live in Revit 2025 - 132.38 t; the dialog's Read button not yet clicked by the owner) |
 | INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `done` (`v1.19.0`) |
 | INT-04 | Controlled Structural Material assignment | — | **done** (`v1.23.0`, Bridge `v2.5.0`) |
 
@@ -80,6 +81,9 @@ Everything about the live Revit dialog stops at `testing` until the project owne
   IronPython 2.7.12 itself, and the harness now fails any new `float()` guard that would let
   IronPython's `SystemError` / `AttributeError` through.
 - **P15** is done (`v1.40.0`): the Model Changes sheet. **P16** is done (`v1.41.0`): the Dashboard.
+- **BBS Steel** (`v1.42.0`, outside the phase numbering): the steel of separate BBS models, read
+  once on the BBS Steel tab, now reaches the Detailed BOQ, the Dashboard and a BBS Steel sheet.
+  Open: the owner reads the real BBS models from the dialog once; an M40 rate is still missing.
 
 The theme work (v1.33.0-v1.34.1) and the settings-safety fix (v1.34.2) sit outside the phase
 numbering; both are recorded in `CHANGELOG.md`.

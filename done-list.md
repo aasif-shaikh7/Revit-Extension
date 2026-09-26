@@ -1557,6 +1557,23 @@ Eleven rates from the Govt of Gujarat R&B SOR 2024-25, EE(S) Mehsana (without GS
 ready-mix, formwork per element type, TMT Fe 500D. Location "Gujarat"; each entry names its SOR item.
 Checked by pricing: a Navsari project is priced, a Mumbai project is not.
 
+## BBS-01 - Steel from separate BBS models (`v1.42.0`, 2026-09-26)
+
+**Built:**
+- A BBS Steel tab that lists this model's BBS models and reads each one once. Each model is
+  opened in the background, weighed by `rebar_steel_values` (the Rebar sheet's own code) and
+  closed unsaved.
+- `lib/bbs_steel_engine.py` keeps the readings per model.
+- The export adds that steel to the Detailed BOQ, the snapshot and the Dashboard, and writes a
+  BBS Steel sheet in both formats.
+- The element comes from the file name, never from the rebar's host.
+
+**Known to work:**
+- Tested (harness): 459 checks; eight planted bugs caught.
+- The tab was driven on IronPython 2.7.12 with the real `ui.xaml`.
+- See CHANGELOG for the live Revit read of UMA NIWAS's twenty BBS models.
+- The owner has not yet clicked Read in their own dialog.
+
 ---
 
 ## Standing conventions

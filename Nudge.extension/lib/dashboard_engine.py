@@ -114,20 +114,24 @@ def _estimate(items, rate_database, project_location, rate_date):
 
 def build_dashboard_table(data_result, rate_database=None, project_location="",
                           rate_date="", unmapped_report=None,
-                          revision_snapshots=None):
+                          revision_snapshots=None, bbs_steel=None):
     """The Dashboard sheet as a plain table: header, then one row per figure.
 
     A section's name is written on its first row only. `unmapped_report`
     is the P10 table (header + rows, Issue in the fourth column);
     `revision_snapshots` is the (previous, current) pair the BOQ Revision
-    sheet uses, or None.
+    sheet uses, or None. `bbs_steel` is the model's BBS store: its steel
+    is in the figures and the cost, as it is in the Detailed BOQ.
     """
     from export_engine import NO_GRADE_LABEL, identity_sort_key
     from revision_engine import build_snapshot
 
     data = data_result if isinstance(data_result, dict) else {}
     rebar_rows = data.get("Rebar") or []
-    items = build_snapshot(data, rebar_rows)["items"]
+    items = build_snapshot(data, rebar_rows, bbs_steel=bbs_steel)["items"]
+    from bbs_steel_engine import bbs_total_kg, bbs_warnings, counted_entries
+    bbs_kg = bbs_total_kg(bbs_steel)
+    bbs_files = list((bbs_steel or {}).get("files") or [])
 
     table = [list(DASHBOARD_HEADERS)]
 
@@ -145,16 +149,23 @@ def build_dashboard_table(data_result, rate_database=None, project_location="",
 
     # KEY FIGURES
     steel_kg = total(u"C|")
-    section(SECTION_KEY, [
+    steel_note = u"{0:,.2f} kg".format(steel_kg) if steel_kg else u""
+    if bbs_kg:
+        steel_note += u", of which {0:,.2f} kg from BBS models".format(bbs_kg)
+    key_rows = [
         [u"Concrete", total(u"A|"), u"m3", u""],
-        [u"Reinforcement steel", round(steel_kg / 1000.0, 3), u"t",
-         u"{0:,.2f} kg".format(steel_kg) if steel_kg else u""],
+        [u"Reinforcement steel", round(steel_kg / 1000.0, 3), u"t", steel_note],
         [u"Shuttering", total(u"B|"), u"m2", u""],
         [u"Structural elements", element_count, u"nos",
          u"Beams, columns, walls, slabs and foundations"],
         [u"Rebar sets", len(rebar_rows), u"nos",
          u"" if rebar_rows else u"No rebar in this model"],
-    ])
+    ]
+    if bbs_files:
+        key_rows.append([u"BBS models", len(counted_entries(bbs_steel)), u"nos",
+                         u"{0} of {1} counted - see the BBS Steel sheet".format(
+                             len(counted_entries(bbs_steel)), len(bbs_files))])
+    section(SECTION_KEY, key_rows)
 
     # CONCRETE BY GRADE - grades in number order, an unrecorded one last.
     grade_totals = []
@@ -262,6 +273,11 @@ def build_dashboard_table(data_result, rate_database=None, project_location="",
             issues.append([issue, 1])
     for issue, count in issues:
         warnings.append([issue, count, u"rows", u"Unmapped Elements sheet"])
+    warnings.extend(bbs_warnings(bbs_steel))
+    if rebar_rows and bbs_kg:
+        warnings.append([u"Rebar in this model and in BBS models", len(rebar_rows),
+                         u"sets", u"Both are counted - check the same bars are "
+                         u"not in both"])
     if not warnings:
         warnings.append([u"None", u"", u"", u"Nothing needs attention"])
     section(SECTION_WARNINGS, warnings)

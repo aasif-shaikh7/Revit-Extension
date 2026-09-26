@@ -9,9 +9,9 @@
 today; **CP3123 (CPython 3.12.3) remains the target engine**
 > **Engine caveat (T-03):** `script.py` carries no `#! python3` first line, so pyRevit loads it on
 > its default engine, IP27. The modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 23 import and write a workbook on CP3123 (measured 2026-09-24), the other four
-> (`revision_engine.py`, `header_colour.py`, `model_change_engine.py`, `dashboard_engine.py`) only
-> on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
+> 24 import and write a workbook on CP3123 (measured 2026-09-24), the other five
+> (`revision_engine.py`, `header_colour.py`, `model_change_engine.py`, `dashboard_engine.py`,
+> `bbs_steel_engine.py`) only on Python 3.12.10 so far — so only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython. pyRevit 6.10.0+ *documents* both engines, but `pyrevit.forms`
 > is still IronPython-only upstream (the CPython `_cpy.py` backend is a stub that raises
 > `PyRevitCPythonNotSupported`), on the currently-installed build (`6.5.3`) and upstream
@@ -136,10 +136,12 @@ elements of that category in the current document and lists them alphabetically 
 | Foundation | `OST_StructuralFoundation` plus logical foundations stored as floors |
 | Rebar | `OST_Rebar` |
 
-The dialog carries eleven tabs in total: the six category tabs above, in the order Beam, Column,
-Structure Wall, Rebar, Slab, Foundation, followed by five configuration tabs — Assembly Profile,
-Site Items, Rate Analysis, Rate Database and Revision — which hold user-entered data rather than
-discovered parameters.
+The dialog carries twelve tabs in total: the six category tabs above, in the order Beam, Column,
+Structure Wall, Rebar, Slab, Foundation, followed by six configuration tabs — Assembly Profile,
+Site Items, Rate Analysis, Rate Database, Revision and BBS Steel — which hold user-entered data
+rather than discovered parameters. BBS Steel (`v1.42.0`) lists the separate BBS models whose
+reinforcement belongs to this model and reads their steel once; the export adds it to the
+Detailed BOQ, the snapshot and the Dashboard and writes a BBS Steel sheet.
 
 ### 5.2 Search and selection
 
@@ -441,6 +443,9 @@ project.
 - **Phase 16 — Structural Dashboard (done, `v1.41.0`).** A Dashboard sheet after the Summary
   cover: concrete, rebar (t), formwork, elements, estimated cost (equal to the Detailed BOQ's
   amounts), warnings, and what moved since the previous issue.
+- **BBS Steel (done, `v1.42.0`; not a numbered phase).** Asked for on 2026-09-25 after UMA NIWAS
+  showed no steel: its reinforcement lives in twenty separate BBS models. Their steel, read once
+  per model and weighed by the Rebar sheet's own code, joins the BOQ's reinforcement.
 
 Only **Structural** scope is in the current roadmap; Architecture / Doors / Windows / Plumbing /
 Electrical / HVAC / MEP are not.
@@ -505,9 +510,10 @@ Nudge.extension/
     ├── revision_engine.py
     ├── model_change_engine.py
     ├── dashboard_engine.py
+    ├── bbs_steel_engine.py
     ├── header_colour.py
     ├── site_items_tab.py, rate_analysis_tab.py, rate_database_tab.py, revision_tab.py
-    ├── parameter_lists_tab.py
+    ├── parameter_lists_tab.py, bbs_steel_tab.py
     ├── assembly_engine.py
     ├── site_items_engine.py
     ├── export_engine.py
@@ -549,7 +555,7 @@ For every major change:
 
 Never assume code works before it is tested. Engine changes still run `python test_xlsx_writer.py`
 first; the harness prints its own check count and currently ends with
-`RESULT: all 448 checks passed`.
+`RESULT: all 458 checks passed`.
 
 ---
 
