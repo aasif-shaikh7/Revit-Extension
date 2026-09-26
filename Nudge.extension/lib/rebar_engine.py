@@ -114,7 +114,8 @@ def build_rebar_bbs_table(rebar_rows):
             "Cutting Length (m)", "Average Bar Length (m)",
             "Length Status", "Quantity", "Total Length (m)",
             "Unit Weight (kg/m)", "Total Weight (kg)",
-            "Rebar Element ID", "Host Category", "Host Element ID", "Level"
+            "Rebar Element ID", "Host Category", "Host Element ID", "Level",
+            "Host Cut Length (m)"
         ]
     )
     grouped = {}
@@ -178,6 +179,8 @@ def build_rebar_bbs_table(rebar_rows):
             str(row.get("Rebar: Host Element ID", "") or ""),
             str(row.get("Level", "") or ""),
             variable_group_id,
+            # v1.43.0: the host beam's Cut Length, to read a bar against.
+            _rounded_total(row.get("Rebar: Host Cut Length (m)", ""), 4),
         )
         if key not in grouped:
             grouped[key] = {
@@ -218,7 +221,7 @@ def build_rebar_bbs_table(rebar_rows):
                round(values["length"], 4), key[8],
                round(values["weight"], 3),
                ", ".join(values["rebar_element_ids"]),
-               key[9], key[10], key[11]]
+               key[9], key[10], key[11], key[13]]
         )
         table.append(row_values)
     return table

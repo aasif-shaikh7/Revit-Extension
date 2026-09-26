@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.42.0'
+__version__ = '1.43.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.42.0'
+SCRIPT_VERSION = '1.43.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -104,6 +104,7 @@ REBAR_DERIVED_PARAMETERS = (
     "Rebar: Element ID",
     "Rebar: Host Element ID",
     "Rebar: Host Category",
+    "Rebar: Host Cut Length (m)",
     "Rebar: A (mm)",
     "Rebar: B (mm)",
     "Rebar: C (mm)",
@@ -1129,6 +1130,26 @@ def read_metric_parameter(
 # above).
 
 
+def read_beam_cut_length(element):
+    """A structural framing element's Cut Length in metres, or "".
+
+    Revit's own Cut Length (STRUCTURAL_FRAME_CUT_LENGTH): the length
+    after the beam is cut back at the columns and beams it joins. Any
+    other element has no such parameter and gets "".
+    """
+    try:
+        parameter = element.get_Parameter(
+            DB.BuiltInParameter.STRUCTURAL_FRAME_CUT_LENGTH)
+        if (parameter is not None and parameter.HasValue
+                and parameter.StorageType == DB.StorageType.Double):
+            raw_value = parameter.AsDouble()
+            if raw_value > 0:
+                return convert_quantity_value(raw_value, "length")
+    except:
+        pass
+    return ""
+
+
 def get_element_quantities(
         element,
         element_name="",
@@ -1219,6 +1240,12 @@ def get_element_quantities(
                 value
             )
         )
+
+    # v1.43.0: a beam's Cut Length beside its Length. Length is the drawn
+    # length; Cut Length is what is left after the joins at columns and
+    # other beams cut it back. On UMA NIWAS 12 of 519 beams differ.
+    if element_name == "Beam":
+        results.append(("Qty: Cut Length (m)", read_beam_cut_length(element)))
 
     # P3/site-format: collect the raw dimension sources once, resolve them
     # into L/W/H metres, then derive the SHUTTERING formwork area. The
@@ -1692,6 +1719,7 @@ def get_rebar_quantities(element):
 
     host_id_text = ""
     host_category = ""
+    host_cut_length = ""
     rebar_element_id = ""
     try:
         rebar_element_id = str(element.Id.IntegerValue)
@@ -1706,6 +1734,10 @@ def get_rebar_quantities(element):
         host = doc.GetElement(host_id)
         if host is not None and host.Category is not None:
             host_category = safe_text(host.Category.Name, "")
+        # v1.43.0: the host beam's Cut Length, so a bar can be read
+        # against the beam it sits in. Only a beam has one.
+        if host is not None:
+            host_cut_length = read_beam_cut_length(host)
     except:
         pass
 
@@ -1722,6 +1754,7 @@ def get_rebar_quantities(element):
         ("Rebar: Element ID", rebar_element_id),
         ("Rebar: Host Element ID", host_id_text),
         ("Rebar: Host Category", host_category),
+        ("Rebar: Host Cut Length (m)", host_cut_length),
         ("Rebar: A (mm)", shape_dimensions_mm.get("A", "")),
         ("Rebar: B (mm)", shape_dimensions_mm.get("B", "")),
         ("Rebar: C (mm)", shape_dimensions_mm.get("C", "")),

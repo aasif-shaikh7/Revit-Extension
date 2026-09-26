@@ -1574,6 +1574,18 @@ Checked by pricing: a Navsari project is priced, a Mumbai project is not.
 - See CHANGELOG for the live Revit read of UMA NIWAS's twenty BBS models.
 - The owner has not yet clicked Read in their own dialog.
 
+## BEAM-01 - Beam Cut Length on the sheets (`v1.43.0`, 2026-09-26)
+
+**Built:**
+- Beam sheet: Revit's Cut Length beside Length, in both formats.
+- Rebar sheets: each bar's host beam Cut Length (Rebar, Rebar BBS).
+
+**Known to work:**
+- Tested (harness): 463 checks.
+- Live: the UMA NIWAS export shows it for all 519 beams.
+- Live: in the 1st level BBS beam model, 327 of 332 bars carry their host beam's Cut Length.
+- Open: shuttering still uses the drawn Length (7.62 m2 over, on 12 beams) - the owner decides.
+
 ---
 
 ## Standing conventions

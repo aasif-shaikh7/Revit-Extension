@@ -2356,7 +2356,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             sheet_names.append("Rebar BBS")
             sheet_rows["Rebar BBS"] = rebar_bbs_table
             quantity_column_map["Rebar BBS"] = (
-                list(range(3, 13)) + [15, 16] + list(range(18, 22))
+                list(range(3, 13)) + [15, 16] + list(range(18, 22)) + [26]
             )
 
     # BBS models: steel read from separate BBS models, one row per model,
@@ -3001,6 +3001,14 @@ def build_site_detail_sheet(category_name, rows, project_name,
                     continue
                 if key_text.startswith("Rebar:") and key_text not in param_names:
                     param_names.append(key_text)
+
+    # v1.43.0: a beam's Cut Length is shown on its own, like the Rebar
+    # fields above, after whatever was selected and before L/W/H.
+    if (category_name == "Beam"
+            and "Qty: Cut Length (m)" not in param_names
+            and any(row.get("Qty: Cut Length (m)") not in ("", None)
+                    for row in data_rows)):
+        param_names.append("Qty: Cut Length (m)")
 
     # Dimension columns (L/W/H) are always present when shuttering is shown
     dim_count = 3 if show_shuttering else 0
