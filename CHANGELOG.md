@@ -47,9 +47,13 @@ know: the Rebar sheets a BBS model's own export gives, with their chosen paramet
 - **Reading a BBS model now also reads the Rebar tab's chosen parameters from every bar.**
   - The values are read the way a Rebar sheet exported from that model reads them:
     `build_element_parameter_context`, which now looks up types in the element's own document.
-  - If this model's own selection is empty, the choice saved in settings is used.
+  - If this model's own selection is empty, the choice saved in settings is used, by the read
+    and by the export alike (`chosen_rebar_parameters`). The site workbook gets the same list
+    for its Rebar sheet.
   - The store keeps them with each bar. A model read before this version still counts, but its
     Rebar rows show those fields blank until it is read again.
+- **Dashboard:** *Rebar sets* now counts the BBS models' sets when the model has none of its own
+  ("From the BBS models - see the Rebar sheet"), instead of saying there is no rebar.
 
 ### Verified
 - `python test_xlsx_writer.py` prints **all 470 checks passed**. The Rebar rows are checked for
@@ -61,6 +65,19 @@ know: the Rebar sheets a BBS model's own export gives, with their chosen paramet
   - a model's own rebar winning;
   - no BBS Bar Schedule.
 - `scripts/ip27_compile.ps1`: 31 files.
+- **Live, Revit 2025 / IronPython (`pyrevit run`):** all 20 BBS copies were read again through the
+  real `read_bbs_model`, with the owner's 10 chosen fields. That gave 8,652 bars and
+  132,379.003 kg; ID_LIC, LEVEL_V, ID_V and Type are filled on every bar.
+- **Live export, test Revit, a copy of the structural model:** site (17 sheets) and classic (21)
+  had 0 validation mismatches.
+  - The Rebar sheet has 8,652 rows, with ID_LIC, LEVEL_V, ID_V, ITEM, Type, Spacing, A-D in
+    front and the BBS Model last.
+  - In real Excel 16, the Rebar Summary totals **132,379.003 kg**, the same as the Detailed
+    BOQ's steel: counted once.
+  - The Dashboard shows Rebar sets 8,652 "From the BBS models".
+  - There is no BBS Bar Schedule sheet, and neither workbook shows a repair prompt.
+  - The first export showed that the export had not fallen back to the saved Rebar choice: the
+    fields were missing. That was fixed before this run.
 
 ---
 

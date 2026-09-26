@@ -1721,6 +1721,25 @@ def rebar_steel_values(element):
     )
 
 
+def chosen_rebar_parameters():
+    """The Rebar tab's chosen fields, for the bars of BBS models.
+
+    A model with no rebar lists no Rebar parameters, so its own choice is
+    empty while the dialog is open on it; the choice saved in settings
+    (kept across models since v1.33.0) is used then. The BBS read keeps
+    these fields with each bar, and the export lays the Rebar sheets out
+    by them.
+    """
+    names = list(selected_parameters.get("Rebar") or [])
+    if not names:
+        try:
+            names = list((load_app_settings().get("selected") or {})
+                         .get("Rebar") or [])
+        except:
+            names = []
+    return names
+
+
 def bbs_rebar_level(rebar):
     """The level name of a bar in a BBS model, or "".
 
@@ -4358,22 +4377,6 @@ try:
             except:
                 pass
 
-        def bbs_rebar_parameters():
-            """The Rebar tab's chosen fields, kept with each BBS bar.
-
-            This model may have no rebar, so its own list can be empty;
-            the saved choice (kept across models since v1.33.0) is used
-            then.
-            """
-            names = list(selected_parameters.get("Rebar") or [])
-            if not names:
-                try:
-                    names = list((load_app_settings().get("selected") or {})
-                                 .get("Rebar") or [])
-                except:
-                    names = []
-            return names
-
         def attach_dialog_tabs():
             host = _DialogTabHost()
             host.window = window
@@ -4393,7 +4396,7 @@ try:
             host.rate_db_ready = rate_db_ready
             host.read_bbs_model = read_bbs_model
             host.pump_dialog = pump_dialog
-            host.bbs_rebar_parameters = bbs_rebar_parameters
+            host.bbs_rebar_parameters = chosen_rebar_parameters
 
             import site_items_tab
             import rate_analysis_tab
@@ -5329,6 +5332,7 @@ try:
                     # the workbook says when a model changed since.
                     bbs_steel = None
                     bbs_rebar_rows = None
+                    site_selected_parameters = selected_parameters
                     try:
                         from bbs_steel_engine import (
                             bbs_rebar_sheet_rows, load_bbs_store)
@@ -5339,11 +5343,17 @@ try:
                         # Rebar sheets show the BBS models' bars, with the
                         # Rebar tab's chosen fields in their order.
                         elif not element_data.get("Rebar"):
+                            rebar_names = chosen_rebar_parameters()
                             bbs_rebar_rows = bbs_rebar_sheet_rows(
-                                bbs_steel, selected_parameters.get("Rebar"))
+                                bbs_steel, rebar_names)
+                            # The site Rebar sheet shows the chosen fields
+                            # by name; this model's own list is empty.
+                            site_selected_parameters = dict(selected_parameters)
+                            site_selected_parameters["Rebar"] = rebar_names
                     except:
                         bbs_steel = None
                         bbs_rebar_rows = None
+                        site_selected_parameters = selected_parameters
 
                     # P14: this issue's own numbers, and the issue
                     # before it. The snapshot is filed only after the
@@ -5434,7 +5444,7 @@ try:
                             ),
                             generated_stamp=time.strftime("%Y-%m-%d %H:%M"),
                             include_formwork=is_formwork_enabled(),
-                            selected_parameters=selected_parameters,
+                            selected_parameters=site_selected_parameters,
                             assembly_profile=assembly_profile,
                             validation_report_path=validation_report_path,
                             unmapped_report=unmapped_report,

@@ -7218,7 +7218,11 @@ def main():
                     if str(row[0]).startswith("C."))
             and "BBS Bar Schedule" not in rebar_classic
             and "BBS Bar Schedule" not in rebar_site
-            and len(own_rebar["Rebar"]) == 1 + len(boq_fixture["Rebar"]),
+            and len(own_rebar["Rebar"]) == 1 + len(boq_fixture["Rebar"])
+            and dict((r[0], r[1:]) for r in dash_rows(
+                rebar_classic[dash.DASHBOARD_SHEET_NAME], "KEY FIGURES")
+            )["Rebar sets"] == (sum(e["sets"] for e in bbs.counted_entries(reloaded)),
+                                "nos", "From the BBS models - see the Rebar sheet"),
             "BBS a model without rebar shows its BBS models' bars on the Rebar, "
             "Rebar Summary and Rebar BBS sheets in both formats, the steel "
             "still counted once; a model with its own rebar keeps its own"
@@ -7514,8 +7518,12 @@ def main():
         and "safe_parameter_value(parameter)" in sheets_reader
         and "name not in REBAR_DERIVED_PARAMETERS" in sheets_reader
         and "elif not element_data.get(\"Rebar\"):" in col_script
-        and "bbs_rebar_sheet_rows(\n                                bbs_steel, selected_parameters.get(\"Rebar\"))"
-        in col_script
+        and "rebar_names = chosen_rebar_parameters()" in col_script
+        and "selected_parameters=site_selected_parameters," in col_script
+        and 'site_selected_parameters["Rebar"] = rebar_names' in col_script
+        and "host.bbs_rebar_parameters = chosen_rebar_parameters" in col_script
+        and '.get("Rebar") or [])' in extract_function_source(
+            col_script, "chosen_rebar_parameters")
         and col_script.count("bbs_rebar_rows=bbs_rebar_rows") == 2
         and "read_bbs_model(entry.get(\"path\"), names)" in sheets_tab
         and "parameter_names=names" in sheets_tab,
