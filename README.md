@@ -19,9 +19,9 @@ bridge state and granting or revoking short controlled-write sessions.
   2.7.12)**: `script.py` carries no `#! python3` first line, so pyRevit loads it on its default
   engine. **CP3123 (CPython 3.12.3)** stays the target engine.
 > **Engine note:** the engine modules under `Nudge.extension/lib/` are CPython-clean — 19 of the
-> 23 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`,
-> `header_colour.py`, `model_change_engine.py` and `dashboard_engine.py` have so far only been
-> measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF
+> 24 import and write a workbook on CP3123 (measured 2026-09-24), and `revision_engine.py`,
+> `header_colour.py`, `model_change_engine.py`, `dashboard_engine.py` and `bbs_steel_engine.py`
+> have so far only been measured on Python 3.12.10 in the harness. Only `script.py`'s pyRevit/WPF
 > layer keeps the tool on IronPython, because pyRevit still ships `pyrevit.forms` for IronPython
 > only — upstream master `6.5.5` carries the same CPython stub as the installed build (`6.5.3`).
 > From `v1.9.3`, the known IP27 fallback is silent so a healthy run does not force-open pyRevit
@@ -101,8 +101,9 @@ dependencies imported into the pyRevit host.
 
 **RCC BOQ Parameter Manager** (`BOQ.pushbutton`):
 
-- **One dialog, eleven tabs** — the six structural categories (Beam, Column, Structure Wall, Rebar,
-  Slab, Foundation) plus Assembly Profile, Site Items, Rate Analysis, Rate Database and Revision.
+- **One dialog, twelve tabs** — the six structural categories (Beam, Column, Structure Wall, Rebar,
+  Slab, Foundation) plus Assembly Profile, Site Items, Rate Analysis, Rate Database, Revision and
+  BBS Steel.
 - **Structural-only wall collection.** The Structure Wall tab reads `OST_Walls` whose Revit
   **Structural** flag is enabled; architectural walls are excluded.
 - **P4 Rebar quantity takeoff.** A dedicated Rebar tab/sheet collects `OST_Rebar` and exports Bar
@@ -114,6 +115,14 @@ dependencies imported into the pyRevit host.
   geometry and hosts. Variable sets remain separate by Rebar Element ID, preserve `Varies` in A-H,
   and expose their own Average Bar Length with an explicit status instead of inventing a cutting
   length. `Rebar Summary` totals bars, length, kilograms and tonnes by diameter.
+- **Steel from separate BBS models (`v1.42.0`).** When the reinforcement lives in separate BBS
+  models rather than in the structural model, the BBS Steel tab lists them and reads each once:
+  opened in the background (detached if workshared), its rebar weighed by the same code and
+  `d²/162` rule as the Rebar sheet, closed without saving. The element a model is for comes from
+  its file name and can be corrected, never from the rebar's host. The export adds that steel to
+  the Detailed BOQ's reinforcement items, the revision snapshot and the Dashboard, and writes a
+  `BBS Steel` sheet (per model, per diameter, element totals); a model that changed since it was
+  read, or could not be read, is named in the Dashboard's warnings.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -300,7 +309,7 @@ Revit-Extension/
 │   │   │       └── icon.png       <- pushbutton icon
 │   │   └── Brand.panel/
 │   │       └── BrandShowcase.pushbutton/   <- brand/theme live preview + Light/Dark QA
-│   └── lib/                       <- 19 dependency-free engine modules
+│   └── lib/                       <- 24 dependency-free engine modules + 6 dialog-tab modules
 │       ├── agent_export_job.py   <- headless Agent export job state
 │       ├── assembly_engine.py    <- P6 structural assembly components
 │       ├── authoring_spec.py     <- authoring/spec definitions
@@ -316,9 +325,10 @@ Revit-Extension/
 │       ├── revision_engine.py    <- P14 snapshots + Previous/Current comparison
 │       ├── model_change_engine.py <- P15 element-level Added/Deleted/Modified
 │       ├── dashboard_engine.py   <- P16 the whole BOQ on one page
+│       ├── bbs_steel_engine.py   <- steel read from separate BBS models, kept per model
 │       ├── header_colour.py      <- dialog header colour presets + readable text
-│       ├── *_tab.py              <- dialog handlers moved out of script.py: the four data
-│       │                            tabs and the category tabs' parameter lists
+│       ├── *_tab.py              <- dialog handlers moved out of script.py: the data tabs
+│       │                            (and the BBS Steel tab) and the parameter lists
 │       ├── rest_api.py           <- token/authentication + bounded serializers
 │       ├── rule_engine.py        <- P8 structural rules
 │       ├── settings_engine.py    <- persisted selections/options
@@ -373,7 +383,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 448 checks passed`.
+`RESULT: all 458 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -462,9 +472,10 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.41.0`. Every phase is done except the open-ended P8 split (`script.py` after
+is `v1.42.0`. Every phase is done except the open-ended P8 split (`script.py` after
 `v1.38.0`–`v1.39.0` moved the dialog handlers into `lib/`). P12's rate database holds real
-Gujarat R&B SOR 2024-25 rates since 2026-09-25.
+Gujarat R&B SOR 2024-25 rates since 2026-09-25. `v1.42.0` brings the steel of separate BBS models
+into the BOQ (BBS Steel tab and sheet).
 
 Since `v1.23.2` the following shipped. `v1.26.x` added P11 rate analysis (engine, sheet and tab).
 `v1.27.0`–`v1.29.0` added the P13 `Detailed BOQ` plus `Concrete Summary` and `Formwork Summary` in

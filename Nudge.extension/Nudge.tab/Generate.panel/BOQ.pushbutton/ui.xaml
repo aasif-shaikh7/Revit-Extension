@@ -1190,6 +1190,62 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="BBS Steel">
+                <Grid Margin="18">
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="BBS Steel" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <TextBlock TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left"
+                                   Style="{DynamicResource BrandBodyText}"
+                                   Text="When this model's reinforcement lives in separate BBS models, add them here and read them. Each model is opened in the background, its rebar weighed the same way as the Rebar sheet (diameter squared / 162 kg per metre), and closed without saving. The next export adds the steel to the Detailed BOQ (section C), the Dashboard and a BBS Steel sheet. Reading takes Revit a minute or more per model, so it is done here once, not at every export - read again after a BBS model changes."/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox Grid.Column="0" Header="BBS models of this model" Margin="0,0,8,0">
+                            <ListBox
+                                x:Name="BbsList"
+                                Margin="5"
+                                DisplayMemberPath="Name"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                BorderBrush="{DynamicResource BorderBrush2}"/>
+                        </GroupBox>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="220">
+                            <Button x:Name="BbsAdd" Content="Add BBS models..." Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <Button x:Name="BbsRemove" Content="Remove selected" Height="34" Margin="0,0,0,12" Style="{DynamicResource BrandSecondaryButton}"/>
+                            <TextBlock Text="Element of the selected model" Style="{DynamicResource BrandLabelText}" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="BbsGroupSelector" Margin="0,0,0,12" Style="{DynamicResource BrandComboBox}"
+                                      ToolTip="Guessed from the file name. The steel is billed to this element, whatever the rebar is hosted on."/>
+                            <Button x:Name="BbsReadChanged" Content="Read new and changed" Height="34" Margin="0,0,0,6" Style="{DynamicResource BrandSecondaryButton}"
+                                    ToolTip="Reads the models not read yet, changed since they were read, or that failed last time."/>
+                            <Button x:Name="BbsReadAll" Content="Read all again" Height="34" Style="{DynamicResource BrandSecondaryButton}"/>
+                        </StackPanel>
+
+                    </Grid>
+
+                    <TextBlock x:Name="BbsSummary" Grid.Row="2" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandBodyText}" Text="No BBS models added."/>
+
+                    <TextBlock x:Name="BbsFolder" Grid.Row="3" Margin="0,6,0,0" TextWrapping="Wrap"
+                               Style="{DynamicResource BrandLabelText}" Text=""/>
+
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
 

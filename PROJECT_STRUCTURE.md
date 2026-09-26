@@ -114,12 +114,14 @@ Nudge.extension/
     ├── revision_engine.py   <- P14 snapshot per issue + Previous/Current comparison (pure Python)
     ├── model_change_engine.py <- P15 element records + Added/Deleted/Modified (pure Python)
     ├── dashboard_engine.py  <- P16 the whole BOQ on one page (pure Python)
+    ├── bbs_steel_engine.py  <- steel of separate BBS models, kept per model (pure Python)
     ├── header_colour.py     <- dialog header colour: presets, hex, readable text (pure Python)
     ├── site_items_tab.py    <- P7 Site Items tab handlers, attach(host) (dialog only)
     ├── rate_analysis_tab.py <- P11 Rate Analysis tab handlers, attach(host) (dialog only)
     ├── rate_database_tab.py <- P12 Rate Database tab handlers, attach(host) (dialog only)
     ├── revision_tab.py      <- P14 Revision tab handlers, attach(host) (dialog only)
     ├── parameter_lists_tab.py <- category tabs' Available/Selected handlers, attach(host)
+    ├── bbs_steel_tab.py     <- BBS Steel tab handlers, attach(host) (dialog only)
     ├── stack_runner.py      <- runs the workbook writers on a 64 MB-stack thread (pure Python)
     ├── crash_trail.py       <- one flushed line per step, so a hard crash names its step
     ├── authoring_spec.py    <- declarative model specs + expected quantities (pure Python)
@@ -137,13 +139,14 @@ Nudge.extension/
 - **`Brand.panel`** → the **Brand Showcase** button — live preview of the brand
   resources; Light/Dark visual QA.
 - **`lib/`** → shared, pushbutton-independent code and WPF resource
-  dictionaries. It also hosts the **23 pure-Python engine modules** and, since v1.38.0-v1.39.0,
-  **five dialog-tab modules** (`*_tab.py`: handlers moved out of `script.py`, built around the open
+  dictionaries. It also hosts the **24 pure-Python engine modules** and, since v1.38.0-v1.39.0,
+  **six dialog-tab modules** (the sixth, `bbs_steel_tab.py`, since v1.42.0) (`*_tab.py`: handlers moved out of `script.py`, built around the open
   dialog by `attach(host)`; they import no Revit symbol and receive the document only as its
   title) listed in the
   tree above (`settings_engine`, `quantity_engine`, `formwork_engine`,
   `rebar_engine`, `assembly_engine`, `costing_engine`, `rate_database_engine`,
-  `revision_engine`, `header_colour`, `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
+  `revision_engine`, `model_change_engine`, `dashboard_engine`, `bbs_steel_engine`,
+  `header_colour`, `export_engine`, `export_validation`, `validation_engine`, `rule_engine`,
   `parameter_engine`, `site_items_engine`, `stack_runner`, `crash_trail`,
   `authoring_spec`, `agent_export_job`, `rest_api`, and `theme_manager` on the
   UI side) that the BOQ

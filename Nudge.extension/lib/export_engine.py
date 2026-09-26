@@ -2121,7 +2121,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      unmapped_report=None, site_items=None,
                      rate_analysis=None, rate_database=None,
                      project_location="", revision_snapshots=None,
-                     header_colour=None):
+                     header_colour=None, bbs_steel=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2155,7 +2155,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             rate_database=rate_database,
             project_location=project_location,
             revision_snapshots=revision_snapshots,
-            header_colour=header_colour
+            header_colour=header_colour,
+            bbs_steel=bbs_steel
         )
 
     # Only categories that actually contain at least one element produce a
@@ -2358,6 +2359,19 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                 list(range(3, 13)) + [15, 16] + list(range(18, 22))
             )
 
+    # BBS models: steel read from separate BBS models, one row per model,
+    # next to the model's own rebar sheets. Written only when the model has
+    # BBS models listed. Their steel joins section C of the Detailed BOQ.
+    from bbs_steel_engine import (
+        BBS_STEEL_SHEET_NAME, bbs_numeric_columns, bbs_steel_rows,
+        build_bbs_steel_table)
+    bbs_table = build_bbs_steel_table(bbs_steel)
+    if len(bbs_table) > 1:
+        sheet_names.append(BBS_STEEL_SHEET_NAME)
+        sheet_rows[BBS_STEEL_SHEET_NAME] = bbs_table
+        quantity_column_map[BBS_STEEL_SHEET_NAME] = bbs_numeric_columns(bbs_table)
+    steel_rows = (data_result.get("Rebar") or []) + bbs_steel_rows(bbs_steel)
+
     # Build the BOQ Summary sheet from the recorded category totals.
     # Each cell references its category TOTAL row directly, so Excel
     # keeps every figure in sync with the underlying element sheets.
@@ -2546,7 +2560,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     detailed_boq = build_detailed_boq_table(
         data_result,
         summary_info,
-        data_result.get("Rebar") or [],
+        steel_rows,
         rate_database=rate_database,
         project_location=project_location,
         rate_date=str(generated_stamp or "")[:10]
@@ -2633,7 +2647,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         project_location=project_location,
         rate_date=str(generated_stamp or "")[:10],
         unmapped_report=unmapped_report,
-        revision_snapshots=revision_snapshots)
+        revision_snapshots=revision_snapshots,
+        bbs_steel=bbs_steel)
     if len(dashboard_table) > 1:
         sheet_names.insert(0, DASHBOARD_SHEET_NAME)
         sheet_rows[DASHBOARD_SHEET_NAME] = dashboard_table
@@ -3305,7 +3320,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     unmapped_report=None, site_items=None,
                     rate_analysis=None, rate_database=None,
                     project_location="", revision_snapshots=None,
-                    header_colour=None):
+                    header_colour=None, bbs_steel=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -3411,6 +3426,24 @@ def write_site_xlsx(file_path, data_result, project_name="",
             sheet_rows[p5_sheet_name] = p5_table
             sheet_widths[p5_sheet_name] = p5_widths
 
+    # BBS models, in the site title bands, next to the rebar sheets.
+    _trail("site | BBS steel")
+    from bbs_steel_engine import (
+        BBS_STEEL_SHEET_NAME, bbs_steel_rows, build_bbs_steel_table)
+    bbs_plain = build_bbs_steel_table(bbs_steel)
+    if len(bbs_plain) > 1:
+        bbs_table, bbs_widths = build_site_tabular_sheet(
+            project_name, "BBS STEEL - REINFORCEMENT FROM BBS MODELS",
+            bbs_plain, band_title="RCC - BBS STEEL")
+        if len(bbs_widths) > 3:
+            bbs_widths[0] = 16          # element
+            bbs_widths[2] = 52          # BBS model file name
+            bbs_widths[-1] = 36         # status
+        sheet_names.append(BBS_STEEL_SHEET_NAME)
+        sheet_rows[BBS_STEEL_SHEET_NAME] = bbs_table
+        sheet_widths[BBS_STEEL_SHEET_NAME] = bbs_widths
+    steel_rows = (data_result.get("Rebar") or []) + bbs_steel_rows(bbs_steel)
+
     _trail("site | structural assembly")
     from assembly_engine import build_structural_assembly_table
     assembly_plain_table = build_structural_assembly_table(data_result, assembly_profile)
@@ -3490,7 +3523,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         (DETAILED_BOQ_SHEET_NAME, "DETAILED BILL OF QUANTITIES",
          "RCC - DETAILED BOQ",
          build_detailed_boq_table(data_result, {},
-                                  data_result.get("Rebar") or [],
+                                  steel_rows,
                                   site_band_offset,
                                   rate_database=rate_database,
                                   project_location=project_location,
@@ -3639,7 +3672,8 @@ def write_site_xlsx(file_path, data_result, project_name="",
         project_location=project_location,
         rate_date=str(generated_stamp or "")[:10],
         unmapped_report=unmapped_report,
-        revision_snapshots=revision_snapshots)
+        revision_snapshots=revision_snapshots,
+        bbs_steel=bbs_steel)
     if len(dashboard_plain) > 1:
         dashboard_table, dashboard_widths = build_site_tabular_sheet(
             project_name, "PROJECT DASHBOARD", dashboard_plain,
