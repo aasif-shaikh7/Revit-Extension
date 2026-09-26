@@ -22,6 +22,31 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.47.0] - 2026-09-26
+
+**Beam shuttering follows the Cut Length.** This was decided with the owner (2026-09-26): Revit
+already measures a beam's concrete along its Cut Length, and a joint needs no formwork, because
+the concrete there is the column's. The shuttering was taken along the drawn Length, so every
+cut-back beam was over-measured.
+
+### Changed
+- A beam's formwork length (`Qty: Dim L`, and so `Qty: Shuttering` and the site sheet's L and
+  SHUTTERING) is its **Cut Length**. The drawn Length is the fallback when there is no Cut
+  Length. `Qty: Length (m)` itself is unchanged, and columns, walls, slabs and foundations are
+  untouched.
+- The next export of UMA NIWAS files a new revision, because the shuttering moved.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 471 checks passed**. `scripts/ip27_compile.ps1`: 31
+  files.
+- **Live, Revit 2025 / IronPython (`pyrevit run`), a copy of the UMA NIWAS structural model,
+  through the real `get_element_quantities` on all 519 beams:**
+  - Only the 12 beams whose Cut Length differs changed. For example, B(b) 300x550 went from
+    1.75 to 0.21 m2 and B43(a) 200x550 from 4.88 to 4.00 m2.
+  - Beam shuttering went from **2,295.27 to 2,287.64 m2 (-7.63)**.
+
+---
+
 ## [v1.46.0] - 2026-09-26
 
 **The Rebar sheets of the structural model's export now come from its BBS models.** The owner:

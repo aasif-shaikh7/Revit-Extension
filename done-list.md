@@ -1584,7 +1584,8 @@ Checked by pricing: a Navsari project is priced, a Mumbai project is not.
 - Tested (harness): 463 checks.
 - Live: the UMA NIWAS export shows it for all 519 beams.
 - Live: in the 1st level BBS beam model, 327 of 332 bars carry their host beam's Cut Length.
-- Open: shuttering still uses the drawn Length (7.62 m2 over, on 12 beams) - the owner decides.
+- `v1.47.0`: shuttering follows the Cut Length. Live, UMA NIWAS beam shuttering went from 2,295.27
+  to 2,287.64 m2.
 
 ## BBS-02 - BBS Bar Schedule (`v1.44.0`, 2026-09-26)
 

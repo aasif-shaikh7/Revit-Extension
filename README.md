@@ -391,7 +391,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 470 checks passed`.
+`RESULT: all 471 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -480,7 +480,7 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.46.0`. Every phase is done except the open-ended P8 split (`script.py` after
+is `v1.47.0`. Every phase is done except the open-ended P8 split (`script.py` after
 `v1.38.0`–`v1.39.0` moved the dialog handlers into `lib/`). P12's rate database holds real
 Gujarat R&B SOR 2024-25 rates since 2026-09-25. `v1.42.0` brings the steel of separate BBS models
 into the BOQ (BBS Steel tab and sheet).
