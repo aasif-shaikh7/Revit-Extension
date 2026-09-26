@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.45.0'
+__version__ = '1.46.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.45.0'
+SCRIPT_VERSION = '1.46.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -573,7 +573,8 @@ def build_element_parameter_context(element, type_cache=None):
 
     if type_id is not None:
         try:
-            type_element = doc.GetElement(type_id)
+            # The element's own document: a BBS model is not `doc`.
+            type_element = (getattr(element, "Document", None) or doc).GetElement(type_id)
         except:
             type_element = None
 
@@ -1766,15 +1767,16 @@ def bbs_rebar_level(rebar):
     return ""
 
 
-def read_bbs_model(path):
+def read_bbs_model(path, parameter_names=None):
     """Weigh the rebar of one BBS model, opened in the background.
 
     The model is opened without being shown - detached from its central
     file when it is workshared, so nothing is written back to it - and
     closed again without saving. A model this Revit already has open is
     read where it is and left open. Returns, for every Rebar/set in it,
-    its steel values and (v1.44.0) its full Rebar row, and the Revit
-    version that read it.
+    its steel values and (v1.44.0) its full Rebar row - with (v1.46.0)
+    the Rebar parameters in `parameter_names`, read as a Rebar sheet
+    exported from this model reads them - and the Revit version.
     """
     app = doc.Application
     wanted = os.path.normcase(os.path.abspath(path))
@@ -1805,6 +1807,12 @@ def read_bbs_model(path):
     try:
         values = []
         rows = []
+        # The chosen Rebar parameters that are real parameters; the
+        # automatic fields (Rebar: ...) come from get_rebar_quantities.
+        wanted_names = [
+            name for name in (parameter_names or [])
+            if name and name not in REBAR_DERIVED_PARAMETERS]
+        type_parameter_cache = {}
         rebars = (
             DB.FilteredElementCollector(bbs_doc)
             .OfCategory(DB.BuiltInCategory.OST_Rebar)
@@ -1816,6 +1824,16 @@ def read_bbs_model(path):
             # Schedule, read by the same code as this model's Rebar sheet.
             row = OrderedDict(get_rebar_quantities(rebar))
             row["Level"] = bbs_rebar_level(rebar)
+            if wanted_names:
+                context = build_element_parameter_context(
+                    rebar, type_parameter_cache)
+                for name in wanted_names:
+                    try:
+                        parameter, _scope = find_parameter_in_context(
+                            context, name)
+                    except:
+                        parameter = None
+                    row[name] = safe_parameter_value(parameter)
             rows.append(row)
             values.append({
                 "Diameter (mm)": row.get("Rebar: Diameter (mm)", ""),
@@ -4340,6 +4358,22 @@ try:
             except:
                 pass
 
+        def bbs_rebar_parameters():
+            """The Rebar tab's chosen fields, kept with each BBS bar.
+
+            This model may have no rebar, so its own list can be empty;
+            the saved choice (kept across models since v1.33.0) is used
+            then.
+            """
+            names = list(selected_parameters.get("Rebar") or [])
+            if not names:
+                try:
+                    names = list((load_app_settings().get("selected") or {})
+                                 .get("Rebar") or [])
+                except:
+                    names = []
+            return names
+
         def attach_dialog_tabs():
             host = _DialogTabHost()
             host.window = window
@@ -4359,6 +4393,7 @@ try:
             host.rate_db_ready = rate_db_ready
             host.read_bbs_model = read_bbs_model
             host.pump_dialog = pump_dialog
+            host.bbs_rebar_parameters = bbs_rebar_parameters
 
             import site_items_tab
             import rate_analysis_tab
@@ -5293,13 +5328,22 @@ try:
                     # opened here - the export uses what was last read, and
                     # the workbook says when a model changed since.
                     bbs_steel = None
+                    bbs_rebar_rows = None
                     try:
-                        from bbs_steel_engine import load_bbs_store
+                        from bbs_steel_engine import (
+                            bbs_rebar_sheet_rows, load_bbs_store)
                         bbs_steel = load_bbs_store(safe_text(doc.Title, ""))
                         if not bbs_steel.get("files"):
                             bbs_steel = None
+                        # v1.46.0: this model has no rebar of its own - its
+                        # Rebar sheets show the BBS models' bars, with the
+                        # Rebar tab's chosen fields in their order.
+                        elif not element_data.get("Rebar"):
+                            bbs_rebar_rows = bbs_rebar_sheet_rows(
+                                bbs_steel, selected_parameters.get("Rebar"))
                     except:
                         bbs_steel = None
+                        bbs_rebar_rows = None
 
                     # P14: this issue's own numbers, and the issue
                     # before it. The snapshot is filed only after the
@@ -5400,7 +5444,8 @@ try:
                             revision_snapshots=revision_snapshots,
                             header_colour=workbook_header_colour,
                             site_items=site_items,
-                            bbs_steel=bbs_steel
+                            bbs_steel=bbs_steel,
+                            bbs_rebar_rows=bbs_rebar_rows
                         )
 
                     else:
@@ -5429,7 +5474,8 @@ try:
                             revision_snapshots=revision_snapshots,
                             header_colour=workbook_header_colour,
                             site_items=site_items,
-                            bbs_steel=bbs_steel
+                            bbs_steel=bbs_steel,
+                            bbs_rebar_rows=bbs_rebar_rows
                         )
 
                     trail("export | workbook written")

@@ -49,8 +49,8 @@ BOQ Parameter Manager for Beam/Column/Structure Wall/Slab/Foundation/Rebar, disc
 foundation subtypes, collects concrete/formwork/rebar quantities, and writes a dependency-free XLSX workbook.
 The dialog has **twelve tabs**: the six categories plus Assembly Profile, Site Items, Rate
 Analysis, Rate Database, Revision and BBS Steel. The workbook carries, as the data allows: one sheet per category, Rebar Summary,
-Rebar BBS, BBS Steel (steel read from separate BBS models), BBS Bar Schedule (their every bar),
-Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
+Rebar BBS (from the BBS models' bars when the model has no rebar of its own), BBS Steel (steel
+read from separate BBS models), Structural Assembly, Rate Analysis, Rate Database, BOQ Summary, BOQ by Level, BOQ by
 Grade, Concrete Summary, Formwork Summary, Detailed BOQ, BOQ Revision, Model Changes, Site Items,
 Unmapped Elements and Costing - with a Dashboard right after the Summary cover.
 `Nudge.extension/lib/` contains the split pure-Python engines and

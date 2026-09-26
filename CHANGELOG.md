@@ -22,6 +22,48 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.46.0] - 2026-09-26
+
+**The Rebar sheets of the structural model's export now come from its BBS models.** The owner:
+"mujhe model se rebar quantity nahi chahiye, BBS model se chahiye" (I don't want the rebar
+quantity from the model, I want it from the BBS models). They asked for it in the form they
+know: the Rebar sheets a BBS model's own export gives, with their chosen parameters.
+
+### Changed
+- **When the structural model has no rebar of its own**, its Rebar, Rebar Summary and Rebar BBS
+  sheets are filled from its BBS models' bars, in both formats. Each row is laid out like a
+  Rebar sheet exported from the BBS model itself:
+  - Element ID and Level;
+  - the Rebar tab's chosen fields in their order - on UMA NIWAS these are ID_LIC, LEVEL_V,
+    ID_V, ITEM, Type, Spacing, A-D;
+  - the other automatic Rebar fields, including Beam Cut Length;
+  - last, `Rebar: BBS Model`, the file the bar came from.
+
+  A model that has rebar of its own keeps its own Rebar sheets.
+- **The steel is still counted once.** The Detailed BOQ, the snapshot and the Dashboard take it
+  from the BBS totals, never from these rows.
+- **The separate BBS Bar Schedule sheet (v1.44.0) is gone.** It is replaced by the Rebar sheets
+  above. BBS Steel stays.
+- **Reading a BBS model now also reads the Rebar tab's chosen parameters from every bar.**
+  - The values are read the way a Rebar sheet exported from that model reads them:
+    `build_element_parameter_context`, which now looks up types in the element's own document.
+  - If this model's own selection is empty, the choice saved in settings is used.
+  - The store keeps them with each bar. A model read before this version still counts, but its
+    Rebar rows show those fields blank until it is read again.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 470 checks passed**. The Rebar rows are checked for
+  their column order, a chosen field that was never read, and the BBS model. The workbooks are
+  checked for:
+  - the Rebar, Rebar Summary and Rebar BBS sheets present in both formats;
+  - the Rebar Summary equal to the bars;
+  - the Detailed BOQ steel equal to the BBS totals alone;
+  - a model's own rebar winning;
+  - no BBS Bar Schedule.
+- `scripts/ip27_compile.ps1`: 31 files.
+
+---
+
 ## [v1.45.0] - 2026-09-26
 
 **Beam Cut Length for beam bars hosted on a column.** The owner exported a BBS beam model and

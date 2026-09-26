@@ -2121,7 +2121,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
                      unmapped_report=None, site_items=None,
                      rate_analysis=None, rate_database=None,
                      project_location="", revision_snapshots=None,
-                     header_colour=None, bbs_steel=None):
+                     header_colour=None, bbs_steel=None, bbs_rebar_rows=None):
     """
     Write a dependency-free XLSX workbook using Open XML parts.
     This avoids requiring Excel, openpyxl, or other external packages
@@ -2156,8 +2156,15 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             project_location=project_location,
             revision_snapshots=revision_snapshots,
             header_colour=header_colour,
-            bbs_steel=bbs_steel
+            bbs_steel=bbs_steel,
+            bbs_rebar_rows=bbs_rebar_rows
         )
+
+    # v1.46.0: a model with no rebar of its own shows the bars of its BBS
+    # models in the Rebar, Rebar Summary and Rebar BBS sheets instead -
+    # laid out as a Rebar sheet exported from the BBS model itself. Their
+    # steel is still counted once, below, from the BBS totals.
+    rebar_sheet_rows = data_result.get("Rebar") or list(bbs_rebar_rows or [])
 
     # Only categories that actually contain at least one element produce a
     # sheet. Entirely empty tabs (e.g. an unused Slab category) are omitted
@@ -2173,6 +2180,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
             "Rebar"
         )
         if data_result.get(category_name)
+        or (category_name == "Rebar" and rebar_sheet_rows)
     ]
 
     sheet_names = []
@@ -2188,7 +2196,8 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     summary_info = {}
 
     for sheet_name in element_categories:
-        rows = data_result.get(sheet_name, [])
+        rows = (rebar_sheet_rows if sheet_name == "Rebar"
+                else data_result.get(sheet_name, []))
 
         sheet_names.append(sheet_name)
 
@@ -2336,7 +2345,7 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
     # P5: keep raw Rebar rows intact and add two review-ready schedules.
     # Revit Bar Length is the cutting-length authority; the BBS displays
     # A-H, bend diameter and hooks so every shape remains auditable.
-    rebar_source_rows = data_result.get("Rebar") or []
+    rebar_source_rows = rebar_sheet_rows
     if rebar_source_rows:
         from rebar_engine import (
             build_rebar_bbs_table,
@@ -2370,17 +2379,6 @@ def write_basic_xlsx(file_path, data_result, parameter_metadata=None,
         sheet_names.append(BBS_STEEL_SHEET_NAME)
         sheet_rows[BBS_STEEL_SHEET_NAME] = bbs_table
         quantity_column_map[BBS_STEEL_SHEET_NAME] = bbs_numeric_columns(bbs_table)
-    # v1.44.0: every bar of those models, as a cutting schedule. For
-    # reading only - the steel above is what the BOQ counts.
-    from bbs_steel_engine import (
-        BBS_BAR_SCHEDULE_SHEET_NAME, bbs_bar_schedule_numeric_columns,
-        build_bbs_bar_schedule_table)
-    bar_schedule = build_bbs_bar_schedule_table(bbs_steel)
-    if len(bar_schedule) > 1:
-        sheet_names.append(BBS_BAR_SCHEDULE_SHEET_NAME)
-        sheet_rows[BBS_BAR_SCHEDULE_SHEET_NAME] = bar_schedule
-        quantity_column_map[BBS_BAR_SCHEDULE_SHEET_NAME] = (
-            bbs_bar_schedule_numeric_columns())
     steel_rows = (data_result.get("Rebar") or []) + bbs_steel_rows(bbs_steel)
 
     # Build the BOQ Summary sheet from the recorded category totals.
@@ -3339,7 +3337,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
                     unmapped_report=None, site_items=None,
                     rate_analysis=None, rate_database=None,
                     project_location="", revision_snapshots=None,
-                    header_colour=None, bbs_steel=None):
+                    header_colour=None, bbs_steel=None, bbs_rebar_rows=None):
     """
     Write the v1.4.0 site-format workbook.
 
@@ -3376,10 +3374,15 @@ def write_site_xlsx(file_path, data_result, project_name="",
 
     sheet_meta = {}
 
+    # v1.46.0: as in the classic workbook, a model with no rebar of its
+    # own shows its BBS models' bars on the Rebar sheets.
+    rebar_sheet_rows = data_result.get("Rebar") or list(bbs_rebar_rows or [])
+
     for category_name in SITE_CATEGORY_ORDER:
 
         rows = _sort_site_rows(
-            data_result.get(category_name) or []
+            rebar_sheet_rows if category_name == "Rebar"
+            else data_result.get(category_name) or []
         )
 
         if not rows:
@@ -3415,7 +3418,7 @@ def write_site_xlsx(file_path, data_result, project_name="",
         site_detail_meta[category_name] = meta
 
     _trail("site | rebar summary + BBS")
-    rebar_source_rows = data_result.get("Rebar") or []
+    rebar_source_rows = rebar_sheet_rows
     if rebar_source_rows:
         from rebar_engine import (
             build_rebar_bbs_table,
@@ -3461,20 +3464,6 @@ def write_site_xlsx(file_path, data_result, project_name="",
         sheet_names.append(BBS_STEEL_SHEET_NAME)
         sheet_rows[BBS_STEEL_SHEET_NAME] = bbs_table
         sheet_widths[BBS_STEEL_SHEET_NAME] = bbs_widths
-    # v1.44.0: every bar of those models, as a cutting schedule.
-    from bbs_steel_engine import (
-        BBS_BAR_SCHEDULE_SHEET_NAME, build_bbs_bar_schedule_table)
-    bar_plain = build_bbs_bar_schedule_table(bbs_steel)
-    if len(bar_plain) > 1:
-        bar_table, bar_widths = build_site_tabular_sheet(
-            project_name, "BAR SCHEDULE - FROM BBS MODELS", bar_plain,
-            band_title="RCC - REINFORCEMENT BBS")
-        if len(bar_widths) > 2:
-            bar_widths[0] = 14          # element
-            bar_widths[1] = 52          # BBS model file name
-        sheet_names.append(BBS_BAR_SCHEDULE_SHEET_NAME)
-        sheet_rows[BBS_BAR_SCHEDULE_SHEET_NAME] = bar_table
-        sheet_widths[BBS_BAR_SCHEDULE_SHEET_NAME] = bar_widths
     steel_rows = (data_result.get("Rebar") or []) + bbs_steel_rows(bbs_steel)
 
     _trail("site | structural assembly")
