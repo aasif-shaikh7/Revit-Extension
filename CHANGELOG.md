@@ -58,6 +58,13 @@ BBS models host a beam's main and extra bars on the **column**, and a column has
   - Column model: **0 of 3,812** column bars took a beam.
   - Foundation model: unaffected.
   - Beam-hosted bars are unchanged, and so is the steel in every model.
+- **Live export, test Revit, a copy of the structural model, after the 9 beam models were read
+  again:**
+  - Site and classic both passed with 0 validation mismatches.
+  - The BBS Bar Schedule's `Beam Cut Length (m)` is filled on 1,861 of 1,862 beam rows, and on
+    26 of the 27 rows of beam bars hosted on columns.
+  - Both workbooks opened in Excel 16 with no repair prompt; the schedule totals
+    132,379.003 kg.
 
 ---
 
