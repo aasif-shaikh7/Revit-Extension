@@ -22,6 +22,34 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.48.2] - 2026-09-26
+
+**Counts show as counts in the classic workbook: 8,652, not 8,652.00.** This is the cosmetic noted
+since v1.41.0 ("counts as 62.00").
+
+### Changed
+- `styles.xml` gains one number format, **165**: `##,##0` with the same Indian lakh and crore
+  grouping as format 164, and no decimals. It also gains two cell styles: `STYLE_INTEGER` (15)
+  and its bold totals twin `STYLE_TOTAL_INTEGER` (16). Nothing else in `styles.xml` moved.
+- In `build_xlsx_sheet_xml`:
+  - a whole number in a number column, or in a totals row, takes the count style;
+  - a formula in a count column (`Qty: Count`, `Elements`, `Rebar Sets`, `Number of Bars`,
+    `Quantity`, `Rebar: Quantity`), such as the TOTAL that sums element counts, is a count too;
+  - measurements (floats) keep `1,23,456.78`.
+- Values are unchanged; only their display is. The site workbook was already right.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 474 checks passed**.
+  - The v1.36.0 styles digest check now takes the three additions back out and still requires
+    the shipped digest.
+  - A new check covers counts, their totals and measurements side by side.
+- `scripts/ip27_compile.ps1`: 31 files.
+- **Real Excel 16**, on a workbook built from the real BBS store: BBS Steel GRAND TOTAL sets
+  **8,652** next to 1,32,379.00 kg; Dashboard Rebar sets 8,652 and BBS models 20; Rebar Summary
+  bars 49,734; the Beam sheet's Qty: Count TOTAL 2. No repair prompt.
+
+---
+
 ## [v1.48.1] - 2026-09-26
 
 ### Removed

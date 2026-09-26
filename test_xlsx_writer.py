@@ -238,7 +238,7 @@ def main():
     for path, _ in texts:
         print("Source: {}".format(os.path.relpath(path, REPO_DIR)))
 
-    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
+    CONSTANT_LINES = ['STYLE_DEFAULT = 0', 'STYLE_HEADER = 1', 'STYLE_NUMBER = 2', 'STYLE_TOTAL_TEXT = 3', 'STYLE_TOTAL_NUMBER = 4', 'STYLE_SITE_TITLE = 5', 'STYLE_SITE_META = 6', 'STYLE_SITE_SUBTITLE = 7', 'STYLE_SITE_BAND = 8', 'STYLE_SITE_SUBBAND = 9', 'STYLE_SITE_NUM = 10', 'STYLE_SITE_MM = 11', 'STYLE_SITE_TOTAL_NUM = 12', 'STYLE_SITE_TOTAL_TEXT = 13', 'STYLE_SITE_PLAIN = 14', 'STYLE_INTEGER = 15', 'STYLE_TOTAL_INTEGER = 16', 'SITE_CATEGORY_ORDER = ("Beam", "Column", "Structure Wall", "Slab", "Foundation", "Rebar")', 'SITE_DETAIL_BAND_ROWS = (5, 6)', 'SITE_DETAIL_DATA_START_ROW = 7', 'SITE_DETAIL_COLUMN_WIDTHS = [6, 30, 8, 8, 8, 12, 14, 14]', 'DEFAULT_FORMWORK_RULES = {"enabled": True, "deduction_pct": {"Column": 0.0, "Beam": 0.0, "Structure Wall": 0.0, "Slab": 0.0, "Foundation": 0.0}}', 'formwork_rules = {"enabled": DEFAULT_FORMWORK_RULES["enabled"], "deduction_pct": dict(DEFAULT_FORMWORK_RULES["deduction_pct"])}']
     CONSTANT_LINES.append('DEFAULT_ASSEMBLY_PROFILE = {"id": "global-custom", "name": "Global / Custom", "edition": "1.0.0", "source": "Project specification / applicable local SOR", "binding_wire_factor": None, "cover_block_factor": None, "labour_factor": None}')
 
     import time
@@ -6181,14 +6181,50 @@ def main():
     import export_engine as _wb
 
     default_styles = _wb.build_xlsx_styles_xml()
+    # v1.48.2 added exactly one number format (165, whole counts) and two
+    # cell styles (15, 16) at the end. Taken back out, what is left must
+    # still be byte-for-byte the v1.36.0 digest - nothing else moved.
+    count_additions = (
+        '<numFmt numFmtId="165" formatCode="{0}"/>'.format(
+            _wb.xml_escape(_wb.INDIAN_INTEGER_FORMAT)),
+        '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>',
+        '<xf numFmtId="165" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>',
+    )
+    v136_styles = default_styles
+    for addition in count_additions:
+        assert v136_styles.count(addition) == 1, addition
+        v136_styles = v136_styles.replace(addition, "")
+    v136_styles = v136_styles.replace('<numFmts count="2">', '<numFmts count="1">').replace(
+        '<cellXfs count="17">', '<cellXfs count="15">')
     check(
-        _hashlib.sha256(default_styles.encode("utf-8")).hexdigest()
+        _hashlib.sha256(v136_styles.encode("utf-8")).hexdigest()
         == "887a183d3858a1bd6264c746782cf898b76a17d65c574b282cf835c882cfa70c"
         and _wb.build_xlsx_styles_xml("#C8102E") == default_styles
         and _wb.build_xlsx_styles_xml("not a colour") == default_styles
         and _wb.build_xlsx_styles_xml(None) == default_styles,
         "With no header colour chosen, the workbook styles are byte-for-byte "
         "what v1.36.0 wrote"
+    )
+    # v1.48.2: counts show without decimals - a whole number in a number
+    # column, and the TOTAL formula of a count column; measurements keep
+    # their two decimals.
+    count_sheet = _wb.build_xlsx_sheet_xml([
+        ["Element ID", "Qty: Volume (m3)", "Qty: Count", "Value"],
+        ["1", 1.5, 1, 8652],
+        ["2", 2.25, 1, 873.7],
+        ["TOTAL", ("FORMULA", "SUM(B2:B3)"), ("FORMULA", "SUM(C2:C3)"), 8652],
+    ], [2, 3, 4])
+    count_styles = dict(re.findall(r'<c r="([A-Z]+\d+)" s="(\d+)"', count_sheet))
+    check(
+        count_styles.get("B2") == "2" and count_styles.get("C2") == "15"
+        and count_styles.get("D2") == "15" and count_styles.get("D3") == "2"
+        and count_styles.get("B4") == "4" and count_styles.get("C4") == "16"
+        and count_styles.get("D4") == "16"
+        and '<numFmt numFmtId="165" formatCode="[&gt;=10000000]##\\,##\\,##\\,##0;'
+            '[&gt;=100000]##\\,##\\,##0;##,##0"/>' in default_styles,
+        "Counts show as 1,23,456 with no decimals - whole numbers and a count "
+        "column's TOTAL - while measurements keep 1,23,456.78 "
+        "(got {0})".format(count_styles)
     )
     navy_styles = _wb.build_xlsx_styles_xml("#1f3864")
     gold_styles = _wb.build_xlsx_styles_xml("#FFE699")
