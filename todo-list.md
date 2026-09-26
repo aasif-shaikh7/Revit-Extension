@@ -58,6 +58,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P15 | Model Change Detection (added/modified/deleted) | 3/5/5/1 | **done** (`v1.40.0` `lib/model_change_engine.py`, element records in every snapshot, a `Model Changes` sheet in both workbooks; decisions left to the tool by the owner, recorded in CHANGELOG) |
 | P16 | Structural Dashboard | 3/4/3/4 | **done** (`v1.41.0` `lib/dashboard_engine.py`, a Dashboard sheet after Summary in both workbooks; cost equals the Detailed BOQ's amounts) |
 | BBS-01 | Steel from separate BBS models (BBS Steel tab + sheet) | — | **done** (`v1.42.0` `lib/bbs_steel_engine.py`, `lib/bbs_steel_tab.py`, `read_bbs_model`; UMA NIWAS's 20 BBS models read live in Revit 2025 - 132.38 t; the dialog's Read button not yet clicked by the owner) |
+| BEAM-01 | Beam Cut Length on Beam and Rebar sheets | — | **done** (`v1.43.0`; open: shuttering still uses the drawn Length, 7.62 m2 over on UMA NIWAS's 12 cut-back beams - owner decides) |
 | INT-03 | Controlled Agent Bridge (MCP read/write + BOQ validation) | — | `done` (`v1.19.0`) |
 | INT-04 | Controlled Structural Material assignment | — | **done** (`v1.23.0`, Bridge `v2.5.0`) |
 

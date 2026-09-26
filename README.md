@@ -123,6 +123,9 @@ dependencies imported into the pyRevit host.
   the Detailed BOQ's reinforcement items, the revision snapshot and the Dashboard, and writes a
   `BBS Steel` sheet (per model, per diameter, element totals); a model that changed since it was
   read, or could not be read, is named in the Dashboard's warnings.
+- **Beam Cut Length (`v1.43.0`).** The Beam sheet shows Revit's Cut Length (after the joins cut
+  the beam back) beside the drawn Length, and the Rebar sheets show each bar's host beam Cut
+  Length.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -383,7 +386,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 458 checks passed`.
+`RESULT: all 463 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -472,7 +475,7 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.42.0`. Every phase is done except the open-ended P8 split (`script.py` after
+is `v1.43.0`. Every phase is done except the open-ended P8 split (`script.py` after
 `v1.38.0`–`v1.39.0` moved the dialog handlers into `lib/`). P12's rate database holds real
 Gujarat R&B SOR 2024-25 rates since 2026-09-25. `v1.42.0` brings the steel of separate BBS models
 into the BOQ (BBS Steel tab and sheet).

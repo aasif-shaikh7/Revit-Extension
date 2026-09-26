@@ -22,6 +22,45 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.43.0] - 2026-09-26
+
+**Beam Cut Length on the sheets.** Asked for by the owner: when rebar is exported, the bar's
+cutting length is shown but the beam's is not. Revit's own **Cut Length**
+(`STRUCTURAL_FRAME_CUT_LENGTH`) is the beam's length after the joins at columns and other beams
+cut it back; **Length** is the drawn length.
+
+### Added
+- **Beam sheet:** a `Qty: Cut Length (m)` column.
+  - Classic workbook: right after `Qty: Length (m)`, totalled like every quantity.
+  - Site workbook: it appears on its own, as the Rebar fields do, after the selected columns
+    and before L/W/H. The shuttering formula still reads L/W/H.
+- **Rebar sheets:** `Rebar: Host Cut Length (m)` gives the Cut Length of the beam a bar is
+  hosted in. It is blank when the host is not a beam, such as a column or foundation.
+  - It is listed in the Rebar tab's automatic fields.
+  - It is a last column, `Host Cut Length (m)`, in Rebar BBS in both formats.
+- `read_beam_cut_length(element)` in `script.py`.
+
+### Not changed - for the owner to decide
+- **Shuttering still uses the drawn Length.** Revit's concrete volume already follows the Cut
+  Length (B(b) 300x550: 0.15 x 0.3 x 0.55 = 0.0247 m3). The formwork L/W/H, however, takes
+  Length. On UMA NIWAS 12 of 519 beams differ, and their shuttering is counted **7.62 m2** over
+  their Cut Length. That is 0.33 % of 2,295 m2 of beam shuttering.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 463 checks passed** (four new). Two planted bugs are
+  each caught: the site sheet without the column, and the BBS without the host's Cut Length.
+  `scripts/ip27_compile.ps1`: 31 files compiled.
+- **Live, test Revit, a copy of the UMA NIWAS structural model:** classic and site exports passed
+  with 0 validation mismatches.
+  - The Beam sheet shows Cut Length for all 519 beams, for example B43(a) 3.75 / 3.075 and
+    B(b) 1.25 / 0.15.
+  - No revision was filed, because Cut Length is not a quantity the BOQ bills.
+- **Live, Revit 2025 / IronPython (`pyrevit run`), a copy of the 1st level BBS beam model:** the
+  real `get_rebar_quantities` gave 327 of 332 bars a Host Cut Length. Each equals its host
+  beam's own Cut Length. The other 5 are hosted on columns and stay blank.
+
+---
+
 ## [v1.42.0] - 2026-09-26
 
 **BBS Steel: the steel of separate BBS models in the BOQ.** UMA NIWAS's structural model has no

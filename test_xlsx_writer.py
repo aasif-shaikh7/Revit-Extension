@@ -2374,6 +2374,7 @@ def main():
         "Rebar: Element ID",
         "Rebar: Host Element ID",
         "Rebar: Host Category",
+        "Rebar: Host Cut Length (m)",
         "Rebar: A (mm)", "Rebar: B (mm)", "Rebar: C (mm)",
         "Rebar: D (mm)", "Rebar: E (mm)", "Rebar: F (mm)",
         "Rebar: G (mm)", "Rebar: H (mm)",
@@ -7192,6 +7193,98 @@ def main():
         "BBS the tab has every control its handlers look for, is wired when "
         "the dialog opens, locks the dialog while reading; the engine holds "
         "no Revit symbol"
+    )
+
+    # ------------------------------------------------------------
+    # Beam Cut Length (v1.43.0)
+    #
+    # Revit's Cut Length - a beam's length after the joins at columns and
+    # other beams cut it back - beside the drawn Length on the Beam sheet,
+    # and the host beam's Cut Length beside each bar on the Rebar sheets.
+    # UMA NIWAS: 12 of 519 beams differ (B(b) 300x550: 1250 vs 150 mm).
+    # ------------------------------------------------------------
+    import rebar_engine as cut_rebar
+
+    cut_rows = []
+    for mark, host, cut in (("T1", "10", 5.0), ("T1", "11", 3.075),
+                            ("T1", "10", 5.0)):
+        cut_rows.append({
+            "Rebar: Bar Mark": mark, "Rebar: Shape": "STRAIGHT",
+            "Rebar: Diameter (mm)": 16, "Rebar: Cutting Length (m)": 5.2,
+            "Rebar: Quantity": 2, "Rebar: Total Length (m)": 10.4,
+            "Rebar: Unit Weight (kg/m)": 1.5802, "Rebar: Total Weight (kg)": 16.434,
+            "Rebar: Host Category": "Structural Framing",
+            "Rebar: Host Element ID": host, "Rebar: Host Cut Length (m)": cut,
+            "Level": "L1"})
+    cut_bbs = cut_rebar.build_rebar_bbs_table(cut_rows)
+    cut_col = cut_bbs[0].index("Host Cut Length (m)")
+    check(
+        cut_bbs[0][-1] == "Host Cut Length (m)"
+        and [row[cut_col] for row in cut_bbs[1:]] == [5.0, 3.075]
+        and cut_bbs[1][cut_bbs[0].index("Quantity")] == 4
+        and all(len(row) == len(cut_bbs[0]) for row in cut_bbs),
+        "Cut Length the Rebar BBS carries each bar's host beam Cut Length, "
+        "one group per host"
+    )
+
+    cut_beams = [
+        {"Element ID": "1", "Level": "L1", "Mark": "B1",
+         "Qty: Length (m)": 1.25, "Qty: Cut Length (m)": 0.15,
+         "Qty: Dim L (m)": 1.25, "Qty: Dim W (m)": 0.3, "Qty: Dim H (m)": 0.55},
+        {"Element ID": "2", "Level": "L1", "Mark": "B2",
+         "Qty: Length (m)": 2.9, "Qty: Cut Length (m)": 2.9,
+         "Qty: Dim L (m)": 2.9, "Qty: Dim W (m)": 0.25, "Qty: Dim H (m)": 0.7},
+    ]
+    cut_site, cut_meta = boq_engine.build_site_detail_sheet(
+        "Beam", cut_beams, "QA", selected_parameter_names=["Mark"])
+    cut_band = [cell[1] if isinstance(cell, tuple) else cell for cell in cut_site[4]]
+    cut_first = cut_site[6]
+    cut_without, _meta = boq_engine.build_site_detail_sheet(
+        "Beam", [dict((k, v) for k, v in row.items() if k != "Qty: Cut Length (m)")
+                 for row in cut_beams], "QA", selected_parameter_names=["Mark"])
+    check(
+        cut_band[:4] == ["SNO", "MARK", "QTY: CUT LENGTH (M)", "L (m)"]
+        and cut_first[2] == "0.15" and cut_first[3] == "1.250"
+        and "D7" in cut_first[-1][1] and "E7" in cut_first[-1][1]
+        and "F7" in cut_first[-1][1]
+        and not any("CUT LENGTH" in str(cell) for cell in cut_without[4]),
+        "Cut Length the site Beam sheet shows each beam's Cut Length after the "
+        "selected columns, and the shuttering formula still reads L/W/H"
+    )
+
+    cut_dir = tempfile.mkdtemp()
+    try:
+        cut_classic = boq_engine.write_basic_xlsx(
+            os.path.join(cut_dir, "c.xlsx"), {"Beam": cut_beams},
+            generated_stamp="2026-09-26 10:00")
+    finally:
+        shutil.rmtree(cut_dir, ignore_errors=True)
+    cut_head = cut_classic["Beam"][0]
+    cut_total = cut_classic["Beam"][-1]
+    cut_letter = boq_engine.xlsx_column_name(cut_head.index("Qty: Cut Length (m)") + 1)
+    check(
+        cut_head.index("Qty: Cut Length (m)") == cut_head.index("Qty: Length (m)") + 1
+        and cut_total[cut_head.index("Qty: Cut Length (m)")]
+        == ("FORMULA", "SUM({0}2:{0}3)".format(cut_letter)),
+        "Cut Length the classic Beam sheet has a Cut Length column right after "
+        "Length, totalled like every quantity"
+    )
+
+    cut_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read().replace("\r\n", "\n")
+    cut_reader = extract_function_source(cut_script, "read_beam_cut_length")
+    cut_quantities = extract_function_source(cut_script, "get_element_quantities")
+    cut_rebar_source = extract_function_source(cut_script, "get_rebar_quantities")
+    check(
+        "STRUCTURAL_FRAME_CUT_LENGTH" in cut_reader
+        and 'convert_quantity_value(raw_value, "length")' in cut_reader
+        and 'results.append(("Qty: Cut Length (m)", read_beam_cut_length(element)))'
+        in cut_quantities
+        and cut_quantities.index("Qty: Cut Length (m)")
+        < cut_quantities.index("P3/site-format")
+        and "host_cut_length = read_beam_cut_length(host)" in cut_rebar_source
+        and '("Rebar: Host Cut Length (m)", host_cut_length)' in cut_rebar_source,
+        "Cut Length is read from Revit's own Cut Length, for beams and for the "
+        "beam a bar is hosted in"
     )
 
     print("")
