@@ -22,6 +22,42 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.47.1] - 2026-09-26
+
+**The dialog's tab content reaches UI Automation; the whole dialog was run live.**
+
+### Fixed
+- The brand TabControl template (`lib/Resources/Brand.Controls.xaml`) now names its content
+  presenter `PART_SelectedContentHost`. WPF shows the open tab's content to UI Automation -
+  screen readers and test drivers - only through a presenter of that name. Without it, only the
+  tab headers and the footer could be seen: 48 elements, none of them inside a tab. Nothing
+  looks different.
+
+### Verified - the dialog itself, live, driven by UI Automation (the owner asked for it to be
+tested without them)
+- In the test Revit, on a copy of the UMA NIWAS structural model, **RCC BOQ** was pressed on the
+  Nudge ribbon and the dialog opened.
+- **BBS Steel tab.** The stair model was marked as changed in the store, and *Read new and
+  changed* was pressed.
+  - The status line showed "Reading BBS model 1 of 1: ...STAIR...", then "1 BBS model read".
+  - The summary returned to "20 BBS models, 20 read: 132.379 t", and the dialog was enabled
+    again.
+  - The store's stair entry was re-read at 17:42: 200 sets, 3,259.358 kg, every bar with ID_LIC
+    and a level.
+  - This is the first time the tab's read ran inside Revit's own modal dialog.
+- **Export Excel**, pressed in the dialog: the Save window was answered with a path in
+  docs/inbox, first classic, then site. Both finished with "Excel exported | Rows: 1050".
+  - **Rev 02** was filed. Since Rev 01: shuttering -7.63 m2, and 12 beams modified.
+  - Beam shuttering is 2,287.64 m2.
+  - Every M40 item is priced at 5,207.83 with "SAMPLE - not a real rate".
+  - The estimate is **Rs 1,62,20,144.05**, with 19 of 19 items priced and no warnings.
+  - Steel is 132.379 t, with 8,652 rebar sets from the BBS models.
+  - In real Excel 16 both workbooks opened with no repair prompt, and the Rebar Summary totals
+    132,379.003 kg. No Rev 03 was filed by the second export.
+- `python test_xlsx_writer.py` prints **all 472 checks passed**.
+
+---
+
 ## [v1.47.0] - 2026-09-26
 
 **Beam shuttering follows the Cut Length.** This was decided with the owner (2026-09-26): Revit
