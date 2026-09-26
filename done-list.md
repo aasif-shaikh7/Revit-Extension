@@ -1598,6 +1598,19 @@ Checked by pricing: a Navsari project is priced, a Mumbai project is not.
 - Live: 8,652 bars were kept from the 20 UMA NIWAS BBS models.
 - Live: the export's schedule totals 132,379.003 kg in Excel, equal to BBS Steel.
 
+## BEAM-02 - Beam Cut Length for bars hosted on a column (`v1.45.0`, 2026-09-26)
+
+**Built:**
+- `Beam Cut Length (m)`, renamed from Host Cut Length.
+- A bar hosted on a column takes the Cut Length of the beam it lies in, found by its position.
+  Only mostly horizontal bars of 1 m or more qualify.
+
+**Known to work:**
+- Tested (harness): 469 checks.
+- Live: 8 of 9 column-hosted beam bars in the plinth and 1st level BBS models got their beam's
+  Cut Length. The one left blank sits inside the column.
+- Live: 0 of 3,812 column bars got one.
+
 ---
 
 ## Standing conventions

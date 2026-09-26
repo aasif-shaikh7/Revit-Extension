@@ -50,7 +50,7 @@ BBS_BAR_FIELDS = (
     "Rebar: Bar Length (m)", "Rebar: Cutting Length (m)", "Rebar: Quantity",
     "Rebar: Total Length (m)", "Rebar: Unit Weight (kg/m)",
     "Rebar: Total Weight (kg)", "Rebar: Element ID", "Rebar: Host Category",
-    "Rebar: Host Element ID", "Rebar: Host Cut Length (m)",
+    "Rebar: Host Element ID", "Rebar: Beam Cut Length (m)",
 )
 
 # The elements a BBS model can be for, in the order they are built - which
@@ -630,6 +630,9 @@ def bbs_numeric_columns(table):
 def bbs_bar_rows(entry):
     """The bars kept for one model, as Rebar rows (dicts)."""
     fields = entry.get("bar_fields") or list(BBS_BAR_FIELDS)
+    # v1.44.0 stores called the beam's Cut Length "Host Cut Length".
+    fields = [u"Rebar: Beam Cut Length (m)" if field == u"Rebar: Host Cut Length (m)"
+              else field for field in fields]
     rows = []
     for values in entry.get("bars") or []:
         rows.append(dict(zip(fields, values)))

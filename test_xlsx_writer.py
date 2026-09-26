@@ -2374,7 +2374,7 @@ def main():
         "Rebar: Element ID",
         "Rebar: Host Element ID",
         "Rebar: Host Category",
-        "Rebar: Host Cut Length (m)",
+        "Rebar: Beam Cut Length (m)",
         "Rebar: A (mm)", "Rebar: B (mm)", "Rebar: C (mm)",
         "Rebar: D (mm)", "Rebar: E (mm)", "Rebar: F (mm)",
         "Rebar: G (mm)", "Rebar: H (mm)",
@@ -7011,7 +7011,7 @@ def main():
                     "Rebar: Element ID": mark + host,
                     "Rebar: Host Category": "Structural Framing",
                     "Rebar: Host Element ID": host,
-                    "Rebar: Host Cut Length (m)": cut,
+                    "Rebar: Beam Cut Length (m)": cut,
                     "Not kept": "x"}
         bbs_bars = {
             0: [bbs_bar("19", "301", 4.6, 4), bbs_bar("19", "301", 4.6, 2),
@@ -7164,7 +7164,7 @@ def main():
         rebar_head = list(rebar_eng.build_rebar_bbs_table([])[0])
         mark_col = sched_head.index("Bar Mark")
         qty_col = sched_head.index("Quantity")
-        cut_col_s = sched_head.index("Host Cut Length (m)")
+        cut_col_s = sched_head.index("Beam Cut Length (m)")
         sched_rows = [(row[0], row[mark_col], row[qty_col], row[cut_col_s])
                       for row in schedule[1:]]
         check(
@@ -7291,12 +7291,12 @@ def main():
             "Rebar: Quantity": 2, "Rebar: Total Length (m)": 10.4,
             "Rebar: Unit Weight (kg/m)": 1.5802, "Rebar: Total Weight (kg)": 16.434,
             "Rebar: Host Category": "Structural Framing",
-            "Rebar: Host Element ID": host, "Rebar: Host Cut Length (m)": cut,
+            "Rebar: Host Element ID": host, "Rebar: Beam Cut Length (m)": cut,
             "Level": "L1"})
     cut_bbs = cut_rebar.build_rebar_bbs_table(cut_rows)
-    cut_col = cut_bbs[0].index("Host Cut Length (m)")
+    cut_col = cut_bbs[0].index("Beam Cut Length (m)")
     check(
-        cut_bbs[0][-1] == "Host Cut Length (m)"
+        cut_bbs[0][-1] == "Beam Cut Length (m)"
         and [row[cut_col] for row in cut_bbs[1:]] == [5.0, 3.075]
         and cut_bbs[1][cut_bbs[0].index("Quantity")] == 4
         and all(len(row) == len(cut_bbs[0]) for row in cut_bbs),
@@ -7359,9 +7359,118 @@ def main():
         and cut_quantities.index("Qty: Cut Length (m)")
         < cut_quantities.index("P3/site-format")
         and "host_cut_length = read_beam_cut_length(host)" in cut_rebar_source
-        and '("Rebar: Host Cut Length (m)", host_cut_length)' in cut_rebar_source,
+        and '("Rebar: Beam Cut Length (m)", host_cut_length)' in cut_rebar_source,
         "Cut Length is read from Revit's own Cut Length, for beams and for the "
         "beam a bar is hosted in"
+    )
+
+    # ------------------------------------------------------------
+    # Beam Cut Length for bars hosted on a column (v1.45.0)
+    #
+    # The UMA NIWAS BBS models host a beam's main and extra bars on the
+    # column. Such a bar takes the Cut Length of the beam it lies in:
+    # the beam whose box holds its midpoint, else - for a horizontal bar
+    # of 1 m or more - the nearest beam axis within 600 mm. A column's
+    # own ties and vertical bars must match no beam. Run on stand-in
+    # geometry (feet, as Revit's API gives it).
+    # ------------------------------------------------------------
+    class _P(object):
+        def __init__(self, x, y, z):
+            self.X, self.Y, self.Z = x, y, z
+
+    class _Box(object):
+        def __init__(self, lo, hi):
+            self.Min, self.Max = _P(*lo), _P(*hi)
+
+    class _Hit(object):
+        def __init__(self, distance):
+            self.Distance = distance
+
+    class _AxisX(object):
+        """A beam axis along X from x0 to x1 at (y, z)."""
+        def __init__(self, x0, x1, y, z):
+            self.x0, self.x1, self.y, self.z = x0, x1, y, z
+
+        def Project(self, point):
+            x = min(max(point.X, self.x0), self.x1)
+            return _Hit(((point.X - x) ** 2 + (point.Y - self.y) ** 2
+                         + (point.Z - self.z) ** 2) ** 0.5)
+
+    class _Bar(object):
+        Document = "doc"
+
+        def __init__(self, lo, hi):
+            self.box = _Box(lo, hi)
+
+        def get_BoundingBox(self, _view):
+            return self.box
+
+    class _FakeDB(object):
+        XYZ = _P
+
+    m = 1 / 0.3048
+    # A 0.5 m column at x 0; beam A from its face to x 5 m and beam B on
+    # to 10 m, both 0.25 wide at y 0, 0.7 deep, the axis at z 3.0 m.
+    beam_a, beam_b = "A", "B"
+    boxes = [
+        (beam_a, _Box((0.25 * m, -0.125 * m, 2.65 * m), (5 * m, 0.125 * m, 3.35 * m)),
+         _AxisX(0.25 * m, 5 * m, 0, 3 * m)),
+        (beam_b, _Box((5 * m, -0.125 * m, 2.65 * m), (10 * m, 0.125 * m, 3.35 * m)),
+         _AxisX(5 * m, 10 * m, 0, 3 * m)),
+    ]
+    holder_ns = {"DB": _FakeDB, "_beam_boxes": lambda owner: boxes}
+    holder_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
+    for constant in ("_BEAM_BOX_TOLERANCE", "_BEAM_AXIS_REACH",
+                     "_BAR_MIN_RUN"):
+        exec(extract_constant_from_sources([(SCRIPT_PATH, holder_script)],
+                                           constant)[0], holder_ns)
+    exec(extract_function_source(holder_script, "beam_holding_rebar"), holder_ns)
+    holder = holder_ns["beam_holding_rebar"]
+    cases = [
+        # main bar of beam A, 0.1-4.9 m, near the bottom
+        holder(_Bar((0.1 * m, -0.1 * m, 2.7 * m), (4.9 * m, 0.1 * m, 2.72 * m))),
+        # a bar across the joint of A and B: midpoint at x 5 m, in both
+        # boxes and on both axes - the first beam listed keeps it
+        holder(_Bar((3 * m, -0.1 * m, 3.0 * m), (7 * m, 0.1 * m, 3.02 * m))),
+        # a bar mostly in B: midpoint at x 5.1 m
+        holder(_Bar((3 * m, -0.1 * m, 3.0 * m), (7.2 * m, 0.1 * m, 3.02 * m))),
+        # an L bar of beam A, 6 m run, its 0.45 m leg bent up into the column
+        holder(_Bar((0.0, -0.1 * m, 2.7 * m), (4.9 * m, 0.1 * m, 3.15 * m))),
+        # a 3 m bar whose midpoint misses every box by 0.35 m
+        holder(_Bar((6 * m, 0.4 * m, 3.0 * m), (9 * m, 0.45 * m, 3.02 * m))),
+        # a column tie at the beam level: 0.5 m across
+        holder(_Bar((-0.25 * m, -0.25 * m, 3.0 * m), (0.25 * m, 0.25 * m, 3.02 * m))),
+        # a column vertical bar through the beam level
+        holder(_Bar((-0.2 * m, -0.2 * m, 0.0), (-0.18 * m, -0.18 * m, 6.0 * m))),
+        # a horizontal bar 1.5 m away from every axis
+        holder(_Bar((1 * m, 1.5 * m, 3.0 * m), (4 * m, 1.52 * m, 3.02 * m))),
+    ]
+    check(
+        cases == ["A", "A", "B", "A", "B", None, None, None],
+        "Cut Length a bar hosted on a column finds the beam it lies in by its "
+        "place, and a column's own ties and vertical bars find none "
+        "(got {0})".format(cases)
+    )
+
+    col_script = holder_script.replace("\r\n", "\n")
+    col_rebar = extract_function_source(col_script, "get_rebar_quantities")
+    col_reader = extract_function_source(col_script, "read_bbs_model")
+    check(
+        "int(DB.BuiltInCategory.OST_StructuralColumns)" in col_rebar
+        and "beam = beam_holding_rebar(element)" in col_rebar
+        and col_reader.count("_BEAM_BOXES.clear()") == 2
+        and "Rebar: Beam Cut Length (m)" in col_rebar
+        and "Host Cut Length" not in col_script,
+        "Cut Length only a bar on a column looks for its beam; the beam list "
+        "is rebuilt for every BBS model read"
+    )
+    import bbs_steel_engine as col_bbs
+    old_bars = col_bbs.bbs_bar_rows({"bar_fields": ["Level", "Rebar: Host Cut Length (m)"],
+                                     "bars": [["L1", 4.6]]})
+    check(
+        old_bars == [{"Level": "L1", "Rebar: Beam Cut Length (m)": 4.6}],
+        "Cut Length a store written before the rename still shows its beam "
+        "Cut Length"
     )
 
     print("")
