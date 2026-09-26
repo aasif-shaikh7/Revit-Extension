@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.48.0'
+__version__ = '1.48.1'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -79,7 +79,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.48.0'
+SCRIPT_VERSION = '1.48.1'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -2548,77 +2548,6 @@ def build_element_data(include_grade=True, material_sink=None, type_sink=None):
         total_rows,
         missing_values
     )
-
-
-def get_sample_values(data_result, max_rows=3):
-    """
-    Create a compact test summary instead of showing the entire dataset.
-    """
-    lines = []
-
-    for element_name in (
-        "Beam",
-        "Column",
-        "Structure Wall",
-        "Slab",
-        "Foundation",
-        "Rebar"
-    ):
-
-        rows = data_result.get(
-            element_name,
-            []
-        )
-
-        if not rows:
-            continue
-
-        lines.append(
-            "{}: {} row(s)".format(
-                element_name,
-                len(rows)
-            )
-        )
-
-        for index, row in enumerate(
-            rows[:max_rows]
-        ):
-
-            parts = []
-
-            for key in row.keys():
-
-                if key == "Element ID":
-                    continue
-
-                try:
-                    parts.append(
-                        "{}={}".format(
-                            key,
-                            row[key]
-                        )
-                    )
-                except:
-                    pass
-
-            lines.append(
-                "  Row {} | ID {} | {}".format(
-                    index + 1,
-                    row.get(
-                        "Element ID",
-                        "N/A"
-                    ),
-                    " | ".join(parts)
-                )
-            )
-
-    if not lines:
-        lines.append(
-            "No element data available."
-        )
-
-    return "\n".join(lines)
-
 
 
 # ============================================================
