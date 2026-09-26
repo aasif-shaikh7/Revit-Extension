@@ -7398,6 +7398,18 @@ def main():
         "beam a bar is hosted in"
     )
 
+    # v1.47.1: the dialog's tab content is visible to UI Automation (screen
+    # readers, test drivers) only through a presenter named
+    # PART_SelectedContentHost; without it only the tab headers were.
+    brand_controls = io.open(os.path.join(LIB_DIR, "Resources", "Brand.Controls.xaml"),
+                             encoding="utf-8-sig").read()
+    check(
+        'x:Name="PART_SelectedContentHost"' in brand_controls
+        and 'ContentSource="SelectedContent"' in brand_controls,
+        "The TabControl template names its content presenter "
+        "PART_SelectedContentHost, so tab content reaches UI Automation"
+    )
+
     # v1.47.0: a beam's formwork follows its Cut Length, as its concrete
     # volume does; the drawn Length is only the fallback.
     formwork_source = extract_function_source(cut_script, "get_element_quantities")
