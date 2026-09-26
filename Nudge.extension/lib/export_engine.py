@@ -207,6 +207,9 @@ STYLE_SITE_TOTAL_TEXT = 13
 # Bordered plain text (descriptions, selected-parameter values, the
 # LEVEL feed column) so the whole site sheet carries the thin grid.
 STYLE_SITE_PLAIN = 14
+# v1.48.2: counts in the classic workbook - 8,652 rather than 8,652.00.
+STYLE_INTEGER = 15
+STYLE_TOTAL_INTEGER = 16
 
 # ------------------------------------------------------------
 # Workbook palette (v1.34.0) - the owner's theme, the same colours as the
@@ -230,6 +233,14 @@ THEME_TOTALS = "EEF9CC"
 # sections; below one lakh the ordinary 12,345.67 already reads right.
 INDIAN_NUMBER_FORMAT_ID = 164
 INDIAN_NUMBER_FORMAT = '[>=10000000]##\\,##\\,##\\,##0.00;[>=100000]##\\,##\\,##0.00;##,##0.00'
+# The same grouping for whole counts - elements, bars, sets: 1,23,456.
+INDIAN_INTEGER_FORMAT_ID = 165
+INDIAN_INTEGER_FORMAT = '[>=10000000]##\\,##\\,##\\,##0;[>=100000]##\\,##\\,##0;##,##0'
+
+# Classic-workbook columns that hold counts, not measurements: a whole
+# number there - or the TOTAL formula that sums them - shows no decimals.
+COUNT_COLUMN_HEADERS = ("Qty: Count", "Elements", "Rebar Sets",
+                        "Number of Bars", "Quantity", "Rebar: Quantity")
 
 # Print setup shared by every sheet: A4 landscape, all columns on one
 # page width, as many pages tall as the rows need.
@@ -283,6 +294,21 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
     """
     row_xml = []
     max_columns = 0
+
+    # v1.48.2: which columns hold counts, by their header.
+    count_columns = set()
+    if rows:
+        for column_number, header_value in enumerate(rows[0], 1):
+            try:
+                if str(header_value) in COUNT_COLUMN_HEADERS:
+                    count_columns.add(column_number)
+            except:
+                pass
+
+    def is_whole_count(value):
+        """A Python whole number - not a bool, not a whole float."""
+        return (not isinstance(value, bool)
+                and type(value).__name__ in ("int", "long"))
 
     for row_number, values in enumerate(rows, 1):
         cells = []
@@ -339,6 +365,12 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
                 if not is_totals_row:
                     formula_style = STYLE_NUMBER
 
+                # A formula over a count column - the TOTAL of Qty: Count
+                # or Elements - is itself a count.
+                if column_number in count_columns:
+                    formula_style = (STYLE_TOTAL_INTEGER if is_totals_row
+                                     else STYLE_INTEGER)
+
                 cells.append(
                     xlsx_formula_cell(
                         cell_ref,
@@ -356,7 +388,9 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
                 style_index = STYLE_HEADER
             elif is_totals_row:
                 if try_export_as_number(value):
-                    style_index = STYLE_TOTAL_NUMBER
+                    style_index = (STYLE_TOTAL_INTEGER
+                                   if is_whole_count(value)
+                                   else STYLE_TOTAL_NUMBER)
                 else:
                     style_index = STYLE_TOTAL_TEXT
             elif (
@@ -364,8 +398,10 @@ def build_xlsx_sheet_xml(rows, number_columns=None):
                 and column_number in number_columns
                 and try_export_as_number(value)
             ):
-                # Numeric quantity cells with thousand separators.
-                style_index = STYLE_NUMBER
+                # Numeric quantity cells with thousand separators; a whole
+                # count (elements, bars, sets) without the decimals.
+                style_index = (STYLE_INTEGER if is_whole_count(value)
+                               else STYLE_NUMBER)
 
             cells.append(
                 xlsx_cell(
@@ -877,12 +913,16 @@ def build_xlsx_styles_xml(header_colour=None):
     xf 2 - numeric quantity cells, Indian grouping (1,23,456.78)
     xf 3 - totals label cells: bold on the lime tint with top border
     xf 4 - totals number cells: bold, Indian grouping, on the lime tint
+    xf 5-14 - the site workbook's styles
+    xf 15 - whole counts, Indian grouping with no decimals (1,23,456)
+    xf 16 - totals count cells: bold, no decimals, on the lime tint
     """
     header_fill, header_font = workbook_header_colours(header_colour)
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        '<numFmts count="1"><numFmt numFmtId="{0}" formatCode="{1}"/></numFmts>'
+        '<numFmts count="2"><numFmt numFmtId="{0}" formatCode="{1}"/>'
+        '<numFmt numFmtId="{4}" formatCode="{5}"/></numFmts>'
         '<fonts count="3">'
         '<font><sz val="11"/><name val="Segoe UI"/></font>'
         '<font><b/><sz val="11"/><color rgb="{3}"/><name val="Segoe UI"/></font>'
@@ -904,7 +944,7 @@ def build_xlsx_styles_xml(header_colour=None):
         '<cellStyleXfs count="1">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'
         '</cellStyleXfs>'
-        '<cellXfs count="15">'
+        '<cellXfs count="17">'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
         '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
@@ -920,13 +960,16 @@ def build_xlsx_styles_xml(header_colour=None):
         '<xf numFmtId="164" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
         '<xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+        '<xf numFmtId="165" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
         '</cellXfs>'
         '<cellStyles count="1">'
         '<cellStyle name="Normal" xfId="0" builtinId="0"/>'
         '</cellStyles>'
         '</styleSheet>'
     ).format(INDIAN_NUMBER_FORMAT_ID, xml_escape(INDIAN_NUMBER_FORMAT),
-             header_fill, header_font)
+             header_fill, header_font,
+             INDIAN_INTEGER_FORMAT_ID, xml_escape(INDIAN_INTEGER_FORMAT))
 
 
 def build_xlsx_workbook_xml(sheet_names):
