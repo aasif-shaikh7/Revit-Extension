@@ -22,6 +22,52 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.45.0] - 2026-09-26
+
+**Beam Cut Length for beam bars hosted on a column.** The owner exported a BBS beam model and
+found the Cut Length column empty on the first rows. The column was there, but the UMA NIWAS
+BBS models host a beam's main and extra bars on the **column**, and a column has no Cut Length.
+
+### Changed
+- **The field is renamed `Rebar: Beam Cut Length (m)`** (was *Host Cut Length*). The Rebar BBS
+  and BBS Bar Schedule column is now `Beam Cut Length (m)`. For a bar on a column the value is the
+  Cut Length of the beam the bar lies in, not of its host. A store written by v1.44.0 is read under
+  the new name.
+- **A bar hosted on a column now finds its beam by where it is** (`beam_holding_rebar`):
+  - Only a mostly horizontal bar qualifies: a run of at least 1 m and at least twice its rise, so
+    an L bar's leg bent into the column still counts.
+  - The bar takes the beam whose box (50 mm tolerance) holds its midpoint; when two boxes hold
+    it, the nearest beam axis decides. Failing that, it takes the nearest beam axis within 600 mm.
+  - A column's ties and vertical bars never qualify.
+  - The beam mark is not used, because every BBS model holds the whole building and the same mark
+    repeats on every level.
+  - The beam list is built once per document and rebuilt for every BBS model read.
+- A bar on anything else - foundation, wall, stairs - is left blank, as before.
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 469 checks passed** (three new). `beam_holding_rebar`
+  runs on stand-in geometry: a bar in a beam, a bar across a joint, a bar mostly in the next beam,
+  an L bar bent into the column, a bar near an axis, a column tie, a column vertical bar and a
+  distant bar. `scripts/ip27_compile.ps1`: 31 files.
+- **Live, Revit 2025 / IronPython (`pyrevit run`), copies of the BBS models, through the real
+  `read_bbs_model`:**
+  - Plinth beam model: 3 of its 4 column-hosted bars got their beam's Cut Length (B8's 20 mm L bar
+    3.85 m, B1's bars 0.6 m). The fourth is B8's 1.855 m bottom extra bar, which sits over the
+    support inside the column; it stays blank rather than guessed.
+  - 1st level beam model: 5 of 5 (B11~B12's two 11 m L bars take 8.0 m).
+  - Column model: **0 of 3,812** column bars took a beam.
+  - Foundation model: unaffected.
+  - Beam-hosted bars are unchanged, and so is the steel in every model.
+- **Live export, test Revit, a copy of the structural model, after the 9 beam models were read
+  again:**
+  - Site and classic both passed with 0 validation mismatches.
+  - The BBS Bar Schedule's `Beam Cut Length (m)` is filled on 1,861 of 1,862 beam rows, and on
+    26 of the 27 rows of beam bars hosted on columns.
+  - Both workbooks opened in Excel 16 with no repair prompt; the schedule totals
+    132,379.003 kg.
+
+---
+
 ## [v1.44.0] - 2026-09-26
 
 **BBS Bar Schedule: every bar of the BBS models in the structural model's own export.** The owner

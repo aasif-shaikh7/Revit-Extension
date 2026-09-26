@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.44.0'
+__version__ = '1.45.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.44.0'
+SCRIPT_VERSION = '1.45.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -104,7 +104,7 @@ REBAR_DERIVED_PARAMETERS = (
     "Rebar: Element ID",
     "Rebar: Host Element ID",
     "Rebar: Host Category",
-    "Rebar: Host Cut Length (m)",
+    "Rebar: Beam Cut Length (m)",
     "Rebar: A (mm)",
     "Rebar: B (mm)",
     "Rebar: C (mm)",
@@ -1150,6 +1150,114 @@ def read_beam_cut_length(element):
     return ""
 
 
+# Beams of a document, collected once per document while an export or a
+# BBS read runs: (beam, bounding box, location curve). Keyed by document
+# identity; read_bbs_model clears it, because a model closed and opened
+# again is a new document whose elements the old entries would not match.
+_BEAM_BOXES = {}
+
+# Feet. Only a bar that runs mostly horizontally - at least 1 m, and at
+# least twice as far as it rises, so an L bar's leg bent into the column
+# still counts - looks for a beam; a column's vertical bars and ties
+# never do. It takes the beam whose box (50 mm tolerance) holds its
+# midpoint, else the nearest beam axis within 600 mm.
+_BEAM_BOX_TOLERANCE = 0.05 / 0.3048
+_BEAM_AXIS_REACH = 0.6 / 0.3048
+_BAR_MIN_RUN = 1.0 / 0.3048
+
+
+def _beam_boxes(owner):
+    key = id(owner)
+    if key not in _BEAM_BOXES:
+        boxes = []
+        try:
+            beams = (
+                DB.FilteredElementCollector(owner)
+                .OfCategory(DB.BuiltInCategory.OST_StructuralFraming)
+                .WhereElementIsNotElementType()
+            )
+            for beam in beams:
+                try:
+                    box = beam.get_BoundingBox(None)
+                except:
+                    box = None
+                try:
+                    curve = beam.Location.Curve
+                except:
+                    curve = None
+                if box is not None:
+                    boxes.append((beam, box, curve))
+        except:
+            boxes = []
+        _BEAM_BOXES[key] = boxes
+    return _BEAM_BOXES[key]
+
+
+def beam_holding_rebar(rebar):
+    """The beam a bar lies in, found by where the bar is; or None.
+
+    For a beam bar hosted on something else - a column - whose own host
+    has no Cut Length. Only a mostly horizontal bar of at least 1 m
+    qualifies, so a column's ties and vertical bars never pick up a beam. The beam
+    whose box holds the bar's midpoint wins (the nearest axis breaks a
+    tie); failing that, the nearest beam axis within 600 mm. A beam mark
+    is not used: every BBS model holds the whole building, and the same
+    mark repeats on every level.
+    """
+    owner = getattr(rebar, "Document", None)
+    if owner is None:
+        return None
+    try:
+        bar_box = rebar.get_BoundingBox(None)
+    except:
+        bar_box = None
+    if bar_box is None:
+        return None
+    rise = bar_box.Max.Z - bar_box.Min.Z
+    run = max(bar_box.Max.X - bar_box.Min.X, bar_box.Max.Y - bar_box.Min.Y)
+    if run < _BAR_MIN_RUN or run < 2.0 * rise:
+        return None
+    middle = DB.XYZ(
+        (bar_box.Min.X + bar_box.Max.X) / 2.0,
+        (bar_box.Min.Y + bar_box.Max.Y) / 2.0,
+        (bar_box.Min.Z + bar_box.Max.Z) / 2.0)
+
+    def axis_distance(curve):
+        try:
+            return curve.Project(middle).Distance
+        except:
+            return None
+
+    tolerance = _BEAM_BOX_TOLERANCE
+    inside = []
+    for beam, box, curve in _beam_boxes(owner):
+        if (box.Min.X - tolerance <= middle.X <= box.Max.X + tolerance
+                and box.Min.Y - tolerance <= middle.Y <= box.Max.Y + tolerance
+                and box.Min.Z - tolerance <= middle.Z <= box.Max.Z + tolerance):
+            inside.append((beam, curve))
+    if len(inside) == 1:
+        return inside[0][0]
+
+    candidates = inside or [
+        (beam, curve) for beam, _box, curve in _beam_boxes(owner)]
+
+    best = None
+    best_distance = None
+    for beam, curve in candidates:
+        if curve is None:
+            continue
+        distance = axis_distance(curve)
+        if distance is None:
+            continue
+        if best_distance is None or distance < best_distance:
+            best, best_distance = beam, distance
+    if best is None:
+        return inside[0][0] if inside else None
+    if not inside and best_distance > _BEAM_AXIS_REACH:
+        return None
+    return best
+
+
 def get_element_quantities(
         element,
         element_name="",
@@ -1670,6 +1778,7 @@ def read_bbs_model(path):
     """
     app = doc.Application
     wanted = os.path.normcase(os.path.abspath(path))
+    _BEAM_BOXES.clear()
     bbs_doc = None
     for open_doc in app.Documents:
         try:
@@ -1717,6 +1826,7 @@ def read_bbs_model(path):
         return {"values": values, "rows": rows,
                 "revit": safe_text(app.VersionNumber, "")}
     finally:
+        _BEAM_BOXES.clear()
         if opened_here:
             try:
                 bbs_doc.Close(False)
@@ -1800,6 +1910,16 @@ def get_rebar_quantities(element):
         # against the beam it sits in. Only a beam has one.
         if host is not None:
             host_cut_length = read_beam_cut_length(host)
+        # v1.45.0: a beam bar hosted on a column (the UMA NIWAS BBS models
+        # host main and extra beam bars so) takes the Cut Length of the
+        # beam it lies in.
+        if (host_cut_length == "" and host is not None
+                and host.Category is not None
+                and host.Category.Id.IntegerValue
+                == int(DB.BuiltInCategory.OST_StructuralColumns)):
+            beam = beam_holding_rebar(element)
+            if beam is not None:
+                host_cut_length = read_beam_cut_length(beam)
     except:
         pass
 
@@ -1816,7 +1936,7 @@ def get_rebar_quantities(element):
         ("Rebar: Element ID", rebar_element_id),
         ("Rebar: Host Element ID", host_id_text),
         ("Rebar: Host Category", host_category),
-        ("Rebar: Host Cut Length (m)", host_cut_length),
+        ("Rebar: Beam Cut Length (m)", host_cut_length),
         ("Rebar: A (mm)", shape_dimensions_mm.get("A", "")),
         ("Rebar: B (mm)", shape_dimensions_mm.get("B", "")),
         ("Rebar: C (mm)", shape_dimensions_mm.get("C", "")),
