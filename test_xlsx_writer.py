@@ -3293,7 +3293,11 @@ def main():
     ):
         material_block, _ = extract_from_sources(texts, material_helper)
         exec(material_block, material_ns)
-    resolve_material = material_ns["resolve_structural_material"]
+    # v1.48.0 (P8): the choice lives in lib/parameter_engine.py and takes
+    # the host's value reader; script.py hands in safe_parameter_value.
+    resolve_material = (
+        lambda context, _resolve=material_ns["resolve_structural_material"],
+        _read=material_ns["safe_parameter_value"]: _resolve(context, _read))
 
     class FakeMaterialParameter(object):
         def __init__(self, value):
@@ -6570,6 +6574,34 @@ def main():
             else " (" + ", ".join(p8b_late + p8b_still_here) + ")")
     )
 
+    # P8 slice 3 (v1.48.0): three decisions left script.py with their reads
+    # handed in - the structural-material choice (parameter_engine), the
+    # Slab/Foundation subtype filter (rule_engine) and the beam a column-
+    # hosted bar lies in (rebar_engine). script.py keeps thin readers.
+    p8c_gone = [name for name in ("structural_material_candidates",
+                                  "STRUCTURAL_MATERIAL_PARAMETER_NAMES")
+                if re.search(r"^(def )?{0}\b".format(name), p8_script, re.M)]
+    p8c_libs = "".join(io.open(os.path.join(LIB_DIR, name), encoding="utf-8-sig").read()
+                       for name in ("parameter_engine.py", "rule_engine.py",
+                                    "rebar_engine.py"))
+    check(
+        not p8c_gone
+        and "def resolve_structural_material(parameter_context, read_value):" in p8c_libs
+        and "def filter_logical_elements(" in p8c_libs
+        and "def choose_beam_for_bar(" in p8c_libs
+        and "resolve_structural_material(\n                        parameter_context, safe_parameter_value)"
+        in p8_script.replace("\r\n", "\n")
+        and "return filter_logical_elements(" in extract_function_source(
+            p8_script.replace("\r\n", "\n"), "filter_elements")
+        and "return choose_beam_for_bar(" in extract_function_source(
+            p8_script.replace("\r\n", "\n"), "beam_holding_rebar")
+        and not any(marker in p8c_libs for marker in
+                    ("import Autodesk", "from Autodesk", "import pyrevit", "DB.")),
+        "P8 the material choice, the subtype filter and the bar-to-beam choice "
+        "live in lib/ with their reads handed in; script.py keeps the reads{0}".format(
+            "" if not p8c_gone else " (still in script.py: " + ", ".join(p8c_gone) + ")")
+    )
+
     # A handler that assigns to a shared name changed script.py's global
     # when it lived there; inside attach() the same line only makes a
     # local, and the dialog silently stops updating. None may do it.
@@ -7473,18 +7505,23 @@ def main():
     # A 0.5 m column at x 0; beam A from its face to x 5 m and beam B on
     # to 10 m, both 0.25 wide at y 0, 0.7 deep, the axis at z 3.0 m.
     beam_a, beam_b = "A", "B"
+    # v1.48.0 (P8): script.py reads each beam's box corners and curve;
+    # rebar_engine.choose_beam_for_bar makes the choice.
     boxes = [
-        (beam_a, _Box((0.25 * m, -0.125 * m, 2.65 * m), (5 * m, 0.125 * m, 3.35 * m)),
+        (beam_a, (0.25 * m, -0.125 * m, 2.65 * m), (5 * m, 0.125 * m, 3.35 * m),
          _AxisX(0.25 * m, 5 * m, 0, 3 * m)),
-        (beam_b, _Box((5 * m, -0.125 * m, 2.65 * m), (10 * m, 0.125 * m, 3.35 * m)),
+        (beam_b, (5 * m, -0.125 * m, 2.65 * m), (10 * m, 0.125 * m, 3.35 * m),
          _AxisX(5 * m, 10 * m, 0, 3 * m)),
     ]
-    holder_ns = {"DB": _FakeDB, "_beam_boxes": lambda owner: boxes}
+    from rebar_engine import choose_beam_for_bar as _choose_beam
+    holder_ns = {"DB": _FakeDB, "_beam_boxes": lambda owner: boxes,
+                 "choose_beam_for_bar": _choose_beam}
     holder_script = io.open(SCRIPT_PATH, encoding="utf-8-sig").read()
     for constant in ("_BEAM_BOX_TOLERANCE", "_BEAM_AXIS_REACH",
                      "_BAR_MIN_RUN"):
         exec(extract_constant_from_sources([(SCRIPT_PATH, holder_script)],
                                            constant)[0], holder_ns)
+    exec(extract_function_source(holder_script, "_beam_axis_distance"), holder_ns)
     exec(extract_function_source(holder_script, "beam_holding_rebar"), holder_ns)
     holder = holder_ns["beam_holding_rebar"]
     cases = [

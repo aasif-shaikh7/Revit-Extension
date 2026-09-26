@@ -431,3 +431,42 @@ def normalize_concrete_grade(text):
         return normalized
 
     return ""
+
+
+def filter_logical_elements(elements, logical_tab, filter_name,
+                            logical_group_of, slab_subtype_of,
+                            foundation_subtype_of):
+    """The Slab / Foundation tab's elements for one subtype filter.
+
+    Moved from script.py's filter_elements in the P8 split (v1.48.0) with
+    the three classifiers handed in, as build_logical_rcc_collections
+    takes its classifier: `logical_group_of(element)` gives 'Slab' or
+    'Foundation', and the two subtype readers the element's subtype. The
+    "All ... Types" filter keeps every element of that logical group; any
+    other filter keeps that subtype; any other tab keeps everything.
+    """
+    if logical_tab == 'Slab':
+        if filter_name == 'All Slab Types':
+            return [
+                e for e in elements
+                if logical_group_of(e) == 'Slab'
+            ]
+
+        return [
+            e for e in elements
+            if slab_subtype_of(e) == filter_name
+        ]
+
+    if logical_tab == 'Foundation':
+        if filter_name == 'All Foundation Types':
+            return [
+                e for e in elements
+                if logical_group_of(e) == 'Foundation'
+            ]
+
+        return [
+            e for e in elements
+            if foundation_subtype_of(e) == filter_name
+        ]
+
+    return list(elements)

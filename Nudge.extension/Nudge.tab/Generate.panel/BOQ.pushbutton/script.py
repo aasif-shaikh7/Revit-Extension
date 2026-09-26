@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.47.1'
+__version__ = '1.48.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -57,6 +57,7 @@ from System.Windows.Forms import SaveFileDialog, DialogResult
 # stays here because it reads doc.ParameterBindings.
 from parameter_engine import (
     ParameterItem,
+    resolve_structural_material,
     safe_text,
     safe_storage_type,
     safe_is_shared,
@@ -78,7 +79,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.47.1'
+SCRIPT_VERSION = '1.48.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -211,6 +212,7 @@ from formwork_engine import (
 # P4 pure calculation engine; Revit-bound reads remain below.
 from rebar_engine import (
     build_rebar_quantity_values,
+    choose_beam_for_bar,
     normalize_rebar_dimension_mm,
 )
 
@@ -1152,7 +1154,7 @@ def read_beam_cut_length(element):
 
 
 # Beams of a document, collected once per document while an export or a
-# BBS read runs: (beam, bounding box, location curve). Keyed by document
+# BBS read runs: (beam, box min (x, y, z), box max, location curve). Keyed by document
 # identity; read_bbs_model clears it, because a model closed and opened
 # again is a new document whose elements the old entries would not match.
 _BEAM_BOXES = {}
@@ -1187,23 +1189,32 @@ def _beam_boxes(owner):
                 except:
                     curve = None
                 if box is not None:
-                    boxes.append((beam, box, curve))
+                    boxes.append((
+                        beam,
+                        (box.Min.X, box.Min.Y, box.Min.Z),
+                        (box.Max.X, box.Max.Y, box.Max.Z),
+                        curve))
         except:
             boxes = []
         _BEAM_BOXES[key] = boxes
     return _BEAM_BOXES[key]
 
 
+def _beam_axis_distance(curve, point):
+    """Distance from a point (x, y, z) to a beam's location curve, or None."""
+    try:
+        return curve.Project(DB.XYZ(point[0], point[1], point[2])).Distance
+    except:
+        return None
+
+
 def beam_holding_rebar(rebar):
     """The beam a bar lies in, found by where the bar is; or None.
 
     For a beam bar hosted on something else - a column - whose own host
-    has no Cut Length. Only a mostly horizontal bar of at least 1 m
-    qualifies, so a column's ties and vertical bars never pick up a beam. The beam
-    whose box holds the bar's midpoint wins (the nearest axis breaks a
-    tie); failing that, the nearest beam axis within 600 mm. A beam mark
-    is not used: every BBS model holds the whole building, and the same
-    mark repeats on every level.
+    has no Cut Length. The reads stay here - the bar's box, each beam's
+    box and location curve; the choice is rebar_engine's
+    choose_beam_for_bar (P8, v1.48.0).
     """
     owner = getattr(rebar, "Document", None)
     if owner is None:
@@ -1214,49 +1225,14 @@ def beam_holding_rebar(rebar):
         bar_box = None
     if bar_box is None:
         return None
-    rise = bar_box.Max.Z - bar_box.Min.Z
-    run = max(bar_box.Max.X - bar_box.Min.X, bar_box.Max.Y - bar_box.Min.Y)
-    if run < _BAR_MIN_RUN or run < 2.0 * rise:
-        return None
-    middle = DB.XYZ(
-        (bar_box.Min.X + bar_box.Max.X) / 2.0,
-        (bar_box.Min.Y + bar_box.Max.Y) / 2.0,
-        (bar_box.Min.Z + bar_box.Max.Z) / 2.0)
-
-    def axis_distance(curve):
-        try:
-            return curve.Project(middle).Distance
-        except:
-            return None
-
-    tolerance = _BEAM_BOX_TOLERANCE
-    inside = []
-    for beam, box, curve in _beam_boxes(owner):
-        if (box.Min.X - tolerance <= middle.X <= box.Max.X + tolerance
-                and box.Min.Y - tolerance <= middle.Y <= box.Max.Y + tolerance
-                and box.Min.Z - tolerance <= middle.Z <= box.Max.Z + tolerance):
-            inside.append((beam, curve))
-    if len(inside) == 1:
-        return inside[0][0]
-
-    candidates = inside or [
-        (beam, curve) for beam, _box, curve in _beam_boxes(owner)]
-
-    best = None
-    best_distance = None
-    for beam, curve in candidates:
-        if curve is None:
-            continue
-        distance = axis_distance(curve)
-        if distance is None:
-            continue
-        if best_distance is None or distance < best_distance:
-            best, best_distance = beam, distance
-    if best is None:
-        return inside[0][0] if inside else None
-    if not inside and best_distance > _BEAM_AXIS_REACH:
-        return None
-    return best
+    return choose_beam_for_bar(
+        (bar_box.Min.X, bar_box.Min.Y, bar_box.Min.Z),
+        (bar_box.Max.X, bar_box.Max.Y, bar_box.Max.Z),
+        _beam_boxes(owner),
+        _beam_axis_distance,
+        _BEAM_BOX_TOLERANCE,
+        _BEAM_AXIS_REACH,
+        _BAR_MIN_RUN)
 
 
 def get_element_quantities(
@@ -2305,52 +2281,9 @@ def resolve_concrete_grade(element, parameter_context=None):
     return "(No Grade)"
 
 
-# P10-02: material parameter names read from the per-element parameter
-# index, instance before type. Kept on one line for the regression harness.
-STRUCTURAL_MATERIAL_PARAMETER_NAMES = ("Structural Material", "Material")
-
-
-def structural_material_candidates(parameter_context):
-    """
-    P10-02/P10-03: yield every non-empty material name from the export's
-    parameter index in priority order - "Structural Material" before
-    "Material", instance before type. "<By Category>" is skipped.
-
-    Beams and Columns carry an instance "Structural Material"; Walls and
-    Foundation Slabs expose it on their type (observed on live Revit 2025
-    models). The export has already indexed both scopes for this element,
-    so each candidate is a dictionary lookup plus one value read.
-    """
-    if not isinstance(parameter_context, dict):
-        return
-
-    for parameter_name in STRUCTURAL_MATERIAL_PARAMETER_NAMES:
-        key = parameter_name.lower()
-
-        for scope in ("instance", "type"):
-            try:
-                parameter = parameter_context.get(scope, {}).get(key)
-            except:
-                parameter = None
-
-            if parameter is None:
-                continue
-
-            try:
-                value = str(safe_parameter_value(parameter) or "").strip()
-            except:
-                value = ""
-
-            if value and value not in ("<By Category>", "<None>"):
-                yield value
-
-
-def resolve_structural_material(parameter_context):
-    """P10-02: return the highest-priority structural material name, or ""."""
-    for material_name in structural_material_candidates(parameter_context):
-        return material_name
-
-    return ""
+# P10-02: structural_material_candidates and resolve_structural_material
+# moved to lib/parameter_engine.py in the P8 split (v1.48.0); the value
+# read they need - safe_parameter_value - is handed in from here.
 
 
 def build_element_data(include_grade=True, material_sink=None, type_sink=None):
@@ -2496,7 +2429,8 @@ def build_element_data(include_grade=True, material_sink=None, type_sink=None):
                 and element_name != "Rebar"
             ):
                 material_sink[row["Element ID"]] = (
-                    resolve_structural_material(parameter_context)
+                    resolve_structural_material(
+                        parameter_context, safe_parameter_value)
                 )
 
             # P15 (v1.40.0): each element's family and type, for the Model
@@ -3246,32 +3180,20 @@ FOUNDATION_FILTER_OPTIONS = (
 )
 
 
+from rule_engine import filter_logical_elements
+
+
 def filter_elements(elements, logical_tab, filter_name):
-    if logical_tab == 'Slab':
-        if filter_name == 'All Slab Types':
-            return [
-                e for e in elements
-                if get_rcc_classification(e).get('logical_group') == 'Slab'
-            ]
+    """The Slab / Foundation tab's elements for one subtype filter.
 
-        return [
-            e for e in elements
-            if classify_slab_subtype(e) == filter_name
-        ]
-
-    if logical_tab == 'Foundation':
-        if filter_name == 'All Foundation Types':
-            return [
-                e for e in elements
-                if get_rcc_classification(e).get('logical_group') == 'Foundation'
-            ]
-
-        return [
-            e for e in elements
-            if classify_foundation_subtype(e) == filter_name
-        ]
-
-    return list(elements)
+    The rule is rule_engine's filter_logical_elements (P8, v1.48.0); the
+    three Revit-bound classifiers are handed in from here.
+    """
+    return filter_logical_elements(
+        elements, logical_tab, filter_name,
+        lambda element: get_rcc_classification(element).get('logical_group'),
+        classify_slab_subtype,
+        classify_foundation_subtype)
 
 
 # Raw source collections are kept permanently so a filter can be changed

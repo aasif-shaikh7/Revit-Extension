@@ -259,3 +259,61 @@ def build_rebar_diameter_summary_table(rebar_rows):
             round(values["weight"] / 1000.0, 4)
         ])
     return table
+
+
+def choose_beam_for_bar(bar_min, bar_max, beams, axis_distance,
+                        box_tolerance, axis_reach, min_run):
+    """The beam a bar lies in, from where the bar is; or None.
+
+    Moved from BOQ.pushbutton/script.py's beam_holding_rebar in the P8
+    split (v1.48.0) - the decision only; the reads stay there. For a beam
+    bar hosted on something else - a column - whose own host has no Cut
+    Length.
+
+    `bar_min` / `bar_max` are the bar's box corners (x, y, z); `beams`
+    holds (beam, box min, box max, axis) per beam; `axis_distance(axis,
+    point)` is the distance from a point to that axis, or None. Lengths
+    are in one unit throughout (Revit's feet).
+
+    Only a mostly horizontal bar qualifies - a run of at least `min_run`
+    and at least twice its rise - so a column's ties and vertical bars
+    never pick up a beam. The beam whose box (`box_tolerance` wider)
+    holds the bar's midpoint wins, the nearest axis breaking a tie;
+    failing that, the nearest beam axis within `axis_reach`.
+    """
+    rise = bar_max[2] - bar_min[2]
+    run = max(bar_max[0] - bar_min[0], bar_max[1] - bar_min[1])
+    if run < min_run or run < 2.0 * rise:
+        return None
+    middle = (
+        (bar_min[0] + bar_max[0]) / 2.0,
+        (bar_min[1] + bar_max[1]) / 2.0,
+        (bar_min[2] + bar_max[2]) / 2.0)
+
+    inside = []
+    for beam, box_min, box_max, axis in beams:
+        if (box_min[0] - box_tolerance <= middle[0] <= box_max[0] + box_tolerance
+                and box_min[1] - box_tolerance <= middle[1] <= box_max[1] + box_tolerance
+                and box_min[2] - box_tolerance <= middle[2] <= box_max[2] + box_tolerance):
+            inside.append((beam, axis))
+    if len(inside) == 1:
+        return inside[0][0]
+
+    candidates = inside or [
+        (beam, axis) for beam, _box_min, _box_max, axis in beams]
+
+    best = None
+    best_distance = None
+    for beam, axis in candidates:
+        if axis is None:
+            continue
+        distance = axis_distance(axis, middle)
+        if distance is None:
+            continue
+        if best_distance is None or distance < best_distance:
+            best, best_distance = beam, distance
+    if best is None:
+        return inside[0][0] if inside else None
+    if not inside and best_distance > axis_reach:
+        return None
+    return best

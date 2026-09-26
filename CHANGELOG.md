@@ -22,6 +22,42 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.48.0] - 2026-09-26
+
+**P8, slice 3: three decisions leave `script.py`, their reads stay.** The owner approved this
+slice. It changes no behaviour. `script.py` goes from 5,911 to 5,833 lines.
+
+### Changed
+- `structural_material_candidates`, `resolve_structural_material` and
+  `STRUCTURAL_MATERIAL_PARAMETER_NAMES` moved to `lib/parameter_engine.py`. The value reader
+  (`script.py`'s host-bound `safe_parameter_value`) is handed in as `read_value`.
+- The Slab/Foundation subtype filter is now `rule_engine.filter_logical_elements`. Its three
+  classifiers are handed in, the way `build_logical_rcc_collections` takes its classifier.
+  `script.py`'s `filter_elements` is a one-call reader.
+- The choice of beam for a column-hosted bar is now `rebar_engine.choose_beam_for_bar`, working
+  on box corners and an injected axis distance. `script.py` keeps the reads: `_beam_boxes` and
+  `_beam_axis_distance`, and `beam_holding_rebar` passes them in.
+
+### Left as they are
+- `resolve_concrete_grade` is already a read plus `rule_engine.normalize_concrete_grade`.
+- `get_sample_values` has no caller. Deleting it is the owner's decision (see v1.24.1).
+
+### Verified
+- `python test_xlsx_writer.py` prints **all 473 checks passed**. There is a new P8 audit, and the
+  material and beam tests now run through the moved code. `scripts/ip27_compile.ps1`: 31 files.
+- **Against `HEAD` on random inputs, old code beside new, with 0 differences:** 4,000 bar/beam
+  layouts (1,049 of them found a beam), 3,000 filter cases, and 3,000 material contexts.
+- **Live, test Revit, a copy of UMA NIWAS, the dialog driven by UI Automation:**
+  - The tab counts read Slab (303) and Foundation (22), through the moved filter.
+  - The plinth BBS model was marked changed and re-read by *Read new and changed*, through the
+    moved beam choice: 122 of 123 bars have a Beam Cut Length, and the column-hosted bars read
+    [3.85, blank, 0.6, 0.6], exactly as before.
+  - A classic export from the dialog was compared cell by cell with the v1.47.1 dialog export:
+    **351,312 cells, 3 differences**. Two are the Dashboard's "since" heading and figure, which
+    now compare against Rev 02; the third is the plinth model's read time.
+
+---
+
 ## [v1.47.1] - 2026-09-26
 
 **The dialog's tab content reaches UI Automation; the whole dialog was run live.**
