@@ -22,6 +22,19 @@ Nothing below claims a live Revit feature was verified by an agent when only the
 
 ---
 
+## [v1.48.1] - 2026-09-26
+
+### Removed
+- `get_sample_values` from `script.py`, with the owner's agreement (2026-09-26). It had had no
+  caller anywhere in the repository since at least v1.24.1, when deleting it was left to the owner.
+  `script.py` loses the 71 lines.
+
+### Verified
+- `python test_xlsx_writer.py`: all checks pass; nothing referenced the function.
+- `scripts/ip27_compile.ps1`: 31 files.
+
+---
+
 ## [v1.48.0] - 2026-09-26
 
 **P8, slice 3: three decisions leave `script.py`, their reads stay.** The owner approved this

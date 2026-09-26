@@ -48,7 +48,7 @@ Everything about the live Revit dialog stops at `testing` until the project owne
 | P5 | Rebar Diameter Summary + BBS | 4/5/5/2 | **done** (`v1.19.1`) |
 | P6 | Structural BOQ Assembly (concrete/rebar/formwork/wire/blocks/labour) | 4/5/4/3 | **done** (`v1.15.0`) |
 | P7 | Site / Manual Structural Items | 4/4/2/4 | **done** (`v1.25.6`) — engine, store, sheet + Costing and dialog tab; owner-confirmed 2026-09-21 |
-| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `v1.38.0` the four data tabs' handlers into `lib/*_tab.py`, `script.py` 7,082 -> 6,153; `v1.39.0` the parameter-list handlers into `lib/parameter_lists_tab.py`, 5,508 lines; `v1.48.0` the material choice, the subtype filter and the bar-to-beam choice into `lib/`, **5,833 lines** after the BBS work grew it to 5,911; the split is not finished) |
+| P8 | Structural Rule Engine (keep `script.py` modular) | 5/5/5/2 | `building` (`v1.24.0` `lib/rule_engine.py`, `v1.24.1` `lib/parameter_engine.py`, `v1.25.7` routing core; `v1.38.0` the four data tabs' handlers into `lib/*_tab.py`, `script.py` 7,082 -> 6,153; `v1.39.0` the parameter-list handlers into `lib/parameter_lists_tab.py`, 5,508 lines; `v1.48.0` the material choice, the subtype filter and the bar-to-beam choice into `lib/`, 5,833 lines after the BBS work grew it to 5,911; `v1.48.1` the dead `get_sample_values` deleted, **5,762 lines**; the split is not finished) |
 | P9 | Validation Engine (compact report) | 4/4/3/4 | **done** (`v1.21.0` foundation, `v1.25.8` severity + compact report, `v1.25.11` parameters + rebar, `v1.26.5` rebar rule measured on the BBS files; findings warn, not block) |
 | P10 | Unmapped Element Report | 4/4/2/4 | **done** (`v1.24.0`) — routing, missing-grade and missing-material slices all closed; owner-confirmed in the dialog |
 | P11 | Structural Rate Analysis (material/labour/machinery/wastage/overheads) | 4/5/5/2 | **done** (`v1.26.0` engine, `v1.26.2` store + sheet, `v1.26.3` dialog tab; owner-confirmed 2026-09-21) |
@@ -161,8 +161,8 @@ window.
 
 **Left as they are, and why:**
 - `resolve_concrete_grade` is already a read followed by `rule_engine.normalize_concrete_grade`.
-- `get_sample_values` has no caller anywhere. Deleting it is the owner's decision; see CHANGELOG
-  v1.24.1.
+- `get_sample_values` had no caller anywhere. The owner agreed to delete it, and it was deleted
+  in `v1.48.1`.
 - Nothing in the 2,600-line XAML wiring block moves as-is; it is host-bound.
 
 **Verified live (`v1.25.7`):** two `pyrevit run` sessions, neither touching the owner's Revit.
