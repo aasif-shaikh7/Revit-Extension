@@ -1586,6 +1586,18 @@ Checked by pricing: a Navsari project is priced, a Mumbai project is not.
 - Live: in the 1st level BBS beam model, 327 of 332 bars carry their host beam's Cut Length.
 - Open: shuttering still uses the drawn Length (7.62 m2 over, on 12 beams) - the owner decides.
 
+## BBS-02 - BBS Bar Schedule (`v1.44.0`, 2026-09-26)
+
+**Built:**
+- Reading a BBS model keeps every bar's Rebar row, with the level from the bar or its host.
+- The structural model's export writes a BBS Bar Schedule sheet after BBS Steel. It is for
+  reading only; the steel is counted once.
+
+**Known to work:**
+- Tested (harness): 466 checks.
+- Live: 8,652 bars were kept from the 20 UMA NIWAS BBS models.
+- Live: the export's schedule totals 132,379.003 kg in Excel, equal to BBS Steel.
+
 ---
 
 ## Standing conventions

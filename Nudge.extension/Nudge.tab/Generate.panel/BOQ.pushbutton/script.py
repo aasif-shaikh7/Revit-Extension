@@ -18,7 +18,7 @@ imports the moved engines back from lib/ by plain module name.
 
 __title__ = 'RCC BOQ'
 __author__ = 'Aasif'
-__version__ = '1.43.0'
+__version__ = '1.44.0'
 __min_revit_ver__ = '2025'
 __doc__ = 'RCC BOQ Parameter Manager - Beam / Column / Structure Wall / Slab / Foundation / Rebar BOQ export'
 """
@@ -78,7 +78,7 @@ from parameter_engine import (
 # `__version__` value declared in the module docstring at the top of this
 # script (both were aligned at v1.8.6 after drifting apart). Semantic
 # versioning (MAJOR.MINOR.PATCH) - see PROJECT_STRUCTURE.md.
-SCRIPT_VERSION = '1.43.0'
+SCRIPT_VERSION = '1.44.0'
 
 # Calculated fields are not exposed by Revit through element.Parameters,
 # but users still need to select them in the same Available -> Selected UI.
@@ -1492,7 +1492,8 @@ def _rebar_shape_dimension_mm(element, dimension_name):
         if type_id is not None and not type_id.Equals(
             DB.ElementId.InvalidElementId
         ):
-            type_element = doc.GetElement(type_id)
+            # The element's own document: a BBS model is not `doc`.
+            type_element = (getattr(element, "Document", None) or doc).GetElement(type_id)
             if type_element is not None:
                 candidates.append(type_element.LookupParameter(dimension_name))
     except:
@@ -1536,7 +1537,8 @@ def _rebar_text(element, lookup_names):
     try:
         type_id = element.GetTypeId()
         if type_id is not None and not type_id.Equals(DB.ElementId.InvalidElementId):
-            type_element = doc.GetElement(type_id)
+            # The element's own document: a BBS model is not `doc`.
+            type_element = (getattr(element, "Document", None) or doc).GetElement(type_id)
             if type_element is not None:
                 candidates.append(type_element)
     except:
@@ -1610,14 +1612,61 @@ def rebar_steel_values(element):
     )
 
 
+def bbs_rebar_level(rebar):
+    """The level name of a bar in a BBS model, or "".
+
+    The bar's own level, else its host's - one hop, never a walk up the
+    host chain: get_element_level's recursion is what once overflowed
+    Revit's stack on a BBS model (2026-09-22).
+    """
+    owner = getattr(rebar, "Document", None)
+    if owner is None:
+        return ""
+    candidates = [rebar]
+    try:
+        host = owner.GetElement(rebar.GetHostId())
+        if host is not None:
+            candidates.append(host)
+    except:
+        pass
+    for element in candidates:
+        level_ids = []
+        for name in ("INSTANCE_REFERENCE_LEVEL_PARAM", "FAMILY_LEVEL_PARAM",
+                     "SCHEDULE_LEVEL_PARAM", "LEVEL_PARAM",
+                     "STAIRS_BASE_LEVEL_PARAM"):
+            try:
+                parameter = element.get_Parameter(
+                    getattr(DB.BuiltInParameter, name))
+                if (parameter is not None and parameter.HasValue
+                        and parameter.StorageType == DB.StorageType.ElementId):
+                    level_ids.append(parameter.AsElementId())
+            except:
+                continue
+        try:
+            level_ids.append(element.LevelId)
+        except:
+            pass
+        for level_id in level_ids:
+            try:
+                if level_id is None or level_id.Equals(DB.ElementId.InvalidElementId):
+                    continue
+                level = owner.GetElement(level_id)
+                if level is not None and level.Name:
+                    return safe_text(level.Name, "")
+            except:
+                continue
+    return ""
+
+
 def read_bbs_model(path):
     """Weigh the rebar of one BBS model, opened in the background.
 
     The model is opened without being shown - detached from its central
     file when it is workshared, so nothing is written back to it - and
     closed again without saving. A model this Revit already has open is
-    read where it is and left open. Returns the rebar_steel_values of
-    every Rebar/set in it, and the Revit version that read it.
+    read where it is and left open. Returns, for every Rebar/set in it,
+    its steel values and (v1.44.0) its full Rebar row, and the Revit
+    version that read it.
     """
     app = doc.Application
     wanted = os.path.normcase(os.path.abspath(path))
@@ -1646,14 +1695,27 @@ def read_bbs_model(path):
 
     try:
         values = []
+        rows = []
         rebars = (
             DB.FilteredElementCollector(bbs_doc)
             .OfCategory(DB.BuiltInCategory.OST_Rebar)
             .WhereElementIsNotElementType()
         )
         for rebar in rebars:
-            values.append(rebar_steel_values(rebar))
-        return {"values": values, "revit": safe_text(app.VersionNumber, "")}
+            # v1.44.0: every bar's full Rebar row - mark, shape, A-H,
+            # cutting length, host and its Cut Length - for the BBS Bar
+            # Schedule, read by the same code as this model's Rebar sheet.
+            row = OrderedDict(get_rebar_quantities(rebar))
+            row["Level"] = bbs_rebar_level(rebar)
+            rows.append(row)
+            values.append({
+                "Diameter (mm)": row.get("Rebar: Diameter (mm)", ""),
+                "Quantity": row.get("Rebar: Quantity", ""),
+                "Total Length (m)": row.get("Rebar: Total Length (m)", ""),
+                "Total Weight (kg)": row.get("Rebar: Total Weight (kg)", ""),
+            })
+        return {"values": values, "rows": rows,
+                "revit": safe_text(app.VersionNumber, "")}
     finally:
         if opened_here:
             try:
@@ -1731,7 +1793,7 @@ def get_rebar_quantities(element):
     try:
         host_id = element.GetHostId()
         host_id_text = str(host_id.IntegerValue)
-        host = doc.GetElement(host_id)
+        host = (getattr(element, "Document", None) or doc).GetElement(host_id)
         if host is not None and host.Category is not None:
             host_category = safe_text(host.Category.Name, "")
         # v1.43.0: the host beam's Cut Length, so a bar can be read
