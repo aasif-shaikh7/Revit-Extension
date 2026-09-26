@@ -158,9 +158,18 @@ def build_dashboard_table(data_result, rate_database=None, project_location="",
         [u"Shuttering", total(u"B|"), u"m2", u""],
         [u"Structural elements", element_count, u"nos",
          u"Beams, columns, walls, slabs and foundations"],
-        [u"Rebar sets", len(rebar_rows), u"nos",
-         u"" if rebar_rows else u"No rebar in this model"],
     ]
+    # v1.46.0: a model with no rebar of its own shows its BBS models' bars
+    # on the Rebar sheets, so it counts their sets here.
+    bbs_sets = sum(int(entry.get("sets") or 0)
+                   for entry in counted_entries(bbs_steel))
+    if rebar_rows:
+        key_rows.append([u"Rebar sets", len(rebar_rows), u"nos", u""])
+    elif bbs_sets:
+        key_rows.append([u"Rebar sets", bbs_sets, u"nos",
+                         u"From the BBS models - see the Rebar sheet"])
+    else:
+        key_rows.append([u"Rebar sets", 0, u"nos", u"No rebar in this model"])
     if bbs_files:
         key_rows.append([u"BBS models", len(counted_entries(bbs_steel)), u"nos",
                          u"{0} of {1} counted - see the BBS Steel sheet".format(

@@ -7012,6 +7012,7 @@ def main():
                     "Rebar: Host Category": "Structural Framing",
                     "Rebar: Host Element ID": host,
                     "Rebar: Beam Cut Length (m)": cut,
+                    "ID_LIC": "M-" + mark, "ITEM": "MAIN BAR",
                     "Not kept": "x"}
         bbs_bars = {
             0: [bbs_bar("19", "301", 4.6, 4), bbs_bar("19", "301", 4.6, 2),
@@ -7024,7 +7025,9 @@ def main():
             bbs.record_bbs_reading(files[index], values,
                                    signature=bbs.file_signature(bbs_paths[index]),
                                    read_at="2026-09-26 10:00", revit="2025",
-                                   bars=bbs_bars.get(index))
+                                   bars=bbs_bars.get(index),
+                                   parameter_names=["ID_LIC", "ITEM",
+                                                    "Rebar: Diameter (mm)"])
         bbs.record_bbs_error(files[4], "The file is not a Revit model")
         with io.open(bbs_paths[3], "ab") as handle:
             handle.write(b" changed")
@@ -7158,27 +7161,71 @@ def main():
             "reinforcement items"
         )
 
-        # v1.44.0: every bar of the BBS models, as one cutting schedule.
-        schedule = bbs.build_bbs_bar_schedule_table(reloaded)
-        sched_head = schedule[0]
-        rebar_head = list(rebar_eng.build_rebar_bbs_table([])[0])
-        mark_col = sched_head.index("Bar Mark")
-        qty_col = sched_head.index("Quantity")
-        cut_col_s = sched_head.index("Beam Cut Length (m)")
-        sched_rows = [(row[0], row[mark_col], row[qty_col], row[cut_col_s])
-                      for row in schedule[1:]]
+        # v1.46.0: the BBS models' bars on the Rebar sheets, laid out as a
+        # Rebar sheet exported from the BBS model itself.
+        chosen = ["ID_LIC", "Rebar: Diameter (mm)", "ITEM", "Spacing"]
+        bbs_sheet_rows = bbs.bbs_rebar_sheet_rows(reloaded, chosen)
+        first_keys = list(bbs_sheet_rows[0].keys())
+        marks = [(row["Rebar: Bar Mark"], row["ID_LIC"]) for row in bbs_sheet_rows]
         check(
-            sched_head == ["Element", "BBS Model"] + rebar_head
-            and sched_rows == [("Foundation", "F1", 10, ""),
-                               ("Beam", "P1", 2, 2.9),
-                               ("Beam", "19", 6, 4.6),
-                               ("Beam", "20", 3, 0.2)]
-            and schedule[1][1] == os.path.basename(bbs_paths[1])
+            first_keys[:6] == ["Element ID", "Level", "ID_LIC",
+                               "Rebar: Diameter (mm)", "ITEM", "Spacing"]
+            and first_keys[-1] == "Rebar: BBS Model"
+            and "Rebar: Beam Cut Length (m)" in first_keys
+            and marks == [("F1", "M-F1"), ("P1", "M-P1"), ("19", "M-19"),
+                          ("19", "M-19"), ("20", "M-20")]
+            and bbs_sheet_rows[0]["Rebar: BBS Model"] == os.path.basename(bbs_paths[1])
+            and bbs_sheet_rows[0]["Element ID"] == "F1"
+            and all(row["Spacing"] == "" for row in bbs_sheet_rows)
+            and all(row["ITEM"] == "MAIN BAR" for row in bbs_sheet_rows)
             and "Not kept" not in reloaded["files"][0]["bar_fields"]
-            and all(len(row) == len(sched_head) for row in schedule),
-            "BBS Bar Schedule lists every bar of the counted models, grouped as "
-            "Rebar BBS groups them, element and level in order, with each "
-            "bar's host beam Cut Length (got {0})".format(sched_rows)
+            and "ID_LIC" in reloaded["files"][0]["bar_fields"],
+            "BBS each bar becomes a Rebar row: Element ID, Level, the Rebar "
+            "tab's chosen fields in order (blank if never read), the other "
+            "Rebar fields, and its BBS model (got {0})".format(marks)
+        )
+
+        no_rebar = dict((key, value) for key, value in boq_fixture.items()
+                        if key != "Rebar")
+        rebar_classic = boq_engine.write_basic_xlsx(
+            os.path.join(bbs_dir, "r.xlsx"), no_rebar,
+            generated_stamp="2026-09-22 10:00", bbs_steel=reloaded,
+            bbs_rebar_rows=bbs_sheet_rows)
+        rebar_site = boq_engine.write_site_xlsx(
+            os.path.join(bbs_dir, "rs.xlsx"), no_rebar, project_name="QA",
+            generated_stamp="2026-09-22 10:00", bbs_steel=reloaded,
+            bbs_rebar_rows=bbs_sheet_rows,
+            selected_parameters={"Rebar": chosen})
+        own_rebar = boq_engine.write_basic_xlsx(
+            os.path.join(bbs_dir, "o.xlsx"), boq_fixture,
+            generated_stamp="2026-09-22 10:00", bbs_steel=reloaded,
+            bbs_rebar_rows=bbs_sheet_rows)
+        only_bbs_steel = boq_engine.build_detailed_boq_table(
+            no_rebar, {}, bbs.bbs_steel_rows(reloaded))
+        classic_rebar = rebar_classic.get("Rebar") or [[]]
+        summary_kg = sum(row[4] for row in rebar_classic.get("Rebar Summary", [[]])[1:])
+        bbs_head = (rebar_classic.get("Rebar BBS") or [[]])[0]
+        site_band = " ".join(str(cell) for cell in (rebar_site.get("Rebar") or [[]] * 5)[4])
+        check(
+            classic_rebar[0][:3] == ["Element ID", "Level", "ID_LIC"]
+            and len(classic_rebar) == 1 + len(bbs_sheet_rows)
+            and abs(summary_kg - sum(row["Rebar: Total Weight (kg)"]
+                                     for row in bbs_sheet_rows)) < 0.001
+            and "Beam Cut Length (m)" in bbs_head
+            and "ID_LIC" in site_band and "REBAR: BBS MODEL" in site_band
+            and written_steel(rebar_classic[boq_engine.DETAILED_BOQ_SHEET_NAME])
+            == dict((row[1], row[3]) for row in only_bbs_steel
+                    if str(row[0]).startswith("C."))
+            and "BBS Bar Schedule" not in rebar_classic
+            and "BBS Bar Schedule" not in rebar_site
+            and len(own_rebar["Rebar"]) == 1 + len(boq_fixture["Rebar"])
+            and dict((r[0], r[1:]) for r in dash_rows(
+                rebar_classic[dash.DASHBOARD_SHEET_NAME], "KEY FIGURES")
+            )["Rebar sets"] == (sum(e["sets"] for e in bbs.counted_entries(reloaded)),
+                                "nos", "From the BBS models - see the Rebar sheet"),
+            "BBS a model without rebar shows its BBS models' bars on the Rebar, "
+            "Rebar Summary and Rebar BBS sheets in both formats, the steel "
+            "still counted once; a model with its own rebar keeps its own"
         )
 
         old_read = {"path": bbs_paths[0], "name": "old", "group": "Beam",
@@ -7191,26 +7238,12 @@ def main():
         check(
             bbs.entry_status(old_read) == "read"
             and bbs.needs_reading(old_read)
-            and "bar schedule not read" in bbs.bbs_list_text(old_read)
+            and "bars not read" in bbs.bbs_list_text(old_read)
             and "bars" not in reread and "bar_fields" not in reread,
             "BBS a model read before bars were kept still counts, is asked to "
             "be read again, and a reading without bars drops old ones"
         )
 
-        sched_classic = list(bbs_classic)
-        sched_site = list(bbs_site)
-        check(
-            sched_classic.index(bbs.BBS_BAR_SCHEDULE_SHEET_NAME)
-            == sched_classic.index(bbs.BBS_STEEL_SHEET_NAME) + 1
-            and sched_site.index(bbs.BBS_BAR_SCHEDULE_SHEET_NAME)
-            == sched_site.index(bbs.BBS_STEEL_SHEET_NAME) + 1
-            and bbs_classic[bbs.BBS_BAR_SCHEDULE_SHEET_NAME] == schedule
-            and bbs_site[bbs.BBS_BAR_SCHEDULE_SHEET_NAME][1][0]
-            == "RCC - REINFORCEMENT BBS"
-            and bbs.BBS_BAR_SCHEDULE_SHEET_NAME not in bbs_plain,
-            "BBS both workbooks write the BBS Bar Schedule right after BBS "
-            "Steel; the steel it lists is not counted twice"
-        )
         check(
             classic_names.index(bbs.BBS_STEEL_SHEET_NAME)
             == classic_names.index("Rebar BBS") + 1
@@ -7471,6 +7504,32 @@ def main():
         old_bars == [{"Level": "L1", "Rebar: Beam Cut Length (m)": 4.6}],
         "Cut Length a store written before the rename still shows its beam "
         "Cut Length"
+    )
+
+    # v1.46.0: the BBS models' bars feed the Rebar sheets, with the Rebar
+    # tab's chosen parameters read from each bar the way a Rebar sheet
+    # exported from the BBS model reads them.
+    sheets_reader = extract_function_source(col_script, "read_bbs_model")
+    sheets_tab = io.open(os.path.join(LIB_DIR, "bbs_steel_tab.py"),
+                         encoding="utf-8-sig").read()
+    check(
+        "def read_bbs_model(path, parameter_names=None):" in col_script
+        and "find_parameter_in_context(" in sheets_reader
+        and "safe_parameter_value(parameter)" in sheets_reader
+        and "name not in REBAR_DERIVED_PARAMETERS" in sheets_reader
+        and "elif not element_data.get(\"Rebar\"):" in col_script
+        and "rebar_names = chosen_rebar_parameters()" in col_script
+        and "selected_parameters=site_selected_parameters," in col_script
+        and 'site_selected_parameters["Rebar"] = rebar_names' in col_script
+        and "host.bbs_rebar_parameters = chosen_rebar_parameters" in col_script
+        and '.get("Rebar") or [])' in extract_function_source(
+            col_script, "chosen_rebar_parameters")
+        and col_script.count("bbs_rebar_rows=bbs_rebar_rows") == 2
+        and "read_bbs_model(entry.get(\"path\"), names)" in sheets_tab
+        and "parameter_names=names" in sheets_tab,
+        "BBS the reader keeps the Rebar tab's chosen parameters with each bar, "
+        "and the export hands the bars to both writers only when this model "
+        "has no rebar of its own"
     )
 
     print("")

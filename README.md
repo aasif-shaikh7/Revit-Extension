@@ -126,10 +126,11 @@ dependencies imported into the pyRevit host.
 - **Beam Cut Length (`v1.43.0`).** The Beam sheet shows Revit's Cut Length (after the joins cut
   the beam back) beside the drawn Length, and the Rebar sheets show each bar's `Beam Cut Length`
   - of its host beam, or, for a beam bar hosted on a column (`v1.45.0`), of the beam it lies in.
-- **BBS Bar Schedule (`v1.44.0`).** Reading a BBS model now keeps every bar's row as well, so the
-  structural model's own export carries a `BBS Bar Schedule` sheet after `BBS Steel`: every bar
-  of every BBS model (mark, shape, A-H, cutting length, quantity, weight, host and its Cut
-  Length, level), grouped like `Rebar BBS`. It is for reading; the BOQ counts the steel once.
+- **Rebar sheets from the BBS models (`v1.44.0`-`v1.46.0`).** Reading a BBS model keeps every
+  bar's row, with the Rebar tab's chosen parameters. A structural model with no rebar of its own
+  then shows those bars in its `Rebar`, `Rebar Summary` and `Rebar BBS` sheets, laid out as a
+  BBS model's own export lays them out, plus the BBS model each bar came from. The BOQ still
+  counts the steel once, from the BBS totals.
 - **Parameter discovery, not hard-coded lists.** The "Available Parameters" box for a category is
   built from the actual parameters found on the real elements in the current document.
 - **Add / Remove selection** with a live search box per tab.
@@ -390,7 +391,7 @@ python test_xlsx_writer.py
 ```
 
 The harness prints its own check count; the current run ends with
-`RESULT: all 469 checks passed`.
+`RESULT: all 470 checks passed`.
 
 The pure-Python engines (unit conversion, sheets, styles and formulas) stay dependency-free and
 unit-testable. The Revit-bound classifier is separately extracted into the harness with fake
@@ -479,7 +480,7 @@ If the extension eventually saves the engineer a workbook every day, that is the
 ## Project Status (short)
 
 **Working BOQ pushbutton, evolving into a Professional Structural BOQ System.** The current version
-is `v1.45.0`. Every phase is done except the open-ended P8 split (`script.py` after
+is `v1.46.0`. Every phase is done except the open-ended P8 split (`script.py` after
 `v1.38.0`–`v1.39.0` moved the dialog handlers into `lib/`). P12's rate database holds real
 Gujarat R&B SOR 2024-25 rates since 2026-09-25. `v1.42.0` brings the steel of separate BBS models
 into the BOQ (BBS Steel tab and sheet).

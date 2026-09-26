@@ -15,7 +15,7 @@ imports no Revit or pyRevit symbol.
     handlers["wire_controls"]()
 
 `host` carries: window, document_title, set_status, ParameterItem,
-read_bbs_model, pump_dialog.
+read_bbs_model, pump_dialog, bbs_rebar_parameters.
 """
 
 
@@ -31,6 +31,7 @@ def attach(host):
     ParameterItem = host.ParameterItem
     read_bbs_model = host.read_bbs_model
     pump_dialog = host.pump_dialog
+    bbs_rebar_parameters = host.bbs_rebar_parameters
 
     bbs_tab_state = {
         "store": None,
@@ -223,11 +224,13 @@ def attach(host):
                 pump_dialog()
                 signature = file_signature(entry.get("path"))
                 try:
-                    reading = read_bbs_model(entry.get("path"))
+                    names = bbs_rebar_parameters()
+                    reading = read_bbs_model(entry.get("path"), names)
                     record_bbs_reading(entry, reading.get("values") or [],
                                        signature=signature,
                                        revit=reading.get("revit", u""),
-                                       bars=reading.get("rows"))
+                                       bars=reading.get("rows"),
+                                       parameter_names=names)
                 except Exception as error:
                     failed += 1
                     record_bbs_error(entry, error)

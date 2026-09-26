@@ -1611,6 +1611,16 @@ Checked by pricing: a Navsari project is priced, a Mumbai project is not.
   Cut Length. The one left blank sits inside the column.
 - Live: 0 of 3,812 column bars got one.
 
+## BBS-03 - Rebar sheets from the BBS models (`v1.46.0`, 2026-09-26)
+
+**Built:**
+- A model with no rebar of its own fills its Rebar, Rebar Summary and Rebar BBS sheets from its
+  BBS models' bars. The layout and chosen parameters are those of a BBS model's own export.
+- The BBS Bar Schedule sheet is removed.
+- The steel is counted once.
+
+**Known to work:** Tested (harness): 470 checks. See CHANGELOG for the live read and export.
+
 ---
 
 ## Standing conventions

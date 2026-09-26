@@ -32,16 +32,17 @@ import re
 import time
 
 BBS_STEEL_SHEET_NAME = "BBS Steel"
-BBS_BAR_SCHEDULE_SHEET_NAME = "BBS Bar Schedule"
 
 # Written into every store so a later version can tell what it is reading.
-# Format 2 (v1.44.0) keeps every bar's row as well, for the bar schedule;
-# a model read by format 1 still counts, and is asked to be read again.
+# Format 2 (v1.44.0) keeps every bar's row as well - since v1.46.0 with
+# the Rebar parameters chosen on the Rebar tab - for the Rebar sheets; a
+# model read by format 1 still counts, and is asked to be read again.
 BBS_STORE_FORMAT = 2
 
-# The Rebar-row fields kept per bar - what the Rebar BBS schedule needs.
-# Stored once per model as "bar_fields", then one list of values per bar,
-# which keeps a store of thousands of bars small.
+# The Rebar-row fields kept per bar - what the Rebar and Rebar BBS sheets
+# need - plus the Rebar parameters chosen on the Rebar tab. Stored once
+# per model as "bar_fields", then one list of values per bar, which keeps
+# a store of thousands of bars small.
 BBS_BAR_FIELDS = (
     "Level", "Rebar: Bar Mark", "Rebar: Shape", "Rebar: Diameter (mm)",
     "Rebar: A (mm)", "Rebar: B (mm)", "Rebar: C (mm)", "Rebar: D (mm)",
@@ -51,6 +52,21 @@ BBS_BAR_FIELDS = (
     "Rebar: Total Length (m)", "Rebar: Unit Weight (kg/m)",
     "Rebar: Total Weight (kg)", "Rebar: Element ID", "Rebar: Host Category",
     "Rebar: Host Element ID", "Rebar: Beam Cut Length (m)",
+)
+
+# The automatic Rebar fields in the order get_rebar_quantities gives them -
+# the order a Rebar sheet exported from the BBS model itself shows - and
+# last the BBS model the bar was read from.
+REBAR_ROW_FIELDS = (
+    "Rebar: Bar Mark", "Rebar: Diameter (mm)", "Rebar: Shape",
+    "Rebar: Quantity", "Rebar: Bar Length (m)", "Rebar: Cutting Length (m)",
+    "Rebar: Total Length (m)", "Rebar: Unit Weight (kg/m)",
+    "Rebar: Total Weight (kg)", "Rebar: Element ID", "Rebar: Host Element ID",
+    "Rebar: Host Category", "Rebar: Beam Cut Length (m)",
+    "Rebar: A (mm)", "Rebar: B (mm)", "Rebar: C (mm)", "Rebar: D (mm)",
+    "Rebar: E (mm)", "Rebar: F (mm)", "Rebar: G (mm)", "Rebar: H (mm)",
+    "Rebar: Bend Diameter (mm)", "Rebar: Hook at Start", "Rebar: Hook at End",
+    "Rebar: BBS Model",
 )
 
 # The elements a BBS model can be for, in the order they are built - which
@@ -299,7 +315,7 @@ def entry_status(entry, signature=False):
     return STATUS_READ
 
 
-def has_bar_schedule(entry):
+def has_bar_rows(entry):
     """True once a model was read with its bars kept (v1.44.0 on)."""
     return isinstance(entry.get("bars"), list)
 
@@ -310,7 +326,7 @@ def needs_reading(entry, signature=False):
     status = entry_status(entry, signature)
     if status in (STATUS_UNREAD, STATUS_CHANGED, STATUS_ERROR):
         return True
-    return status == STATUS_READ and not has_bar_schedule(entry)
+    return status == STATUS_READ and not has_bar_rows(entry)
 
 
 def summarize_steel(values):
@@ -359,16 +375,22 @@ def _plain(value):
 
 
 def record_bbs_reading(entry, values, signature=None, read_at="", revit="",
-                       bars=None):
+                       bars=None, parameter_names=None):
     """Put a successful reading on the entry, replacing any earlier one.
 
     `bars` is every bar's Rebar row (a dict per Rebar/set); its
-    BBS_BAR_FIELDS are kept for the bar schedule.
+    BBS_BAR_FIELDS and `parameter_names` - the Rebar parameters chosen on
+    the Rebar tab, such as a beam mark - are kept for the Rebar sheets.
     """
     diameters, sets, unweighed = summarize_steel(values)
     if bars is not None:
-        entry["bar_fields"] = list(BBS_BAR_FIELDS)
-        entry["bars"] = [[_plain(row.get(field, u"")) for field in BBS_BAR_FIELDS]
+        fields = list(BBS_BAR_FIELDS)
+        for name in parameter_names or []:
+            name = _text(name)
+            if name and name not in fields:
+                fields.append(name)
+        entry["bar_fields"] = fields
+        entry["bars"] = [[_plain(row.get(field, u"")) for field in fields]
                          for row in bars]
     else:
         # A reading without bars must not leave an older reading's behind.
@@ -485,8 +507,8 @@ def bbs_list_text(entry):
         parts.append(u"read {0}".format(_text(entry.get("read"))))
     if status != STATUS_READ:
         parts.append(status_text(status))
-    elif not has_bar_schedule(entry):
-        parts.append(u"bar schedule not read - read again")
+    elif not has_bar_rows(entry):
+        parts.append(u"bars not read - read again for the Rebar sheets")
     return u"  |  ".join(parts)
 
 
@@ -586,9 +608,9 @@ def build_bbs_steel_table(store):
         if counted and unweighed:
             note = (note + u"; " if note else u"") + (
                 u"{0} sets with no diameter or length, not weighed".format(unweighed))
-        if counted and not has_bar_schedule(entry):
+        if counted and not has_bar_rows(entry):
             note = (note + u"; " if note else u"") + (
-                u"no bar schedule - read it again")
+                u"bars not read - read it again for the Rebar sheets")
         if not counted:
             table.append([group, _text(entry.get("level")), _text(entry.get("name"))]
                          + [u""] * (len(diameters) + 3)
@@ -624,7 +646,7 @@ def bbs_numeric_columns(table):
 
 
 # ------------------------------------------------------------------
-# The BBS Bar Schedule sheet (v1.44.0)
+# The Rebar sheets, from the BBS models' bars (v1.46.0)
 # ------------------------------------------------------------------
 
 def bbs_bar_rows(entry):
@@ -639,35 +661,42 @@ def bbs_bar_rows(entry):
     return rows
 
 
-def build_bbs_bar_schedule_table(store):
-    """Every bar of the counted BBS models, as one cutting schedule.
+def bbs_rebar_sheet_rows(store, parameter_names=None):
+    """The BBS models' bars as the Rebar sheets' rows.
 
-    Each model's bars are grouped exactly as the Rebar BBS sheet groups
-    this model's own (rebar_engine.build_rebar_bbs_table), model by model
-    in the BBS Steel sheet's order, with the element and the model file
-    in front. Nothing here is counted into the BOQ: the steel comes from
-    the per-diameter totals read at the same time, so the schedule is
-    for reading, never a second count. A header-only table means no
-    model has a bar schedule yet.
+    One ordered row per bar, laid out as a Rebar sheet exported from the
+    BBS model itself: Element ID, Level, the Rebar tab's chosen fields in
+    their order (`parameter_names` - a chosen parameter a model was read
+    without stays blank), then the other automatic Rebar fields, and last
+    `Rebar: BBS Model`, the file the bar came from. Models in the BBS Steel
+    sheet's order. The export writes these into the Rebar, Rebar Summary
+    and Rebar BBS sheets when this model has no rebar of its own; the
+    steel is still counted once, from the totals read with them.
     """
-    from rebar_engine import build_rebar_bbs_table
+    from collections import OrderedDict
 
-    headers = [u"Element", u"BBS Model"] + list(build_rebar_bbs_table([])[0])
-    table = [headers]
-    files = [entry for entry in counted_entries(store) if has_bar_schedule(entry)]
+    chosen = []
+    for name in parameter_names or []:
+        name = _text(name)
+        if name and name not in ("Element ID", "Level") and name not in chosen:
+            chosen.append(name)
+    files = [entry for entry in counted_entries(store) if has_bar_rows(entry)]
     files.sort(key=lambda entry: (
         group_sort_key(_text(entry.get("group")) or "Other"),
         level_sort_key(entry.get("level")),
         _text(entry.get("name")).upper()))
+    rows = []
     for entry in files:
-        schedule = build_rebar_bbs_table(bbs_bar_rows(entry))
-        for row in schedule[1:]:
-            table.append([_text(entry.get("group")) or u"Other",
-                          _text(entry.get("name"))] + list(row))
-    return table
-
-
-def bbs_bar_schedule_numeric_columns():
-    """1-based figure columns: the Rebar BBS ones, two to the right."""
-    return [column + 2 for column in
-            list(range(3, 13)) + [15, 16] + list(range(18, 22)) + [26]]
+        model = _text(entry.get("name"))
+        for bar in bbs_bar_rows(entry):
+            bar["Rebar: BBS Model"] = model
+            row = OrderedDict()
+            row["Element ID"] = _text(bar.get("Rebar: Element ID"))
+            row["Level"] = bar.get("Level", u"")
+            for name in chosen:
+                row[name] = bar.get(name, u"")
+            for name in REBAR_ROW_FIELDS:
+                if name not in row:
+                    row[name] = bar.get(name, u"")
+            rows.append(row)
+    return rows
